@@ -21,17 +21,33 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag || github.ref }}
+      - name: Validate tag trigger
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [[ "$REF_TYPE" != "tag" || "$INPUT_TAG" != "$REF_NAME" ]]; then
+            echo "::error::Manual publishing must run on the selected tag ref; branch refs cannot authenticate with pub.dev Trusted Publishing."
+            exit 1
+          fi
       - name: Match tag to package version
         shell: bash
         env:
-          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref }}
         run: |
           tag_name="${RELEASE_TAG#refs/tags/}"
           tag_version="${tag_name#v}"
           package_version="$(awk '/^version:[[:space:]]*/ { sub(/^version:[[:space:]]*/, ""); print; exit }' pubspec.yaml)"
+          # The -pub suffix is reserved for the one-time publication trigger tag.
+          if [[ "$tag_version" == "${package_version}-pub" ]]; then
+            tag_version="$package_version"
+          fi
 
-          if [[ ! "$tag_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
-            echo "::error::Tag '$tag_name' is not a version tag."
+          if [[ ! "$tag_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag '$tag_name' is not a supported version tag."
             exit 1
           fi
 
