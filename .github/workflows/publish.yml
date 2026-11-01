@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v[0-9]*.[0-9]*.[0-9]*'
+  workflow_dispatch:
 
 jobs:
   verify-version:
@@ -32,6 +33,17 @@ jobs:
   publish:
     name: Publish to pub.dev
     needs: verify-version
+    runs-on: ubuntu-latest
     permissions:
+      contents: read
       id-token: write
-    uses: dart-lang/setup-dart/.github/workflows/publish.yml@v1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: dart-lang/setup-dart@7654d458321ee25acccccfdb86cd48bd95768ff1
+      - uses: flutter-actions/setup-flutter@6e2468fd827c4a7337cd4b835a6049b78bc0bd1f
+      - name: Install dependencies
+        run: dart pub get
+      - name: Publish dry run
+        run: dart pub publish --dry-run --ignore-warnings
+      - name: Publish to pub.dev
+        run: dart pub publish -f
