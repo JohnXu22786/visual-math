@@ -509,12 +509,11 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         appBar: AppBar(
           title: const Text('数学绘图'),
           actions: [
-            if (_currentView == ViewMode.mode2D)
-              IconButton(
-                icon: const Icon(Icons.center_focus_strong, size: 20),
-                tooltip: '重置视图',
-                onPressed: _onResetView,
-              ),
+            IconButton(
+              icon: Icon(Icons.add, size: 24, color: cs.primary),
+              tooltip: '添加公式',
+              onPressed: _addFormula,
+            ),
           ],
         ),
         body: LayoutBuilder(
@@ -527,22 +526,15 @@ class _MathDrawingPageState extends State<MathDrawingPage>
             final keyboardBaseHeight = _keyboardVisible
                 ? availableHeight * 0.56
                 : 0.0;
-            final formulaHeaderHeight = dart_math
-                .min(30.0, availableHeight - formulaListBaseHeight)
-                .toDouble();
-            final keyboardMaxHeight = dart_math
-                .max(0.0, keyboardBaseHeight - formulaHeaderHeight)
-                .toDouble();
+            final keyboardMaxHeight = keyboardBaseHeight;
 
             return Column(
               children: [
                 _buildTabBar(cs),
                 // Formula list (always shown)
                 ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxHeight: formulaListBaseHeight + formulaHeaderHeight,
-                  ),
-                  child: _buildFormulaList(cs, formulaHeaderHeight),
+                  constraints: BoxConstraints(maxHeight: formulaListBaseHeight),
+                  child: _buildFormulaList(cs),
                 ),
                 // Canvas + 3D canvas kept alive via IndexedStack
                 Expanded(
@@ -618,44 +610,25 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   // Formula list
   // ==================================================================
 
-  Widget _buildFormulaList(ColorScheme cs, double headerHeight) {
+  Widget _buildFormulaList(ColorScheme cs) {
     final parameterNames = _activeParameterNames.toList()..sort();
     final showParameters =
         _currentView == ViewMode.mode2D && parameterNames.isNotEmpty;
-    return Stack(
-      children: [
-        Padding(
-          padding: EdgeInsets.only(top: headerHeight),
-          child: ListView.builder(
-            padding: const EdgeInsets.fromLTRB(8, 4, 8, 2),
-            shrinkWrap: true,
-            controller: _formulaScroll,
-            physics: const ClampingScrollPhysics(),
-            itemCount: _formulas.length + (showParameters ? 1 : 0),
-            itemBuilder: (_, index) => index < _formulas.length
-                ? _buildFormulaRow(cs, index)
-                : MathParameterControls(
-                    key: const ValueKey('math-parameter-controls'),
-                    parameters: {
-                      for (final name in parameterNames)
-                        name: _parameters[name]!,
-                    },
-                    onChanged: _updateParameter,
-                  ),
-          ),
-        ),
-        Positioned(
-          top: 0,
-          right: 0,
-          child: _buildActionButton(
-            icon: Icons.add_circle,
-            iconSize: 18,
-            color: cs.primary,
-            tooltip: '添加公式',
-            onPressed: _addFormula,
-          ),
-        ),
-      ],
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 2),
+      shrinkWrap: true,
+      controller: _formulaScroll,
+      physics: const ClampingScrollPhysics(),
+      itemCount: _formulas.length + (showParameters ? 1 : 0),
+      itemBuilder: (_, index) => index < _formulas.length
+          ? _buildFormulaRow(cs, index)
+          : MathParameterControls(
+              key: const ValueKey('math-parameter-controls'),
+              parameters: {
+                for (final name in parameterNames) name: _parameters[name]!,
+              },
+              onChanged: _updateParameter,
+            ),
     );
   }
 

@@ -23,6 +23,28 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   editorInteractionTests();
 
+  group('MathDrawingPage - toolbar controls', () {
+    testWidgets('add action moves to app bar and keeps graph fit control', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_buildTestApp());
+      await tester.pump();
+
+      final addButton = find.byTooltip('添加公式');
+      expect(addButton, findsOneWidget);
+      expect(
+        find.ancestor(of: addButton, matching: find.byType(AppBar)),
+        findsOneWidget,
+      );
+      expect(find.byTooltip('重置视图'), findsNothing);
+      expect(find.byTooltip('缩放至适合'), findsOneWidget);
+
+      await tester.tap(addButton);
+      await tester.pump();
+      expect(find.byType(TextField), findsNWidgets(2));
+    });
+  });
+
   group('MathDrawingPage - adjustable parameters', () {
     MathCanvasState canvas(WidgetTester tester) =>
         tester.state<MathCanvasState>(find.byType(MathCanvas));
@@ -148,7 +170,7 @@ void main() {
 
       expect(find.byType(TextField), findsOneWidget);
 
-      await tester.tap(find.byIcon(Icons.add_circle));
+      await tester.tap(find.byIcon(Icons.add));
       await tester.pump();
 
       expect(find.byType(TextField), findsNWidgets(2));
@@ -161,7 +183,7 @@ void main() {
       await tester.pump();
 
       // Add a second formula
-      await tester.tap(find.byIcon(Icons.add_circle));
+      await tester.tap(find.byIcon(Icons.add));
       await tester.pump();
       expect(find.byType(TextField), findsNWidgets(2));
 
@@ -185,11 +207,11 @@ void main() {
       await tester.pumpWidget(_buildTestApp());
       await tester.pump();
 
-      await tester.tap(find.byIcon(Icons.add_circle));
+      await tester.tap(find.byIcon(Icons.add));
       await tester.pump();
 
       // There should be exactly 1 add button (only on first row)
-      expect(find.byIcon(Icons.add_circle), findsOneWidget);
+      expect(find.byIcon(Icons.add), findsOneWidget);
     });
 
     testWidgets('eye toggle hides formula', (tester) async {
@@ -255,7 +277,7 @@ void main() {
   group('MathDrawingPage - UI spacing', () {
     // Helpers to measure the formula row's action buttons (the IconButtons
     // inside the row that contains the formula TextField, excluding the
-    // AppBar's reset-view button and the TextField's own undo suffix icon).
+    // TextField's own undo suffix icon.
     List<Rect> rowButtonRects(WidgetTester tester, {int rowIndex = 0}) {
       final row = find
           .ancestor(
@@ -512,7 +534,7 @@ void editorInteractionTests() {
     await tester.tap(find.byType(MathFormulaField).first);
     await tester.pump();
     expect(find.text('下一项'), findsOneWidget);
-    await tester.tap(find.byIcon(Icons.add_circle));
+    await tester.tap(find.byIcon(Icons.add));
     await tester.pump();
     final fields = tester
         .stateList<MathFormulaFieldState>(find.byType(MathFormulaField))
@@ -562,7 +584,7 @@ Future<_DelayedEditorPlatform> _delayedEditors(
     const MaterialApp(home: MathDrawingPage(initialMathematicalMode: true)),
   );
   for (var i = 1; i < rows; i++) {
-    await tester.tap(find.byIcon(Icons.add_circle));
+    await tester.tap(find.byIcon(Icons.add));
     await tester.pump();
   }
   platform.activeEditors = platform.editors.sublist(
