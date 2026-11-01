@@ -484,14 +484,6 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     );
   }
 
-  void _onResetView() {
-    if (_currentView == ViewMode.mode2D) {
-      _canvasKey.currentState?.resetView();
-    } else {
-      _canvas3DKey.currentState?.resetView();
-    }
-  }
-
   // ==================================================================
   // Build
   // ==================================================================
