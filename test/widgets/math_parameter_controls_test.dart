@@ -102,10 +102,10 @@ void main() {
     );
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
     await tester.pumpAndSettle();
-    expect(changes.last, closeTo(0.6, 1e-12));
+    expect(changes.last, closeTo(0.9, 1e-12));
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pumpAndSettle();
-    expect(changes.last, closeTo(0.3, 1e-12));
+    expect(changes.last, closeTo(0.6, 1e-12));
   });
 
   testWidgets(
