@@ -477,6 +477,30 @@ class _MathKeyboardState extends State<MathKeyboard> {
             ),
           )
         : null;
+    final pageNavigation = canSwipePages
+        ? Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                tooltip: '上一页',
+                onPressed: () => _changePage(pageCount, -1),
+                icon: const Icon(Icons.chevron_left),
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 44),
+                padding: EdgeInsets.zero,
+              ),
+              pageIndicator!,
+              IconButton(
+                tooltip: '下一页',
+                onPressed: () => _changePage(pageCount, 1),
+                icon: const Icon(Icons.chevron_right),
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 44),
+                padding: EdgeInsets.zero,
+              ),
+            ],
+          )
+        : null;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -545,7 +569,10 @@ class _MathKeyboardState extends State<MathKeyboard> {
                   overflowDirection: VerticalDirection.down,
                   children: [
                     previousButton,
-                    if (pageIndicator != null) pageIndicator,
+                    if (pageNavigation != null)
+                      pageNavigation
+                    else if (pageIndicator != null)
+                      pageIndicator,
                     nextButton,
                   ],
                 ),
