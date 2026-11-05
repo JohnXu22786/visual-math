@@ -422,7 +422,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
 
   Future<void> clipboard(
     String action, {
-    bool Function()? isPasteTargetActive,
+    bool Function()? isTargetActive,
   }) async {
     if (_usesFallback) {
       final controller = widget.controller;
@@ -438,7 +438,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
       if (action == 'paste') {
         final data = await Clipboard.getData(Clipboard.kTextPlain);
         if (mounted &&
-            (isPasteTargetActive?.call() ?? true) &&
+            (isTargetActive?.call() ?? true) &&
             data?.text != null &&
             identical(widget.controller, controller) &&
             controller.value == value) {
@@ -454,6 +454,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
           ClipboardData(text: text.substring(start, end)),
         );
         if (mounted &&
+            (isTargetActive?.call() ?? true) &&
             identical(widget.controller, controller) &&
             controller.value == selectedValue) {
           _replaceFallbackText(text, start, end, '');
@@ -483,9 +484,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
         return;
       }
       await _enqueue(() async {
-        if (!_ready ||
-            _failure != null ||
-            !(isPasteTargetActive?.call() ?? true)) {
+        if (!_ready || _failure != null || !(isTargetActive?.call() ?? true)) {
           return;
         }
         _acceptResult(
@@ -510,7 +509,10 @@ class MathFormulaFieldState extends State<MathFormulaField>
         final capturedSelection = selection['selection'];
         if (latex is String && latex.isNotEmpty) {
           await Clipboard.setData(ClipboardData(text: latex));
-          if (action == 'cut' && mounted && capturedSelection is String) {
+          if (action == 'cut' &&
+              mounted &&
+              (isTargetActive?.call() ?? true) &&
+              capturedSelection is String) {
             _acceptResult(
               await _web!.evaluateJavascript(
                 source:

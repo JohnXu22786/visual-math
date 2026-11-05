@@ -594,7 +594,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                         if (kind == 'clipboard') {
                           await editor?.clipboard(
                             value,
-                            isPasteTargetActive: () =>
+                            isTargetActive: () =>
                                 mounted && _activeFormula == formula,
                           );
                         } else {
