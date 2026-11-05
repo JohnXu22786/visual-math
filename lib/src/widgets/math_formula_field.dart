@@ -420,7 +420,10 @@ class MathFormulaFieldState extends State<MathFormulaField>
     widget.onChanged();
   }
 
-  Future<void> clipboard(String action) async {
+  Future<void> clipboard(
+    String action, {
+    bool Function()? isPasteTargetActive,
+  }) async {
     if (_usesFallback) {
       final controller = widget.controller;
       final value = controller.value;
@@ -435,6 +438,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
       if (action == 'paste') {
         final data = await Clipboard.getData(Clipboard.kTextPlain);
         if (mounted &&
+            (isPasteTargetActive?.call() ?? true) &&
             data?.text != null &&
             identical(widget.controller, controller) &&
             controller.value == value) {
@@ -479,7 +483,11 @@ class MathFormulaFieldState extends State<MathFormulaField>
         return;
       }
       await _enqueue(() async {
-        if (!_ready || _failure != null) return;
+        if (!_ready ||
+            _failure != null ||
+            !(isPasteTargetActive?.call() ?? true)) {
+          return;
+        }
         _acceptResult(
           await _web!.evaluateJavascript(
             source:
