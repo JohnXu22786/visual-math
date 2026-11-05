@@ -484,9 +484,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
         return;
       }
       await _enqueue(() async {
-        if (!_ready ||
-            _failure != null ||
-            !(isTargetActive?.call() ?? true)) {
+        if (!_ready || _failure != null || !(isTargetActive?.call() ?? true)) {
           return;
         }
         _acceptResult(
@@ -512,9 +510,9 @@ class MathFormulaFieldState extends State<MathFormulaField>
         if (latex is String && latex.isNotEmpty) {
           await Clipboard.setData(ClipboardData(text: latex));
           if (action == 'cut' &&
-            mounted &&
-            (isTargetActive?.call() ?? true) &&
-            capturedSelection is String) {
+              mounted &&
+              (isTargetActive?.call() ?? true) &&
+              capturedSelection is String) {
             _acceptResult(
               await _web!.evaluateJavascript(
                 source:
@@ -638,7 +636,8 @@ class MathFormulaFieldState extends State<MathFormulaField>
                         : Stack(
                             children: [
                               InAppWebView(
-                                initialFile: 'packages/visual_math/assets/vendor/mathlive/editor.html',
+                                initialFile:
+                                    'packages/visual_math/assets/vendor/mathlive/editor.html',
                                 initialSettings: InAppWebViewSettings(
                                   javaScriptEnabled: true,
                                   transparentBackground: true,
