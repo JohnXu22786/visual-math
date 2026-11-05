@@ -636,8 +636,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
                         : Stack(
                             children: [
                               InAppWebView(
-                                initialFile:
-                                    'packages/visual_math/assets/vendor/mathlive/editor.html',
+                                initialFile: 'packages/visual_math/assets/vendor/mathlive/editor.html',
                                 initialSettings: InAppWebViewSettings(
                                   javaScriptEnabled: true,
                                   transparentBackground: true,
