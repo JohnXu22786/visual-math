@@ -589,9 +589,14 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                           _activeFormula?.editorKey.currentState?.location ??
                           '公式',
                       onCommand: (kind, value) async {
-                        final editor = _activeFormula?.editorKey.currentState;
+                        final formula = _activeFormula;
+                        final editor = formula?.editorKey.currentState;
                         if (kind == 'clipboard') {
-                          await editor?.clipboard(value);
+                          await editor?.clipboard(
+                            value,
+                            isPasteTargetActive: () =>
+                                mounted && _activeFormula == formula,
+                          );
                         } else {
                           await editor?.command(kind, value);
                         }
