@@ -16,6 +16,7 @@ class MathKeyboard extends StatefulWidget {
   final String activeLabel;
   final bool enabled;
   final bool supportsStructuralNavigation;
+  final bool supportsStructuredEditing;
   final String location;
   const MathKeyboard({
     super.key,
@@ -25,6 +26,7 @@ class MathKeyboard extends StatefulWidget {
     required this.activeLabel,
     this.enabled = true,
     this.supportsStructuralNavigation = true,
+    this.supportsStructuredEditing = true,
     this.location = '公式',
   });
 
@@ -665,7 +667,10 @@ class _MathKeyboardState extends State<MathKeyboard> {
                   borderRadius: BorderRadius.circular(6),
                 ),
               ),
-              onPressed: !widget.enabled
+              onPressed:
+                  !widget.enabled ||
+                      (!widget.supportsStructuredEditing &&
+                          key.requiresStructuredEditing)
                   ? null
                   : () => widget.onCommand(
                       key.command == null ? 'insert' : 'command',
@@ -693,6 +698,15 @@ class _MathKey {
   final String label, value;
   final String? command, description;
   const _MathKey(this.label, this.value, {this.command, this.description});
+
+  bool get requiresStructuredEditing =>
+      value.contains('#') ||
+      const {
+        'addRowAfter',
+        'addColumnAfter',
+        'removeRow',
+        'removeColumn',
+      }.contains(command);
 }
 
 typedef NumericMathInsert = void Function(String text, {int? cursorFromEnd});
