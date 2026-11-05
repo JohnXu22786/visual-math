@@ -45,11 +45,7 @@ class MathParameter {
     final lastGridValue = min + lastStep * step;
     final maxOnGrid = lastGridValue == max;
     final endpointGap = max - lastGridValue;
-    final precisionScale = max.abs();
-    final precisionLimit =
-        precisionScale -
-        (precisionScale - precisionScale * 1.1102230246251565e-16);
-    final hasShortFinalStep = !maxOnGrid && endpointGap >= precisionLimit;
+    final hasShortFinalStep = !maxOnGrid && endpointGap > 0;
     return MathParameter._(
       value.clamp(min, max).toDouble(),
       min,
