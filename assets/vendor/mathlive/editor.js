@@ -210,6 +210,30 @@
       field.executeCommand('deleteBackward');
       return snapshot();
     },
+    capturePaste() {
+      observeChanges();
+      return JSON.stringify({
+        revision,
+        sequence,
+        latex: field.getValue('latex'),
+        selection: JSON.stringify(field.selection),
+      });
+    },
+    pasteIfUnchanged(expectedRevision, expectedSequence, latex, selection, value) {
+      observeChanges();
+      if (
+        field.readOnly ||
+        expectedRevision !== revision ||
+        expectedSequence !== sequence ||
+        latex !== field.getValue('latex') ||
+        selection !== JSON.stringify(field.selection)
+      ) {
+        return snapshot();
+      }
+      field.focus();
+      field.insert(value, {format:'latex', selectionMode:'placeholder'});
+      return snapshot();
+    },
     activate() { field.focus(); return snapshot(); },
     blur() { field.blur(); return snapshot(); },
     theme(ink, accent) {
