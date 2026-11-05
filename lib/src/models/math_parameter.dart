@@ -84,8 +84,10 @@ class MathParameter {
 
   int _nearestIndex(double raw) {
     final bounded = raw.clamp(min, max).toDouble();
-    final gridIndex =
-        ((bounded - min) / step).round().clamp(0, _lastStep).toInt();
+    final gridIndex = ((bounded - min) / step)
+        .round()
+        .clamp(0, _lastStep)
+        .toInt();
     if (_hasShortFinalStep &&
         (max - bounded).abs() <= (_gridValue(gridIndex) - bounded).abs()) {
       return _lastIndex;
@@ -108,8 +110,10 @@ class MathParameter {
       math.max(math.max(snapped.abs(), value.abs()), min.abs()),
       (index * step).abs(),
     );
-    final alignmentTolerance =
-        math.min(step * 1e-12, scale * 2.220446049250313e-16);
+    final alignmentTolerance = math.min(
+      step * 1e-12,
+      scale * 2.220446049250313e-16,
+    );
     final aligned = (snapped - value).abs() <= alignmentTolerance;
     final alreadyAhead = increase ? snapped > value : snapped < value;
     if (aligned || !alreadyAhead) {
