@@ -48,7 +48,7 @@ class MathParameter {
     final precisionScale = math.max(min.abs(), max.abs());
     final precisionLimit =
         precisionScale -
-        (precisionScale - precisionScale * 2.220446049250313e-16);
+        (precisionScale - precisionScale * 1.1102230246251565e-16);
     final hasShortFinalStep = !maxOnGrid && endpointGap >= precisionLimit;
     return MathParameter._(
       value.clamp(min, max).toDouble(),
