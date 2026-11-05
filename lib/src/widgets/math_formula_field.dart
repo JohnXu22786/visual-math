@@ -465,16 +465,23 @@ class MathFormulaFieldState extends State<MathFormulaField>
     await _enqueue(() async {
       if (!_ready) return;
       final value = await _web!.evaluateJavascript(
-        source: 'window.stroomMath.selectedLatex()',
+        source: 'window.stroomMath.cutSelection()',
       );
-      if (value is String && value.isNotEmpty) {
-        await Clipboard.setData(ClipboardData(text: value));
-        if (action == 'cut') {
-          _acceptResult(
-            await _web!.evaluateJavascript(
-              source: 'window.stroomMath.command("command", "deleteBackward")',
-            ),
-          );
+      if (value is String) {
+        final selection = Map<String, dynamic>.from(jsonDecode(value) as Map);
+        final latex = selection['latex'];
+        final capturedSelection = selection['selection'];
+        if (latex is String && latex.isNotEmpty) {
+          await Clipboard.setData(ClipboardData(text: latex));
+          if (action == 'cut' && mounted && capturedSelection is String) {
+            _acceptResult(
+              await _web!.evaluateJavascript(
+                source:
+                    'window.stroomMath.deleteSelection('
+                    '${jsonEncode(capturedSelection)}, ${jsonEncode(latex)})',
+              ),
+            );
+          }
         }
       }
     });
