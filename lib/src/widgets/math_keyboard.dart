@@ -486,10 +486,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
                 onPressed: () => _changePage(pageCount, -1),
                 icon: const Icon(Icons.chevron_left),
                 visualDensity: VisualDensity.compact,
-                constraints: const BoxConstraints(
-                  minWidth: 36,
-                  minHeight: 44,
-                ),
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 44),
                 padding: EdgeInsets.zero,
               ),
               pageIndicator!,
@@ -498,10 +495,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
                 onPressed: () => _changePage(pageCount, 1),
                 icon: const Icon(Icons.chevron_right),
                 visualDensity: VisualDensity.compact,
-                constraints: const BoxConstraints(
-                  minWidth: 36,
-                  minHeight: 44,
-                ),
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 44),
                 padding: EdgeInsets.zero,
               ),
             ],
