@@ -26,13 +26,13 @@ void main() {
   });
 
   test(
-    'parameter nondividing range retains step and stops at its last tick',
+    'parameter nondividing range retains step and reaches its short endpoint',
     () {
       final parameter = MathParameter(min: -1, max: 1, step: 0.6);
       expect(parameter.snap(-0.4), closeTo(-0.4, 1e-12));
       expect(parameter.snap(0.2), closeTo(0.2, 1e-12));
-      expect(parameter.snap(1), closeTo(0.8, 1e-12));
-      expect(parameter.snap(100), closeTo(0.8, 1e-12));
+      expect(parameter.snap(1), 1);
+      expect(parameter.snap(100), 1);
       expect(parameter.withValue(1).value, 1);
     },
   );
@@ -125,13 +125,13 @@ void main() {
         max: min + 10,
         step: 3,
       );
-      for (final offset in [4, 6, 8]) {
+      for (final offset in [4, 6, 8, 10]) {
         final next = parameter.adjacentValue(true);
         expect(next - min, offset);
         parameter = parameter.withValue(next);
       }
       expect(parameter.adjacentValue(true), parameter.value);
-      for (final offset in [6, 4, 0]) {
+      for (final offset in [8, 6, 4, 0]) {
         final next = parameter.adjacentValue(false);
         expect(next - min, offset);
         parameter = parameter.withValue(next);
@@ -159,7 +159,7 @@ void main() {
       expect(parameter.adjacentValue(true), closeTo(0.55, 1e-12));
       expect(parameter.adjacentValue(false), closeTo(0.3, 1e-12));
       expect(parameter.withValue(-0.7).adjacentValue(false), -0.7);
-      expect(parameter.withValue(1.05).adjacentValue(true), 1.05);
+      expect(parameter.withValue(1.05).adjacentValue(true), 1.2);
       expect(parameter.withValue(1.2).adjacentValue(true), 1.2);
       expect(
         parameter.withValue(1.2).adjacentValue(false),

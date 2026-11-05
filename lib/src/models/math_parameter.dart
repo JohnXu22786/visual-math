@@ -7,6 +7,8 @@ class MathParameter {
   final double max;
   final double step;
   final int _lastStep;
+  final bool _maxOnGrid;
+  final bool _hasShortFinalStep;
 
   factory MathParameter({
     double value = 1,
@@ -38,26 +40,45 @@ class MathParameter {
     }
     final nearest = intervals.roundToDouble();
     final tolerance = math.min(1e-9, intervals * 1e-14);
-    final lastStep = (intervals - nearest).abs() <= tolerance
-        ? nearest.toInt()
-        : intervals.floor();
+    final integralIntervals = (intervals - nearest).abs() <= tolerance;
+    final lastStep = integralIntervals ? nearest.toInt() : intervals.floor();
+    final lastGridValue = min + lastStep * step;
+    final maxOnGrid = lastGridValue == max;
+    final endpointGap = max - lastGridValue;
+    final hasShortFinalStep = !maxOnGrid && endpointGap > 0;
     return MathParameter._(
       value.clamp(min, max).toDouble(),
       min,
       max,
       step,
       lastStep,
+      maxOnGrid,
+      hasShortFinalStep,
     );
   }
 
   const MathParameter._(
-      this.value, this.min, this.max, this.step, this._lastStep);
+    this.value,
+    this.min,
+    this.max,
+    this.step,
+    this._lastStep,
+    this._maxOnGrid,
+    this._hasShortFinalStep,
+  );
 
   /// Typed values are clamped to the bounds without being quantized.
   MathParameter withValue(double value) {
     _requireFinite(value, 'value');
     return MathParameter._(
-        value.clamp(min, max).toDouble(), min, max, step, _lastStep);
+      value.clamp(min, max).toDouble(),
+      min,
+      max,
+      step,
+      _lastStep,
+      _maxOnGrid,
+      _hasShortFinalStep,
+    );
   }
 
   /// Snap a slider gesture to steps from [min], never redistributing the grid.
@@ -66,12 +87,24 @@ class MathParameter {
     return _gridValue(_nearestIndex(raw));
   }
 
+  int get _lastIndex => _lastStep + (_hasShortFinalStep ? 1 : 0);
+
   int _nearestIndex(double raw) {
     final bounded = raw.clamp(min, max).toDouble();
-    return ((bounded - min) / step).round().clamp(0, _lastStep).toInt();
+    final gridIndex = ((bounded - min) / step)
+        .round()
+        .clamp(0, _lastStep)
+        .toInt();
+    if (_hasShortFinalStep &&
+        (max - bounded).abs() < (_gridValue(gridIndex) - bounded).abs()) {
+      return _lastIndex;
+    }
+    return gridIndex;
   }
 
   double _gridValue(int index) {
+    if (index == _lastIndex && _hasShortFinalStep) return max;
+    if (index == _lastStep && _maxOnGrid) return max;
     return (min + index * step).clamp(min, max).toDouble();
   }
 
@@ -84,15 +117,17 @@ class MathParameter {
       math.max(math.max(snapped.abs(), value.abs()), min.abs()),
       (index * step).abs(),
     );
-    final alignmentTolerance =
-        math.min(step * 1e-12, scale * 2.220446049250313e-16);
+    final alignmentTolerance = math.min(
+      step * 1e-12,
+      scale * 2.220446049250313e-16,
+    );
     final aligned = (snapped - value).abs() <= alignmentTolerance;
     final alreadyAhead = increase ? snapped > value : snapped < value;
     if (aligned || !alreadyAhead) {
       index += direction;
     }
     // Several indices can round to the same value at large bounds.
-    while (index >= 0 && index <= _lastStep) {
+    while (index >= 0 && index <= _lastIndex) {
       final adjacent = _gridValue(index);
       if (increase ? adjacent > value : adjacent < value) return adjacent;
       index += direction;

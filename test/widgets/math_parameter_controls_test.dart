@@ -79,7 +79,7 @@ void main() {
     }),
   );
 
-  testWidgets('parameter keyboard steps advance and stop at the final tick', (
+  testWidgets('parameter keyboard steps advance through the short endpoint', (
     tester,
   ) async {
     final changes = <double>[];
@@ -87,7 +87,7 @@ void main() {
       liveControls(MathParameter(value: 0, min: 0, max: 1, step: 0.3), changes),
     );
     await focusSlider(tester);
-    for (final expected in [0.3, 0.6, 0.9]) {
+    for (final expected in [0.3, 0.6, 0.9, 1.0]) {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
       await tester.pumpAndSettle();
       expect(changes.last, closeTo(expected, 1e-12));
@@ -98,14 +98,14 @@ void main() {
     expect(changes, hasLength(count));
     expect(
       tester.widget<Slider>(find.byType(Slider)).value,
-      closeTo(0.9, 1e-12),
+      closeTo(1.0, 1e-12),
     );
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
     await tester.pumpAndSettle();
-    expect(changes.last, closeTo(0.6, 1e-12));
+    expect(changes.last, closeTo(0.9, 1e-12));
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pumpAndSettle();
-    expect(changes.last, closeTo(0.3, 1e-12));
+    expect(changes.last, closeTo(0.6, 1e-12));
   });
 
   testWidgets(
@@ -160,7 +160,7 @@ void main() {
           changes,
         ),
       );
-      for (final expected in [-0.45, -0.2, 0.05, 0.3, 0.55, 0.8, 1.05]) {
+      for (final expected in [-0.45, -0.2, 0.05, 0.3, 0.55, 0.8, 1.05, 1.2]) {
         final node = sliderSemantics();
         final announcedNext = node.getSemanticsData().increasedValue;
         expect(announcedNext, startsWith('A = '));
@@ -178,10 +178,10 @@ void main() {
         last.getSemanticsData().hasAction(SemanticsAction.increase),
         isFalse,
       );
-      expect(last.getSemanticsData().decreasedValue, 'A = 0.8');
+      expect(last.getSemanticsData().decreasedValue, 'A = 1.05');
       last.owner!.performAction(last.id, SemanticsAction.decrease);
       await tester.pumpAndSettle();
-      expect(changes.last, closeTo(0.8, 1e-12));
+      expect(changes.last, closeTo(1.05, 1e-12));
     }),
   );
 
@@ -220,7 +220,7 @@ void main() {
       ),
     );
     await focusSlider(tester);
-    for (final offset in [4, 6, 8]) {
+    for (final offset in [4, 6, 8, 10]) {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
       await tester.pumpAndSettle();
       expect(changes.last - min, offset);
@@ -229,7 +229,7 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
     await tester.pumpAndSettle();
     expect(changes, hasLength(count));
-    for (final offset in [6, 4, 0]) {
+    for (final offset in [8, 6, 4, 0]) {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
       await tester.pumpAndSettle();
       expect(changes.last - min, offset);
@@ -247,7 +247,7 @@ void main() {
           changes,
         ),
       );
-      for (final offset in [4, 6, 8]) {
+      for (final offset in [4, 6, 8, 10]) {
         final node = sliderSemantics();
         node.owner!.performAction(node.id, SemanticsAction.increase);
         await tester.pumpAndSettle();
@@ -259,7 +259,7 @@ void main() {
         ),
         isFalse,
       );
-      for (final offset in [6, 4, 0]) {
+      for (final offset in [8, 6, 4, 0]) {
         final node = sliderSemantics();
         node.owner!.performAction(node.id, SemanticsAction.decrease);
         await tester.pumpAndSettle();
@@ -285,7 +285,7 @@ void main() {
           changes,
         ),
       );
-      for (final offset in [4, 6, 8]) {
+      for (final offset in [4, 6, 8, 10]) {
         final node = sliderSemantics();
         expect(
           node.getSemanticsData().increasedValue,
@@ -421,11 +421,8 @@ void main() {
     await tester.tapAt(Offset(bounds.right - 24, bounds.center.dy));
     await tester.pumpAndSettle();
     expect(changes, isNotEmpty);
-    expect(changes.last.value, closeTo(0.9, 1e-12));
+    expect(changes.last.value, 1);
     expect(changes.last.step, 0.3);
-    // The drag reaches the original grid's final tick, rather than a
-    // redistributed endpoint at 1.
-    expect(changes.last.value, lessThan(1));
   });
 
   testWidgets('parameter invalid dialog retains edits without callbacks', (
