@@ -458,8 +458,39 @@ class MathFormulaFieldState extends State<MathFormulaField>
       return;
     }
     if (action == 'paste') {
+      dynamic capturedValue;
+      await _enqueue(() async {
+        if (!_ready || _failure != null) return;
+        capturedValue = await _web!.evaluateJavascript(
+          source: 'window.stroomMath.capturePaste()',
+        );
+      });
       final data = await Clipboard.getData(Clipboard.kTextPlain);
-      if (mounted && data?.text != null) await command('insert', data!.text!);
+      if (!mounted || data?.text == null || capturedValue is! String) return;
+      final state = Map<String, dynamic>.from(
+        jsonDecode(capturedValue) as Map,
+      );
+      final revision = state['revision'];
+      final sequence = state['sequence'];
+      final latex = state['latex'];
+      final selection = state['selection'];
+      if (revision is! int ||
+          sequence is! int ||
+          latex is! String ||
+          selection is! String) {
+        return;
+      }
+      await _enqueue(() async {
+        if (!_ready || _failure != null) return;
+        _acceptResult(
+          await _web!.evaluateJavascript(
+            source:
+                'window.stroomMath.pasteIfUnchanged('
+                '$revision, $sequence, ${jsonEncode(latex)}, '
+                '${jsonEncode(selection)}, ${jsonEncode(data!.text!)})',
+          ),
+        );
+      });
       return;
     }
     await _enqueue(() async {
