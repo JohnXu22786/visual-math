@@ -84,6 +84,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
   int get revision => _revision;
   bool get _usesFallback => !widget.showWebView || !MathFormulaField.supported;
   bool get ready => (_ready && _failure == null) || _usesFallback;
+  bool get supportsStructuralNavigation => !_usesFallback;
 
   @override
   void initState() {

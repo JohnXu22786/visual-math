@@ -542,6 +542,12 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                       enabled:
                           _activeFormula?.editorKey.currentState?.ready ??
                           false,
+                      supportsStructuralNavigation:
+                          _activeFormula
+                              ?.editorKey
+                              .currentState
+                              ?.supportsStructuralNavigation ??
+                          false,
                       activeLabel:
                           '公式 ${_formulas.indexOf(_activeFormula!) + 1}',
                       location:

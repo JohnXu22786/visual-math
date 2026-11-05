@@ -568,6 +568,41 @@ void editorInteractionTests() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('fallback math keyboard disables structural navigation', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: MathDrawingPage(
+          initialShowWebView: false,
+          initialMathematicalMode: true,
+        ),
+      ),
+    );
+    await tester.tap(find.byType(MathFormulaField).first);
+    await tester.pump();
+
+    final previous = tester.widget<TextButton>(
+      find.widgetWithText(TextButton, '上一项'),
+    );
+    final next = tester.widget<TextButton>(
+      find.widgetWithText(TextButton, '下一项'),
+    );
+    expect(previous.onPressed, isNull);
+    expect(next.onPressed, isNull);
+
+    await tester.tap(find.byTooltip('7'));
+    await tester.pump();
+    expect(
+      tester
+          .widget<MathFormulaField>(find.byType(MathFormulaField).first)
+          .controller
+          .text,
+      '7',
+    );
+    expect(tester.takeException(), isNull);
+  });
 }
 
 Future<_DelayedEditorPlatform> _delayedEditors(
