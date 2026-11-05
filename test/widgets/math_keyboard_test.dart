@@ -381,6 +381,8 @@ void main() {
           'insert:M',
           'command:deleteBackward',
           'insert:3',
+          'previous:',
+          'next:',
           'insert:7',
           'insert:Q',
           r'insert:\Alpha',
@@ -643,6 +645,19 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('alphabet category keeps previous and next navigation usable', (
+    tester,
+  ) async {
+    final commands = <String>[];
+    await _pumpKeyboard(tester, commands);
+    await _selectCategory(tester, '字母');
+
+    await tester.tap(find.text('上一项'));
+    await tester.tap(find.text('下一项'));
+
+    expect(commands, ['previous:', 'next:']);
+  });
 
   testWidgets('loading editor disables insertion and structural navigation', (
     tester,
