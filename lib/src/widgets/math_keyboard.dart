@@ -667,9 +667,10 @@ class _MathKeyboardState extends State<MathKeyboard> {
                   borderRadius: BorderRadius.circular(6),
                 ),
               ),
-              onPressed: !widget.enabled ||
-                  (!widget.supportsStructuredEditing &&
-                      key.requiresStructuredEditing)
+              onPressed:
+                  !widget.enabled ||
+                      (!widget.supportsStructuredEditing &&
+                          key.requiresStructuredEditing)
                   ? null
                   : () => widget.onCommand(
                       key.command == null ? 'insert' : 'command',
