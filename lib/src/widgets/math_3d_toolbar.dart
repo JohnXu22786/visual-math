@@ -232,11 +232,13 @@ class _Math3DToolbarState extends State<Math3DToolbar> {
                     for (var n = 3; n <= 12; n++)
                       DropdownMenuItem(value: n, child: Text('$n')),
                   ],
-                  onChanged: (value) {
-                    if (value != null) {
-                      widget.onPolygonSidesChanged?.call(value);
-                    }
-                  },
+                  onChanged: widget.onPolygonSidesChanged == null
+                      ? null
+                      : (value) {
+                          if (value != null) {
+                            widget.onPolygonSidesChanged!(value);
+                          }
+                        },
                 ),
               ],
             ),
