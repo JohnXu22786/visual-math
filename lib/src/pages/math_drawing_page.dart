@@ -437,9 +437,11 @@ class _MathDrawingPageState extends State<MathDrawingPage>
           spacing: MathUiTokens.canvasInset,
           runSpacing: MathUiTokens.canvasInset,
           children: [
-            for (var swatchIndex = 0;
-                swatchIndex < formulaPalette.length;
-                swatchIndex++)
+            for (
+              var swatchIndex = 0;
+              swatchIndex < formulaPalette.length;
+              swatchIndex++
+            )
               Builder(
                 builder: (context) {
                   final color = formulaPalette[swatchIndex];

@@ -318,8 +318,9 @@ class _ToolButton extends StatelessWidget {
             foregroundColor: selected
                 ? colorScheme.onPrimaryContainer
                 : colorScheme.onSurface,
-            backgroundColor:
-                selected ? colorScheme.primaryContainer : colorScheme.surface,
+            backgroundColor: selected
+                ? colorScheme.primaryContainer
+                : colorScheme.surface,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(MathUiTokens.cornerRadius),
             ),

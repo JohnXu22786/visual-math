@@ -671,7 +671,9 @@ class _MathKeyboardState extends State<MathKeyboard> {
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.all(2),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(MathUiTokens.cornerRadius),
+                  borderRadius: BorderRadius.circular(
+                    MathUiTokens.cornerRadius,
+                  ),
                 ),
               ),
               onPressed:
@@ -823,7 +825,9 @@ class MathNumericKeyboard extends StatelessWidget {
                                 style: FilledButton.styleFrom(
                                   padding: const EdgeInsets.all(2),
                                   shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(MathUiTokens.cornerRadius),
+                                    borderRadius: BorderRadius.circular(
+                                      MathUiTokens.cornerRadius,
+                                    ),
                                   ),
                                 ),
                                 onPressed: () => _press(key),

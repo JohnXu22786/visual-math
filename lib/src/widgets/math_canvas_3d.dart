@@ -5225,51 +5225,55 @@ class _SolidStyleControlsState extends State<_SolidStyleControls> {
           runSpacing: MathUiTokens.canvasInset,
           children: [
             for (var index = 0; index < formulaPalette.length; index++)
-              Builder(builder: (context) {
-                final color = formulaPalette[index];
-                final selected = widget.object.color == color.toARGB32();
-                return Semantics(
-                  button: true,
-                  selected: selected,
-                  label: '物体颜色 ${index + 1}',
-                  child: SizedBox.square(
-                    dimension: MathUiTokens.swatchTapTarget,
-                    child: InkWell(
-                      key: ValueKey('solid-color-$index'),
-                      customBorder: const CircleBorder(),
-                      onTap: () {
-                        widget.onColorChanged(color.toARGB32());
-                        Navigator.pop(dialogContext);
-                      },
-                      child: Center(
-                        child: Container(
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            color: color,
-                            shape: BoxShape.circle,
-                            border: selected
-                                ? Border.all(
-                                    color: Theme.of(context).colorScheme.primary,
-                                    width: 3,
+              Builder(
+                builder: (context) {
+                  final color = formulaPalette[index];
+                  final selected = widget.object.color == color.toARGB32();
+                  return Semantics(
+                    button: true,
+                    selected: selected,
+                    label: '物体颜色 ${index + 1}',
+                    child: SizedBox.square(
+                      dimension: MathUiTokens.swatchTapTarget,
+                      child: InkWell(
+                        key: ValueKey('solid-color-$index'),
+                        customBorder: const CircleBorder(),
+                        onTap: () {
+                          widget.onColorChanged(color.toARGB32());
+                          Navigator.pop(dialogContext);
+                        },
+                        child: Center(
+                          child: Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: color,
+                              shape: BoxShape.circle,
+                              border: selected
+                                  ? Border.all(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .primary,
+                                      width: 3,
+                                    )
+                                  : null,
+                            ),
+                            child: selected
+                                ? Icon(
+                                    Icons.check,
+                                    color: color.computeLuminance() > 0.5
+                                        ? Colors.black
+                                        : Colors.white,
+                                    size: 20,
                                   )
                                 : null,
                           ),
-                          child: selected
-                              ? Icon(
-                                  Icons.check,
-                                  color: color.computeLuminance() > 0.5
-                                      ? Colors.black
-                                      : Colors.white,
-                                  size: 20,
-                                )
-                              : null,
                         ),
                       ),
                     ),
-                  ),
-                );
-              }),
+                  );
+                },
+              ),
           ],
         ),
         actions: [
