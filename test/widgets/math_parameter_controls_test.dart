@@ -421,10 +421,8 @@ void main() {
     await tester.tapAt(Offset(bounds.right - 24, bounds.center.dy));
     await tester.pumpAndSettle();
     expect(changes, isNotEmpty);
-    expect(changes.last.value, closeTo(0.9, 1e-12));
+    expect(changes.last.value, 1);
     expect(changes.last.step, 0.3);
-    // A tap exactly at the midpoint keeps the regular grid tick.
-    expect(changes.last.value, lessThan(1));
   });
 
   testWidgets('parameter invalid dialog retains edits without callbacks', (

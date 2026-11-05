@@ -40,9 +40,10 @@ class MathParameter {
     }
     final nearest = intervals.roundToDouble();
     final tolerance = math.min(1e-9, intervals * 1e-14);
-    final maxOnGrid = (intervals - nearest).abs() <= tolerance;
-    final lastStep = maxOnGrid ? nearest.toInt() : intervals.floor();
+    final integralIntervals = (intervals - nearest).abs() <= tolerance;
+    final lastStep = integralIntervals ? nearest.toInt() : intervals.floor();
     final lastGridValue = min + lastStep * step;
+    final maxOnGrid = lastGridValue == max;
     final endpointGap = max - lastGridValue;
     final precisionScale = math.max(min.abs(), max.abs());
     final precisionLimit =
