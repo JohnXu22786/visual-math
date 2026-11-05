@@ -406,7 +406,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
 
   Widget _keyArea(List<_MathKey> keys, int pageCount, int keysPerPage) {
     final canSwipePages = pageCount > 1 && _category != '字母';
-    final canNavigate = widget.enabled && _category != '字母';
+    final canNavigate = widget.enabled;
     final keyGrid = Padding(
       padding: const EdgeInsets.fromLTRB(6, 4, 6, 0),
       child: _category == '字母'
