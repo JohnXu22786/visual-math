@@ -467,9 +467,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
       });
       final data = await Clipboard.getData(Clipboard.kTextPlain);
       if (!mounted || data?.text == null || capturedValue is! String) return;
-      final state = Map<String, dynamic>.from(
-        jsonDecode(capturedValue) as Map,
-      );
+      final state = Map<String, dynamic>.from(jsonDecode(capturedValue) as Map);
       final revision = state['revision'];
       final sequence = state['sequence'];
       final latex = state['latex'];
