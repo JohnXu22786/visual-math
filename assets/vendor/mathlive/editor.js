@@ -192,6 +192,24 @@
     },
     snapshot,
     selectedLatex() { return editedLatex(field.getValue(field.selection, 'latex')); },
+    cutSelection() {
+      return JSON.stringify({
+        latex: editedLatex(field.getValue(field.selection, 'latex')),
+        selection: JSON.stringify(field.selection),
+      });
+    },
+    deleteSelection(selection, latex) {
+      field.focus();
+      if (
+        field.readOnly ||
+        selection !== JSON.stringify(field.selection) ||
+        latex !== editedLatex(field.getValue(field.selection, 'latex'))
+      ) {
+        return snapshot();
+      }
+      field.executeCommand('deleteBackward');
+      return snapshot();
+    },
     activate() { field.focus(); return snapshot(); },
     blur() { field.blur(); return snapshot(); },
     theme(ink, accent) {
