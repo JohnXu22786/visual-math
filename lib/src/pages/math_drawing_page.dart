@@ -18,6 +18,7 @@ import '../widgets/math_3d_toolbar.dart';
 import '../widgets/math_formula_field.dart';
 import '../widgets/math_keyboard.dart';
 import '../widgets/math_parameter_controls.dart';
+import '../widgets/math_ui_tokens.dart';
 
 /// A complete math workspace with formula editing, graphing, and 3D geometry.
 ///
@@ -426,42 +427,70 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     _plotAll();
   }
 
-  void _showColorPicker(int index) {
-    final currentColor = _formulas[index].color;
+  void _showColorPicker(int formulaIndex) {
+    final currentColor = _formulas[formulaIndex].color;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('选择颜色'),
         content: Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: formulaPalette.map((c) {
-            final selected = currentColor == c;
-            return GestureDetector(
-              onTap: () {
-                setState(() {
-                  _formulas[index].color = c;
-                  _formulas[index].autoColor = false;
-                });
-                Navigator.pop(ctx);
-                _plotAll();
-              },
-              child: Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: c,
-                  shape: BoxShape.circle,
-                  border: selected
-                      ? Border.all(color: Colors.black87, width: 3)
-                      : null,
-                ),
-                child: selected
-                    ? const Icon(Icons.check, color: Colors.white, size: 20)
-                    : null,
+          spacing: MathUiTokens.canvasInset,
+          runSpacing: MathUiTokens.canvasInset,
+          children: [
+            for (
+              var swatchIndex = 0;
+              swatchIndex < formulaPalette.length;
+              swatchIndex++
+            )
+              Builder(
+                builder: (context) {
+                  final color = formulaPalette[swatchIndex];
+                  final selected = currentColor == color;
+                  final primary = Theme.of(context).colorScheme.primary;
+                  return Semantics(
+                    button: true,
+                    selected: selected,
+                    label: '公式颜色 ${swatchIndex + 1}',
+                    child: SizedBox.square(
+                      dimension: MathUiTokens.swatchTapTarget,
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: () {
+                          setState(() {
+                            _formulas[formulaIndex].color = color;
+                            _formulas[formulaIndex].autoColor = false;
+                          });
+                          Navigator.pop(ctx);
+                          _plotAll();
+                        },
+                        child: Center(
+                          child: Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: color,
+                              shape: BoxShape.circle,
+                              border: selected
+                                  ? Border.all(color: primary, width: 3)
+                                  : null,
+                            ),
+                            child: selected
+                                ? Icon(
+                                    Icons.check,
+                                    color: color.computeLuminance() > 0.5
+                                        ? Colors.black
+                                        : Colors.white,
+                                    size: 20,
+                                  )
+                                : null,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
-            );
-          }).toList(),
+          ],
         ),
         actions: [
           TextButton(
@@ -772,17 +801,17 @@ class _MathDrawingPageState extends State<MathDrawingPage>
 
   Widget _buildCanvas(ColorScheme cs) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
+      padding: const EdgeInsets.symmetric(horizontal: MathUiTokens.canvasInset),
       child: Stack(
         children: [
           Positioned.fill(
             child: Container(
               decoration: BoxDecoration(
                 border: Border.all(color: cs.outlineVariant, width: 0.5),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(MathUiTokens.cornerRadius),
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(MathUiTokens.cornerRadius),
                 child: MathCanvas(
                   key: _canvasKey,
                   initialExpression: null,
@@ -887,14 +916,19 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         // 3D canvas
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+            padding: const EdgeInsets.fromLTRB(
+              MathUiTokens.canvasInset,
+              4,
+              MathUiTokens.canvasInset,
+              MathUiTokens.canvasInset,
+            ),
             child: Container(
               decoration: BoxDecoration(
                 border: Border.all(color: cs.outlineVariant, width: 0.5),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(MathUiTokens.cornerRadius),
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(MathUiTokens.cornerRadius),
                 child: MathCanvas3D(
                   key: _canvas3DKey,
                   currentTool: _current3DTool,

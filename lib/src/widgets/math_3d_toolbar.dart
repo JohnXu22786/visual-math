@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../models/math_3d_tool.dart';
+import 'math_ui_tokens.dart';
 
 /// The 3D toolbox keeps categories in a horizontal strip and scrolls long tool
 /// rows horizontally on touch, trackpad, and mouse wheel input.
@@ -196,6 +197,12 @@ class _Math3DToolbarState extends State<Math3DToolbar> {
                       key: _groupKeys[group],
                       label: Text(group.label),
                       selected: _group == group,
+                      selectedColor: cs.primaryContainer,
+                      labelStyle: TextStyle(
+                        color: _group == group
+                            ? cs.onPrimaryContainer
+                            : cs.onSurfaceVariant,
+                      ),
                       onSelected: (_) => _onGroupSelected(group),
                     ),
                   ),
@@ -311,10 +318,11 @@ class _ToolButton extends StatelessWidget {
             foregroundColor: selected
                 ? colorScheme.onPrimaryContainer
                 : colorScheme.onSurface,
-            backgroundColor:
-                selected ? colorScheme.primaryContainer : colorScheme.surface,
+            backgroundColor: selected
+                ? colorScheme.primaryContainer
+                : colorScheme.surface,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(MathUiTokens.cornerRadius),
             ),
           ),
           onPressed: onPressed,

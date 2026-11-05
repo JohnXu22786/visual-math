@@ -10,6 +10,7 @@ import '../models/formula_entry.dart';
 import '../models/math_3d_scene.dart';
 import '../models/math_3d_tool.dart';
 import '../models/math_3d_construction.dart';
+import 'math_ui_tokens.dart';
 
 // Re-export so pages can use these without direct imports
 export '../models/math_3d_scene.dart' show ProjectionType;
@@ -4977,7 +4978,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
                 ? SystemMouseCursors.grab
                 : SystemMouseCursors.precise,
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(MathUiTokens.cornerRadius),
               child: Stack(
                 fit: StackFit.expand,
                 children: [
@@ -5039,7 +5040,9 @@ class MathCanvas3DState extends State<MathCanvas3D> {
                               vertical: 8,
                             ),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(
+                                MathUiTokens.cornerRadius,
+                              ),
                             ),
                           ),
                           icon: Icon(
@@ -5218,31 +5221,58 @@ class _SolidStyleControlsState extends State<_SolidStyleControls> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('选择颜色'),
         content: Wrap(
-          spacing: 8,
-          runSpacing: 8,
+          spacing: MathUiTokens.canvasInset,
+          runSpacing: MathUiTokens.canvasInset,
           children: [
             for (var index = 0; index < formulaPalette.length; index++)
-              GestureDetector(
-                key: ValueKey('solid-color-$index'),
-                onTap: () {
-                  widget.onColorChanged(formulaPalette[index].toARGB32());
-                  Navigator.pop(dialogContext);
+              Builder(
+                builder: (context) {
+                  final color = formulaPalette[index];
+                  final selected = widget.object.color == color.toARGB32();
+                  return Semantics(
+                    button: true,
+                    selected: selected,
+                    label: '物体颜色 ${index + 1}',
+                    child: SizedBox.square(
+                      dimension: MathUiTokens.swatchTapTarget,
+                      child: InkWell(
+                        key: ValueKey('solid-color-$index'),
+                        customBorder: const CircleBorder(),
+                        onTap: () {
+                          widget.onColorChanged(color.toARGB32());
+                          Navigator.pop(dialogContext);
+                        },
+                        child: Center(
+                          child: Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: color,
+                              shape: BoxShape.circle,
+                              border: selected
+                                  ? Border.all(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .primary,
+                                      width: 3,
+                                    )
+                                  : null,
+                            ),
+                            child: selected
+                                ? Icon(
+                                    Icons.check,
+                                    color: color.computeLuminance() > 0.5
+                                        ? Colors.black
+                                        : Colors.white,
+                                    size: 20,
+                                  )
+                                : null,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
                 },
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: formulaPalette[index],
-                    shape: BoxShape.circle,
-                    border:
-                        widget.object.color == formulaPalette[index].toARGB32()
-                        ? Border.all(color: Colors.black87, width: 3)
-                        : null,
-                  ),
-                  child: widget.object.color == formulaPalette[index].toARGB32()
-                      ? const Icon(Icons.check, color: Colors.white, size: 20)
-                      : null,
-                ),
               ),
           ],
         ),
@@ -5261,6 +5291,9 @@ class _SolidStyleControlsState extends State<_SolidStyleControls> {
     final cs = Theme.of(context).colorScheme;
     return Card(
       color: cs.surfaceContainerHigh,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(MathUiTokens.cornerRadius),
+      ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(8, 4, 4, 4),
         child: Column(

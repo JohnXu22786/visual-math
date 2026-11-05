@@ -6,6 +6,7 @@ import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/math_input_catalog.dart';
+import 'math_ui_tokens.dart';
 
 /// All editing is structural: templates use MathLive's selection/placeholder
 /// arguments, and navigation operates on the rendered document, not text.
@@ -339,6 +340,12 @@ class _MathKeyboardState extends State<MathKeyboard> {
                                 child: ChoiceChip(
                                   label: Text(category),
                                   selected: category == _category,
+                                  selectedColor: cs.primaryContainer,
+                                  labelStyle: TextStyle(
+                                    color: category == _category
+                                        ? cs.onPrimaryContainer
+                                        : cs.onSurfaceVariant,
+                                  ),
                                   showCheckmark: false,
                                   materialTapTargetSize:
                                       MaterialTapTargetSize.padded,
@@ -653,7 +660,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
                 : null,
             padding: const EdgeInsets.all(2),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(MathUiTokens.cornerRadius),
             ),
           ),
           onPressed: widget.enabled ? _toggleShift : null,
@@ -691,7 +698,9 @@ class _MathKeyboardState extends State<MathKeyboard> {
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.all(2),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(
+                    MathUiTokens.cornerRadius,
+                  ),
                 ),
               ),
               onPressed:
@@ -843,7 +852,9 @@ class MathNumericKeyboard extends StatelessWidget {
                                 style: FilledButton.styleFrom(
                                   padding: const EdgeInsets.all(2),
                                   shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(6),
+                                    borderRadius: BorderRadius.circular(
+                                      MathUiTokens.cornerRadius,
+                                    ),
                                   ),
                                 ),
                                 onPressed: () => _press(key),
