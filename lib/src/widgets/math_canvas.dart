@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart';
 
 import '../models/math_expression.dart' show MathExpression, MathExpressionType;
 import '../models/formula_entry.dart';
+import 'math_ui_tokens.dart';
 
 /// Callback types for canvas → parent communication.
 typedef OnCoordinateUpdate = void Function(List<Map<String, double>> points);
@@ -552,7 +553,7 @@ class MathCanvasState extends State<MathCanvas> {
           child: Listener(
             onPointerSignal: _onPointerSignal,
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(MathUiTokens.cornerRadius),
               child: CustomPaint(
                 painter: GraphPainter(
                   xMin: _xMin,

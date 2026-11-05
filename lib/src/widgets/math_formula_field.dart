@@ -7,6 +7,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 
+import 'math_ui_tokens.dart';
+
 /// A formula editor with source and mathematical input modes.
 ///
 /// Native platforms with an embedded WebView use the bundled MathLive editor.
@@ -557,7 +559,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
             decoration: BoxDecoration(
               color: widget.fillColor ?? cs.surfaceContainerLow,
               border: Border.all(color: cs.outline),
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(MathUiTokens.cornerRadius),
             ),
             child: Row(
               children: [
@@ -706,7 +708,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
                 vertical: 6,
               ),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(MathUiTokens.cornerRadius),
               ),
               filled: true,
               fillColor: widget.fillColor,
