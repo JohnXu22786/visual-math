@@ -7,6 +7,7 @@ class MathParameter {
   final double max;
   final double step;
   final int _lastStep;
+  final bool _hasShortFinalStep;
 
   factory MathParameter({
     double value = 1,
@@ -47,17 +48,30 @@ class MathParameter {
       max,
       step,
       lastStep,
+      (intervals - nearest).abs() > tolerance,
     );
   }
 
   const MathParameter._(
-      this.value, this.min, this.max, this.step, this._lastStep);
+    this.value,
+    this.min,
+    this.max,
+    this.step,
+    this._lastStep,
+    this._hasShortFinalStep,
+  );
 
   /// Typed values are clamped to the bounds without being quantized.
   MathParameter withValue(double value) {
     _requireFinite(value, 'value');
     return MathParameter._(
-        value.clamp(min, max).toDouble(), min, max, step, _lastStep);
+      value.clamp(min, max).toDouble(),
+      min,
+      max,
+      step,
+      _lastStep,
+      _hasShortFinalStep,
+    );
   }
 
   /// Snap a slider gesture to steps from [min], never redistributing the grid.
@@ -66,12 +80,22 @@ class MathParameter {
     return _gridValue(_nearestIndex(raw));
   }
 
+  int get _lastIndex => _lastStep + (_hasShortFinalStep ? 1 : 0);
+
   int _nearestIndex(double raw) {
     final bounded = raw.clamp(min, max).toDouble();
-    return ((bounded - min) / step).round().clamp(0, _lastStep).toInt();
+    final gridIndex =
+        ((bounded - min) / step).round().clamp(0, _lastStep).toInt();
+    if (_hasShortFinalStep &&
+        (max - bounded).abs() <= (_gridValue(gridIndex) - bounded).abs()) {
+      return _lastIndex;
+    }
+    return gridIndex;
   }
 
   double _gridValue(int index) {
+    if (index == _lastIndex && _hasShortFinalStep) return max;
+    if (index == _lastStep && !_hasShortFinalStep) return max;
     return (min + index * step).clamp(min, max).toDouble();
   }
 
@@ -92,7 +116,7 @@ class MathParameter {
       index += direction;
     }
     // Several indices can round to the same value at large bounds.
-    while (index >= 0 && index <= _lastStep) {
+    while (index >= 0 && index <= _lastIndex) {
       final adjacent = _gridValue(index);
       if (increase ? adjacent > value : adjacent < value) return adjacent;
       index += direction;
