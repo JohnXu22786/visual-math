@@ -512,9 +512,9 @@ class MathFormulaFieldState extends State<MathFormulaField>
         if (latex is String && latex.isNotEmpty) {
           await Clipboard.setData(ClipboardData(text: latex));
           if (action == 'cut' &&
-              mounted &&
-              (isTargetActive?.call() ?? true) &&
-              capturedSelection is String) {
+            mounted &&
+            (isTargetActive?.call() ?? true) &&
+            capturedSelection is String) {
             _acceptResult(
               await _web!.evaluateJavascript(
                 source:
