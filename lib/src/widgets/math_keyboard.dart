@@ -15,6 +15,7 @@ class MathKeyboard extends StatefulWidget {
   final VoidCallback onPlot;
   final String activeLabel;
   final bool enabled;
+  final bool supportsStructuralNavigation;
   final String location;
   const MathKeyboard({
     super.key,
@@ -23,6 +24,7 @@ class MathKeyboard extends StatefulWidget {
     required this.onPlot,
     required this.activeLabel,
     this.enabled = true,
+    this.supportsStructuralNavigation = true,
     this.location = '公式',
   });
 
@@ -406,7 +408,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
 
   Widget _keyArea(List<_MathKey> keys, int pageCount, int keysPerPage) {
     final canSwipePages = pageCount > 1 && _category != '字母';
-    final canNavigate = widget.enabled;
+    final canNavigate = widget.enabled && widget.supportsStructuralNavigation;
     final keyGrid = Padding(
       padding: const EdgeInsets.fromLTRB(6, 4, 6, 0),
       child: _category == '字母'
