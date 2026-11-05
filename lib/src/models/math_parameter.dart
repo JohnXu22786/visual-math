@@ -7,6 +7,7 @@ class MathParameter {
   final double max;
   final double step;
   final int _lastStep;
+  final bool _maxOnGrid;
   final bool _hasShortFinalStep;
 
   factory MathParameter({
@@ -39,16 +40,22 @@ class MathParameter {
     }
     final nearest = intervals.roundToDouble();
     final tolerance = math.min(1e-9, intervals * 1e-14);
-    final lastStep = (intervals - nearest).abs() <= tolerance
-        ? nearest.toInt()
-        : intervals.floor();
+    final maxOnGrid = (intervals - nearest).abs() <= tolerance;
+    final lastStep = maxOnGrid ? nearest.toInt() : intervals.floor();
+    final lastGridValue = min + lastStep * step;
+    final endpointGap = max - lastGridValue;
+    final precisionLimit =
+        math.max(min.abs(), max.abs()) * 2.220446049250313e-16;
+    final hasShortFinalStep =
+        !maxOnGrid && endpointGap > precisionLimit && endpointGap < step / 2;
     return MathParameter._(
       value.clamp(min, max).toDouble(),
       min,
       max,
       step,
       lastStep,
-      (intervals - nearest).abs() > tolerance,
+      maxOnGrid,
+      hasShortFinalStep,
     );
   }
 
@@ -58,6 +65,7 @@ class MathParameter {
     this.max,
     this.step,
     this._lastStep,
+    this._maxOnGrid,
     this._hasShortFinalStep,
   );
 
@@ -70,6 +78,7 @@ class MathParameter {
       max,
       step,
       _lastStep,
+      _maxOnGrid,
       _hasShortFinalStep,
     );
   }
@@ -89,7 +98,7 @@ class MathParameter {
         .clamp(0, _lastStep)
         .toInt();
     if (_hasShortFinalStep &&
-        (max - bounded).abs() <= (_gridValue(gridIndex) - bounded).abs()) {
+        (max - bounded).abs() < (_gridValue(gridIndex) - bounded).abs()) {
       return _lastIndex;
     }
     return gridIndex;
@@ -97,7 +106,7 @@ class MathParameter {
 
   double _gridValue(int index) {
     if (index == _lastIndex && _hasShortFinalStep) return max;
-    if (index == _lastStep && !_hasShortFinalStep) return max;
+    if (index == _lastStep && _maxOnGrid) return max;
     return (min + index * step).clamp(min, max).toDouble();
   }
 
