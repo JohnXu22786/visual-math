@@ -517,36 +517,40 @@ class MathFormulaFieldState extends State<MathFormulaField>
       });
       return;
     }
+    dynamic capturedSelection;
     await _enqueue(() async {
       if (!_ready) return;
-      final value = await _web!.evaluateJavascript(
+      capturedSelection = await _web!.evaluateJavascript(
         source: 'window.stroomMath.cutSelection()',
       );
-      if (value is String) {
-        final selection = Map<String, dynamic>.from(jsonDecode(value) as Map);
-        final latex = selection['latex'];
-        final capturedSelection = selection['selection'];
-        if (latex is String && latex.isNotEmpty) {
-          if (clipboardWriter != null) {
-            await clipboardWriter(latex);
-          } else {
-            await Clipboard.setData(ClipboardData(text: latex));
-          }
-          if (action == 'cut' &&
-              mounted &&
-              (isTargetActive?.call() ?? true) &&
-              capturedSelection is String) {
-            _acceptResult(
-              await _web!.evaluateJavascript(
-                source:
-                    'window.stroomMath.deleteSelection('
-                    '${jsonEncode(capturedSelection)}, ${jsonEncode(latex)})',
-              ),
-            );
-          }
-        }
-      }
     });
+    if (capturedSelection is! String) return;
+    final selection = Map<String, dynamic>.from(
+      jsonDecode(capturedSelection) as Map,
+    );
+    final latex = selection['latex'];
+    final selectionToken = selection['selection'];
+    if (latex is! String || latex.isEmpty) return;
+    if (clipboardWriter != null) {
+      await clipboardWriter(latex);
+    } else {
+      await Clipboard.setData(ClipboardData(text: latex));
+    }
+    if (action == 'cut' &&
+        mounted &&
+        (isTargetActive?.call() ?? true) &&
+        selectionToken is String) {
+      await _enqueue(() async {
+        if (!_ready) return;
+        _acceptResult(
+          await _web!.evaluateJavascript(
+            source:
+                'window.stroomMath.deleteSelection('
+                '${jsonEncode(selectionToken)}, ${jsonEncode(latex)})',
+          ),
+        );
+      });
+    }
   }
 
   Future<void> flush() => _enqueue(() async {
