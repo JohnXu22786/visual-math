@@ -70,6 +70,13 @@ class _FormulaCurve {
   const _FormulaCurve({required this.formula, this.polylines = const []});
 }
 
+class _GraphPoint {
+  final double x, y;
+  final Color color;
+  final String kind;
+  const _GraphPoint(this.x, this.y, this.color, this.kind);
+}
+
 /// The state class for [MathCanvas], exposing methods that can be
 /// called from the parent widget to control the canvas.
 class MathCanvasState extends State<MathCanvas> {
@@ -81,6 +88,9 @@ class MathCanvasState extends State<MathCanvas> {
 
   // Formula state (multi-formula support)
   final List<_FormulaCurve> _formulaCurves = [];
+  final Set<String> _enabledKinds = {};
+  final Set<String> _enabledFormulas = {};
+  List<_GraphPoint> _characteristicPoints = [];
 
   // Gesture state
   Offset? _lastFocalPoint;
@@ -133,6 +143,7 @@ class MathCanvasState extends State<MathCanvas> {
             (f) => _FormulaCurve(formula: f, polylines: _sampleCurve(f)),
           ),
         );
+      _characteristicPoints = _findCharacteristicPoints();
     });
     final allPoints = _formulaCurves
         .expand((fc) => fc.polylines.expand((pl) => pl))
@@ -180,6 +191,7 @@ class MathCanvasState extends State<MathCanvas> {
           polylines: _sampleCurve(_formulaCurves[i].formula),
         );
       }
+      _characteristicPoints = _findCharacteristicPoints();
     });
     widget.onCoordinateUpdate?.call(curvePoints);
     widget.onViewportChange?.call(_xMin, _yMin, _xMax, _yMax);
@@ -308,6 +320,7 @@ class MathCanvasState extends State<MathCanvas> {
           polylines: _sampleCurve(_formulaCurves[i].formula),
         );
       }
+      _characteristicPoints = _findCharacteristicPoints();
     });
     widget.onCoordinateUpdate?.call(curvePoints);
     widget.onViewportChange?.call(_xMin, _yMin, _xMax, _yMax);
@@ -320,6 +333,225 @@ class MathCanvasState extends State<MathCanvas> {
   /// Get all current curve points (from all formulas).
   List<Map<String, double>> get curvePoints =>
       _formulaCurves.expand((fc) => fc.polylines.expand((pl) => pl)).toList();
+
+  List<_GraphPoint> _findCharacteristicPoints() {
+    final found = <_GraphPoint>[];
+    const kinds = ['极值点', 'X轴交点', 'Y轴交点', '图像交点'];
+    for (final curve in _formulaCurves) {
+      final formula = curve.formula;
+      final enabled = <String>{
+        ..._enabledKinds,
+        for (final kind in kinds)
+          if (_enabledFormulas.contains('${_formulaSettingsKey(formula)}:$kind')) kind,
+      };
+      for (final line in curve.polylines) {
+        for (var i = 1; i < line.length; i++) {
+          final a = line[i - 1], b = line[i];
+          final ax = a['x']!, ay = a['y']!, bx = b['x']!, by = b['y']!;
+          if (enabled.contains('X轴交点') && ay * by <= 0 && ay != by) {
+            found.add(_GraphPoint(ax + (bx - ax) * (-ay) / (by - ay), 0, formula.color, 'X轴交点'));
+          }
+          if (enabled.contains('Y轴交点') &&
+              ((ax <= 0 && bx >= 0) || (bx <= 0 && ax >= 0)) &&
+              ax != bx) {
+            found.add(_GraphPoint(0, ay + (by - ay) * (-ax) / (bx - ax), formula.color, 'Y轴交点'));
+          }
+          if (formula.parsed?.type == MathExpressionType.explicit && enabled.contains('极值点') && i < line.length - 1) {
+            final cy = line[i + 1]['y']!;
+            if ((by - ay) * (cy - by) < 0) found.add(_GraphPoint(bx, by, formula.color, '极值点'));
+          }
+        }
+      }
+    }
+    final pairwiseFormulas = _formulaCurves
+        .where((curve) => _enabledFormulas.contains('${_formulaSettingsKey(curve.formula)}:图像交点'))
+        .map((curve) => _formulaSettingsKey(curve.formula))
+        .toSet();
+    if (_enabledKinds.contains('图像交点') || pairwiseFormulas.isNotEmpty) {
+      final explicit = _formulaCurves;
+      for (var a = 0; a < explicit.length; a++) {
+        for (var b = a + 1; b < explicit.length; b++) {
+          if (!_enabledKinds.contains('图像交点') &&
+              !pairwiseFormulas.contains(_formulaSettingsKey(explicit[a].formula)) &&
+              !pairwiseFormulas.contains(_formulaSettingsKey(explicit[b].formula))) continue;
+          if (explicit[a].formula.parsed?.type == MathExpressionType.explicit &&
+              explicit[b].formula.parsed?.type == MathExpressionType.explicit) {
+            final first = explicit[a].formula;
+            final second = explicit[b].formula;
+            final low = dart_math.max(_xMin, dart_math.max(first.domainMin ?? _xMin, second.domainMin ?? _xMin)).toDouble();
+            final high = dart_math.min(_xMax, dart_math.min(first.domainMax ?? _xMax, second.domainMax ?? _xMax)).toDouble();
+            if (high <= low) continue;
+            double differenceAt(double x) {
+              try {
+                return first.parsed!.evaluator(x) - second.parsed!.evaluator(x);
+              } catch (_) {
+                return double.nan;
+              }
+            }
+            const samples = 500;
+            var previousX = low;
+            var previousDifference = differenceAt(low);
+            final sampledDifferences = <(double, double)>[(low, previousDifference)];
+            for (var sample = 1; sample <= samples; sample++) {
+              final x = low + (high - low) * sample / samples;
+              final difference = differenceAt(x);
+              if (difference.isFinite && previousDifference.isFinite && difference * previousDifference <= 0 && difference != previousDifference) {
+                var left = previousX;
+                var right = x;
+                var leftDifference = previousDifference;
+                var rootValid = true;
+                for (var iteration = 0; iteration < 48; iteration++) {
+                  final middle = (left + right) / 2;
+                  final middleDifference = differenceAt(middle);
+                  if (!middleDifference.isFinite) {
+                    rootValid = false;
+                    break;
+                  }
+                  if (middleDifference == 0) {
+                    left = middle;
+                    right = middle;
+                    break;
+                  }
+                  if (leftDifference * middleDifference <= 0) {
+                    right = middle;
+                  } else {
+                    left = middle;
+                    leftDifference = middleDifference;
+                  }
+                }
+                final rootX = (left + right) / 2;
+                try {
+                  final firstY = first.parsed!.evaluator(rootX);
+                  final secondY = second.parsed!.evaluator(rootX);
+                  final scale = dart_math.max(1, dart_math.max(firstY.abs(), secondY.abs()));
+                  if (rootValid && firstY.isFinite && secondY.isFinite &&
+                      (firstY - secondY).abs() <= 1e-8 * scale &&
+                      _includesDomainX(first, rootX) &&
+                      _includesDomainX(second, rootX)) {
+                    found.add(_GraphPoint(rootX, (firstY + secondY) / 2, first.color, '图像交点'));
+                  }
+                } catch (_) {}
+              }
+              previousDifference = difference;
+              sampledDifferences.add((x, difference));
+              previousX = x;
+            }
+            for (var i = 1; i < sampledDifferences.length - 1; i++) {
+              final before = sampledDifferences[i - 1];
+              final middle = sampledDifferences[i];
+              final after = sampledDifferences[i + 1];
+              if (!before.$2.isFinite || !middle.$2.isFinite || !after.$2.isFinite ||
+                  middle.$2.abs() > before.$2.abs() ||
+                  middle.$2.abs() > after.$2.abs()) continue;
+              var left = before.$1;
+              var right = after.$1;
+              for (var iteration = 0; iteration < 48; iteration++) {
+                final firstThird = left + (right - left) / 3;
+                final secondThird = right - (right - left) / 3;
+                final firstValue = differenceAt(firstThird).abs();
+                final secondValue = differenceAt(secondThird).abs();
+                if (!firstValue.isFinite || !secondValue.isFinite) break;
+                if (firstValue < secondValue) {
+                  right = secondThird;
+                } else {
+                  left = firstThird;
+                }
+              }
+              final tangentX = (left + right) / 2;
+              final difference = differenceAt(tangentX);
+              try {
+                final firstY = first.parsed!.evaluator(tangentX);
+                final secondY = second.parsed!.evaluator(tangentX);
+                final scale = dart_math.max(1, dart_math.max(firstY.abs(), secondY.abs()));
+                if (difference.isFinite && firstY.isFinite && secondY.isFinite &&
+                    difference.abs() <= 1e-8 * scale &&
+                    _includesDomainX(first, tangentX) &&
+                    _includesDomainX(second, tangentX)) {
+                  found.add(_GraphPoint(tangentX, (firstY + secondY) / 2, first.color, '图像交点'));
+                }
+              } catch (_) {}
+            }
+            continue;
+          }
+          for (final lineA in explicit[a].polylines) {
+            for (final lineB in explicit[b].polylines) {
+              for (var i = 1; i < lineA.length; i++) {
+                final p = lineA[i - 1], q = lineA[i];
+                for (var j = 1; j < lineB.length; j++) {
+                  final r = lineB[j - 1], s = lineB[j];
+                  final x1 = p['x']!, y1 = p['y']!, x2 = q['x']!, y2 = q['y']!;
+                  final x3 = r['x']!, y3 = r['y']!, x4 = s['x']!, y4 = s['y']!;
+                  final denominator = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+                  if (denominator.abs() < 1e-12) continue;
+                  final t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denominator;
+                  final u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denominator;
+                  if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+                    final x = x1 + t * (x2 - x1);
+                    if (_includesDomainX(explicit[a].formula, x) && _includesDomainX(explicit[b].formula, x)) {
+                      found.add(_GraphPoint(x, y1 + t * (y2 - y1), explicit[a].formula.color, '图像交点'));
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    final bounds = _effectiveYBounds();
+    final unique = <_GraphPoint>[];
+    for (final point in found) {
+      if (point.x < _xMin || point.x > _xMax || point.y < bounds.$1 || point.y > bounds.$2) continue;
+      if (unique.any((other) => (other.x - point.x).abs() < 1e-3 && (other.y - point.y).abs() < 1e-3)) continue;
+      unique.add(point);
+    }
+    return unique;
+  }
+
+  String _formulaSettingsKey(FormulaEntry formula) =>
+      formula.identity ?? '${formula.rawExpression}:${formula.color.toARGB32()}';
+
+  bool _includesDomainX(FormulaEntry formula, double x) {
+    final tolerance = 1e-8 * dart_math.max(1, x.abs());
+    if (!formula.includeDomainMin && formula.domainMin != null &&
+        (x - formula.domainMin!).abs() <= tolerance) return false;
+    if (!formula.includeDomainMax && formula.domainMax != null &&
+        (x - formula.domainMax!).abs() <= tolerance) return false;
+    return true;
+  }
+
+  Future<void> _openCharacteristicSettings() async {
+    const categories = ['极值点', 'X轴交点', 'Y轴交点', '图像交点'];
+    await showDialog<void>(context: context, builder: (dialogContext) => StatefulBuilder(builder: (context, refresh) => AlertDialog(
+      title: const Text('特征点显示'),
+      content: SizedBox(width: 420, child: ListView(shrinkWrap: true, children: [
+        const Text('全局显示'),
+        for (final category in categories) CheckboxListTile(dense: true, title: Text(category), value: _enabledKinds.contains(category), onChanged: (value) => refresh(() { if (value == true) { _enabledKinds.add(category); } else { _enabledKinds.remove(category); } setState(() => _characteristicPoints = _findCharacteristicPoints()); })),
+        const Divider(),
+        for (final curve in _formulaCurves) ...[
+          Text(curve.formula.rawExpression, style: TextStyle(color: curve.formula.color, fontWeight: FontWeight.w600)),
+          for (final category in categories) CheckboxListTile(dense: true, title: Text(category), value: _enabledFormulas.contains('${_formulaSettingsKey(curve.formula)}:$category'), onChanged: (value) => refresh(() { final key = '${_formulaSettingsKey(curve.formula)}:$category'; if (value == true) { _enabledFormulas.add(key); } else { _enabledFormulas.remove(key); } setState(() => _characteristicPoints = _findCharacteristicPoints()); })),
+        ],
+      ])),
+      actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('完成'))],
+    )));
+  }
+
+  void _inspectCharacteristicPoint(Offset position) {
+    final bounds = _effectiveYBounds();
+    for (final point in _characteristicPoints) {
+      final sx = (point.x - _xMin) / (_xMax - _xMin) * _canvasWidth;
+      final sy = (bounds.$2 - point.y) / (bounds.$2 - bounds.$1) * _canvasHeight;
+      if ((Offset(sx, sy) - position).distance < 16) {
+        showDialog<void>(context: context, builder: (context) => AlertDialog(
+          title: Text(point.kind),
+          content: Text('x = ${point.x.toStringAsFixed(8)}\ny = ${point.y.toStringAsFixed(8)}'),
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭'))],
+        ));
+        break;
+      }
+    }
+  }
 
   // ==================================================================
   // Build helpers for painter
@@ -374,9 +606,22 @@ class MathCanvasState extends State<MathCanvas> {
     bool includePanMargin = true,
   }) {
     if (!formula.isValid) return [];
+    if ((formula.domainMinExpression.isNotEmpty && formula.domainMin == null) ||
+        (formula.domainMaxExpression.isNotEmpty && formula.domainMax == null)) {
+      return [];
+    }
     final parsed = formula.parsed!;
     final marginScale = includePanMargin ? _renderMarginScale : 0.0;
     final marginX = (_xMax - _xMin) * marginScale;
+    final domainMin = formula.domainMin ?? double.negativeInfinity;
+    final domainMax = formula.domainMax ?? double.infinity;
+    if (domainMax <= domainMin) return [];
+    var sampleMin = dart_math.max(_xMin - marginX, domainMin).toDouble();
+    var sampleMax = dart_math.min(_xMax + marginX, domainMax).toDouble();
+    final endpointNudge = (sampleMax - sampleMin).abs() * 1e-10;
+    if (!formula.includeDomainMin && sampleMin == domainMin) sampleMin += endpointNudge;
+    if (!formula.includeDomainMax && sampleMax == domainMax) sampleMax -= endpointNudge;
+    if (sampleMax <= sampleMin) return [];
     if (parsed.type == MathExpressionType.implicit) {
       final (effectiveYMin, effectiveYMax) = _effectiveYBounds();
       final marginY = (effectiveYMax - effectiveYMin) * marginScale;
@@ -385,8 +630,8 @@ class MathCanvasState extends State<MathCanvas> {
       // contour detail remains consistent across the visible area.
       final scale = 1.0 + 2.0 * marginScale;
       return parsed.sampleContourSegments(
-        xMin: _xMin - marginX,
-        xMax: _xMax + marginX,
+        xMin: sampleMin,
+        xMax: sampleMax,
         yMin: effectiveYMin - marginY,
         yMax: effectiveYMax + marginY,
         gridX: (80 * scale).round().clamp(80, 200),
@@ -398,8 +643,8 @@ class MathCanvasState extends State<MathCanvas> {
     // With _renderMarginScale=1.0, this yields scalePoints=3.0 (3× points).
     final scalePoints = 1.0 + 2.0 * marginScale;
     return parsed.samplePointSegments(
-      xMin: _xMin - marginX,
-      xMax: _xMax + marginX,
+      xMin: sampleMin,
+      xMax: sampleMax,
       numPoints: (300 * scalePoints).round().clamp(300, 1200),
     );
   }
@@ -484,6 +729,7 @@ class MathCanvasState extends State<MathCanvas> {
         polylines: _sampleCurve(_formulaCurves[i].formula),
       );
     }
+    _characteristicPoints = _findCharacteristicPoints();
   }
 
   // Mouse wheel zoom
@@ -546,7 +792,8 @@ class MathCanvasState extends State<MathCanvas> {
           _resampleAll();
         }
 
-        return GestureDetector(
+        return Stack(children: [GestureDetector(
+          onTapUp: (details) => _inspectCharacteristicPoint(details.localPosition),
           onScaleStart: _onScaleStart,
           onScaleUpdate: _onScaleUpdate,
           onScaleEnd: _onScaleEnd,
@@ -562,6 +809,7 @@ class MathCanvasState extends State<MathCanvas> {
                   yMax: _yMax,
                   curves: _buildCurvesList(),
                   curveColors: _buildColorsList(),
+                  characteristicPoints: _characteristicPoints,
                   backgroundColor: cs.surface,
                   gridColor: cs.outlineVariant.withValues(alpha: 0.5),
                   axisColor: cs.onSurface,
@@ -571,7 +819,7 @@ class MathCanvasState extends State<MathCanvas> {
               ),
             ),
           ),
-        );
+        ), Positioned(right: 8, top: 8, child: Material(color: cs.surface, elevation: 2, shape: const CircleBorder(), child: IconButton(tooltip: '特征点显示设置', onPressed: _openCharacteristicSettings, icon: const Icon(Icons.auto_graph))))]);
       },
     );
   }
@@ -598,6 +846,7 @@ class GraphPainter extends CustomPainter {
 
   /// Colors for each curve.
   final List<Color> curveColors;
+  final List<_GraphPoint> characteristicPoints;
 
   final Color backgroundColor;
   final Color gridColor;
@@ -611,6 +860,7 @@ class GraphPainter extends CustomPainter {
     required this.yMax,
     this.curves = const [],
     this.curveColors = const [],
+    this.characteristicPoints = const [],
     this.backgroundColor = Colors.white,
     this.gridColor = const Color(0x80CCCCCC),
     this.axisColor = Colors.black87,
@@ -648,6 +898,12 @@ class GraphPainter extends CustomPainter {
     _drawGrid(canvas, size, eYMin, eYMax);
     _drawAxes(canvas, size, eYMin, eYMax);
     _drawCurves(canvas, size, eYMin, eYMax);
+    for (final point in characteristicPoints) {
+      final center = _mathToScreen(point.x, point.y, size, eYMin, eYMax);
+      canvas.drawCircle(center, 7, Paint()..color = backgroundColor);
+      canvas.drawCircle(center, 5, Paint()..color = point.color);
+      canvas.drawCircle(center, 5, Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = 1.5);
+    }
   }
 
   @override
@@ -661,7 +917,8 @@ class GraphPainter extends CustomPainter {
         oldDelegate.gridColor != gridColor ||
         oldDelegate.axisColor != axisColor ||
         oldDelegate.labelColor != labelColor ||
-        oldDelegate.curveColors != curveColors;
+        oldDelegate.curveColors != curveColors ||
+        oldDelegate.characteristicPoints != characteristicPoints;
   }
 
   // ==================================================================
