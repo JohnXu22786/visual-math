@@ -30,6 +30,9 @@ class FormulaEntry {
   /// Whether this color was auto-assigned (vs. user-set).
   final bool autoColor;
 
+  /// Whether this formula row is currently included when plotting.
+  final bool visible;
+
   /// Current parameter values (only relevant if [parsed] has parameters).
   final Map<String, double> parameterValues;
 
@@ -38,6 +41,7 @@ class FormulaEntry {
     this.parsed,
     this.color = Colors.blue,
     this.autoColor = true,
+    this.visible = true,
     this.parameterValues = const {},
   });
 
@@ -52,6 +56,7 @@ class FormulaEntry {
     bool clearParsed = false,
     Color? color,
     bool? autoColor,
+    bool? visible,
     Map<String, double>? parameterValues,
   }) {
     return FormulaEntry(
@@ -64,6 +69,7 @@ class FormulaEntry {
                   : this.parsed),
       color: color ?? this.color,
       autoColor: autoColor ?? this.autoColor,
+      visible: visible ?? this.visible,
       parameterValues: parameterValues ?? this.parameterValues,
     );
   }

@@ -20,6 +20,8 @@ export '../models/math_3d_tool.dart' show ConstructionTool;
 typedef On3DReady = void Function();
 typedef On3DViewportChange = void Function();
 typedef On3DObjectCreated = void Function(Object3D object);
+typedef On3DSceneChange = void Function();
+typedef On3DSelectionChange = void Function(Object3D? object);
 typedef On3DToolInstruction = void Function(String instruction);
 
 const double _planeGridRange = 5.0;
@@ -280,6 +282,8 @@ class MathCanvas3D extends StatefulWidget {
   final On3DReady? onReady;
   final On3DViewportChange? onViewportChange;
   final On3DObjectCreated? onObjectCreated;
+  final On3DSceneChange? onSceneChanged;
+  final On3DSelectionChange? onSelectionChanged;
   final On3DToolInstruction? onToolInstruction;
   final ConstructionTool currentTool;
   final int polygonSides;
@@ -289,6 +293,8 @@ class MathCanvas3D extends StatefulWidget {
     this.onReady,
     this.onViewportChange,
     this.onObjectCreated,
+    this.onSceneChanged,
+    this.onSelectionChanged,
     this.onToolInstruction,
     this.currentTool = ConstructionTool.move,
     this.polygonSides = 6,
@@ -383,6 +389,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       );
       _objectsVersion++;
     });
+    widget.onSceneChanged?.call();
   }
 
   void deleteSelectedObject() {
@@ -417,6 +424,24 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     theta: _cameraTheta,
     phi: _cameraPhi,
   );
+
+  /// Replace the current camera state.
+  void setCamera(Camera3D camera) {
+    if (!camera.distance.isFinite ||
+        camera.distance <= 0 ||
+        !camera.theta.isFinite || !camera.phi.isFinite ||
+        !camera.target.x.isFinite || !camera.target.y.isFinite ||
+        !camera.target.z.isFinite) {
+      return;
+    }
+    setState(() {
+      _cameraTarget = camera.target;
+      _cameraDistance = camera.distance.clamp(0.1, 1000).toDouble();
+      _cameraTheta = camera.theta;
+      _cameraPhi = camera.phi.clamp(-dart_math.pi * 0.49, dart_math.pi * 0.49);
+    });
+    widget.onViewportChange?.call();
+  }
 
   /// Get the current projection type.
   ProjectionType get projectionType => _projectionType;
@@ -474,6 +499,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       default:
         break;
     }
+    widget.onSceneChanged?.call();
   }
 
   Future<void> _chooseViewDirection() async {
@@ -688,6 +714,8 @@ class MathCanvas3DState extends State<MathCanvas3D> {
 
   /// Set the objects to render.
   void setObjects(List<Object3D> objects) {
+    final hadSelection =
+        _selectedObjectIndex != null || _selectedPointIndex != null;
     final preservesExistingObjects =
         objects.length >= _objects.length &&
         List.generate(
@@ -716,10 +744,18 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         ..addAll(objects);
       _objectsVersion++;
     });
+    widget.onSceneChanged?.call();
+    if (hadSelection &&
+        _selectedObjectIndex == null &&
+        _selectedPointIndex == null) {
+      widget.onSelectionChanged?.call(null);
+    }
   }
 
   /// Clear all objects.
   void clearObjects() {
+    final hadSelection =
+        _selectedObjectIndex != null || _selectedPointIndex != null;
     setState(() {
       _selectedPointIndex = null;
       _selectedObjectIndex = null;
@@ -734,6 +770,8 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       _objects.clear();
       _objectsVersion++;
     });
+    widget.onSceneChanged?.call();
+    if (hadSelection) widget.onSelectionChanged?.call(null);
   }
 
   /// Add a surface mesh to the scene.
@@ -756,6 +794,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       );
       _objectsVersion++;
     });
+    widget.onSceneChanged?.call();
   }
 
   /// Get the current construction state (null if no tool is active).
@@ -772,8 +811,9 @@ class MathCanvas3DState extends State<MathCanvas3D> {
 
   /// Set the active construction tool.
   void setTool(ConstructionTool tool, {bool notifyInstruction = true}) {
+    var sceneRolledBack = false;
     setState(() {
-      _cancelPointDrag();
+      sceneRolledBack = _cancelPointDrag();
       _selectedPointIndex = null;
       _selectedObjectIndex = null;
       _currentTool = tool;
@@ -800,11 +840,13 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       _constPlaneNormal = null;
       _constructionPreview = null;
     });
+    if (sceneRolledBack) widget.onSceneChanged?.call();
     if (notifyInstruction) {
       widget.onToolInstruction?.call(
         _construction?.currentInstruction ?? ToolInfo.all[tool]!.tooltip,
       );
     }
+    widget.onSelectionChanged?.call(null);
   }
 
   @override
@@ -1829,6 +1871,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           );
           _objectsVersion++;
         });
+        widget.onSceneChanged?.call();
       case ConstructionTool.volume:
         final volume = _objectVolume(_objects[index]);
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
@@ -1936,6 +1979,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       default:
         break;
     }
+    widget.onSceneChanged?.call();
   }
 
   void _appendCreatedObject(Object3D object) {
@@ -1954,6 +1998,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         _objects.add(labelled);
         _objectsVersion++;
       });
+      widget.onSceneChanged?.call();
     }
   }
 
@@ -3392,6 +3437,8 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   }
 
   void _removeObjectAt(int index) {
+    final hadSelection =
+        _selectedObjectIndex != null || _selectedPointIndex != null;
     setState(() {
       final dependencies = <int, _SolidSourceDependency>{};
       for (final entry in _solidSourceDependencies.entries) {
@@ -3464,6 +3511,13 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       }
       _objectsVersion++;
     });
+    if (hadSelection) {
+      final selectedIndex = _selectedPointIndex ?? _selectedObjectIndex;
+      widget.onSelectionChanged?.call(
+        selectedIndex == null ? null : _objects[selectedIndex],
+      );
+    }
+    widget.onSceneChanged?.call();
   }
 
   bool _wouldCreateAttachmentCycle(int pointIndex, int targetIndex) {
@@ -3847,28 +3901,33 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     );
   }
 
-  void _cancelPointDrag() {
+  bool _cancelPointDrag() {
+    var rolledBack = false;
     if (_pointBeforeDrag != null && _selectedPointIndex != null) {
       _objects[_selectedPointIndex!] = _pointBeforeDrag!;
       _updateSolidObjectsForSourcePoint(_selectedPointIndex!);
       _propagateAttachedPointMoves(_selectedPointIndex!);
       _objectsVersion++;
+      rolledBack = true;
     }
     _pointBeforeDrag = null;
     _pointEditPointer = null;
+    return rolledBack;
   }
 
   void _onPointerDown(PointerDownEvent event) {
     _focusNode.requestFocus();
     _activePointers.add(event.pointer);
     if (_activePointers.length > 1) {
+      var sceneRolledBack = false;
       setState(() {
-        _cancelPointDrag();
+        sceneRolledBack = _cancelPointDrag();
         _multiTouch = true;
         _constGroundPos = null;
         _constStartPoint = null;
         _constructionPreview = null;
       });
+      if (sceneRolledBack) widget.onSceneChanged?.call();
       return;
     }
     _multiTouch = false;
@@ -3900,6 +3959,13 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         }
         if (objectHit != null) _suppressScale = true;
       });
+      widget.onSelectionChanged?.call(
+        hit != null
+            ? _objects[hit]
+            : objectHit == null
+            ? null
+            : _objects[objectHit],
+      );
       if (hit != null || objectHit != null) return;
     }
     if (event.kind != PointerDeviceKind.mouse) return;
@@ -4037,13 +4103,15 @@ class MathCanvas3DState extends State<MathCanvas3D> {
 
   void _onPointerCancel(PointerCancelEvent event) {
     _activePointers.remove(event.pointer);
+    var sceneRolledBack = false;
     setState(() {
-      _cancelPointDrag();
+      sceneRolledBack = _cancelPointDrag();
       _suppressScale = true;
       _constGroundPos = null;
       _constStartPoint = null;
       _constructionPreview = null;
     });
+    if (sceneRolledBack) widget.onSceneChanged?.call();
     _onPointerUp(event);
   }
 
@@ -4744,6 +4812,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
                   _pointAttachments[index] = pointOnObjectTargetIndex;
                 }
               });
+              widget.onSelectionChanged?.call(obj);
             }
           }
         }

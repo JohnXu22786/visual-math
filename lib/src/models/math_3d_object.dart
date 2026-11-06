@@ -293,6 +293,35 @@ class Object3D {
         isTextAnnotation: isTextAnnotation,
       );
 
+  /// Copy this object with independent, unmodifiable geometry collections.
+  Object3D immutableCopy() => Object3D._(
+    type: type,
+    lineKind: lineKind,
+    point: _point,
+    pointA: _pointA,
+    pointB: _pointB,
+    planeA: _planeA,
+    planeB: _planeB,
+    planeC: _planeC,
+    planeD: _planeD,
+    vertices: _vertices == null ? null : List.unmodifiable(_vertices!),
+    indices: _indices == null ? null : List.unmodifiable(_indices!),
+    normals: _normals == null ? null : List.unmodifiable(_normals!),
+    curveStarts: List.unmodifiable(curveStarts),
+    conic: conic,
+    sphereCenter: _sphereCenter,
+    sphereRadius: _sphereRadius,
+    vector: _vector,
+    color: color,
+    opacity: opacity,
+    edgeWidth: edgeWidth,
+    showEdges: showEdges,
+    label: label,
+    transformOrigin: transformOrigin,
+    visible: visible,
+    isTextAnnotation: isTextAnnotation,
+  );
+
   // ==================================================================
   // Factory constructors
   // ==================================================================
