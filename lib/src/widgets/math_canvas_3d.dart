@@ -429,8 +429,10 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   void setCamera(Camera3D camera) {
     if (!camera.distance.isFinite ||
         camera.distance <= 0 ||
-        !camera.theta.isFinite || !camera.phi.isFinite ||
-        !camera.target.x.isFinite || !camera.target.y.isFinite ||
+        !camera.theta.isFinite ||
+        !camera.phi.isFinite ||
+        !camera.target.x.isFinite ||
+        !camera.target.y.isFinite ||
         !camera.target.z.isFinite) {
       return;
     }

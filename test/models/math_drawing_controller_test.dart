@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Viewport;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:visual_math/visual_math.dart';
 
@@ -11,9 +11,7 @@ void main() {
       const Point3D(0, 1, 0),
     ];
     final snapshot = MathDrawingSnapshot(
-      formulas: [
-        FormulaEntry(rawExpression: 'a * x', parsed: parsed),
-      ],
+      formulas: [FormulaEntry(rawExpression: 'a * x', parsed: parsed)],
       parameters: const {},
       activeView: ViewMode.mode2D,
       activeTool: ConstructionTool.move,
@@ -26,11 +24,14 @@ void main() {
     );
 
     expect(snapshot.version, MathDrawingSnapshot.currentVersion);
-    expect(() => snapshot.formulas.add(
-      const FormulaEntry(rawExpression: 'x'),
-    ), throwsUnsupportedError);
-    expect(() => snapshot.parameters['a'] = MathParameter(),
-        throwsUnsupportedError);
+    expect(
+      () => snapshot.formulas.add(const FormulaEntry(rawExpression: 'x')),
+      throwsUnsupportedError,
+    );
+    expect(
+      () => snapshot.parameters['a'] = MathParameter(),
+      throwsUnsupportedError,
+    );
     expect(() => snapshot.scene3D.clear(), throwsUnsupportedError);
     vertices.add(const Point3D(1, 1, 0));
     expect(snapshot.scene3D.single.vertices, hasLength(3));
@@ -55,13 +56,15 @@ void main() {
     final viewportChanges = <MathDrawingSnapshot>[];
     controller.onSceneChanged = sceneChanges.add;
     controller.onViewportChanged = viewportChanges.add;
-    await tester.pumpWidget(MaterialApp(
-      home: MathDrawingPage(
-        controller: controller,
-        initialShowWebView: false,
-        initialMathematicalMode: false,
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          initialShowWebView: false,
+          initialMathematicalMode: false,
+        ),
       ),
-    ));
+    );
     await tester.pumpAndSettle();
 
     controller.setScene3D([const Object3D.point(Point3D(1, 2, 3))]);
@@ -77,18 +80,18 @@ void main() {
     final controller = MathDrawingController();
     MathDrawingSnapshot? plotted;
     controller.onPlotted = (snapshot) => plotted = snapshot;
-    await tester.pumpWidget(MaterialApp(
-      home: MathDrawingPage(
-        controller: controller,
-        initialShowWebView: false,
-        initialMathematicalMode: false,
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          initialShowWebView: false,
+          initialMathematicalMode: false,
+        ),
       ),
-    ));
+    );
     await tester.pumpAndSettle();
 
-    controller.setFormulas(const [
-      FormulaEntry(rawExpression: 'x^2'),
-    ]);
+    controller.setFormulas(const [FormulaEntry(rawExpression: 'x^2')]);
     controller.setViewport2D(
       const Viewport(xMin: -4, yMin: -3, xMax: 4, yMax: 3),
     );
@@ -104,13 +107,15 @@ void main() {
     final savedSnapshot = controller.snapshot!;
     await tester.pumpWidget(const SizedBox.shrink());
     final restoredController = MathDrawingController()..restore(savedSnapshot);
-    await tester.pumpWidget(MaterialApp(
-      home: MathDrawingPage(
-        controller: restoredController,
-        initialShowWebView: false,
-        initialMathematicalMode: false,
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: restoredController,
+          initialShowWebView: false,
+          initialMathematicalMode: false,
+        ),
       ),
-    ));
+    );
     await tester.pumpAndSettle();
     expect(restoredController.formulas.single.rawExpression, 'x^2');
     expect(restoredController.viewport2D.xMin, -4);
@@ -125,14 +130,16 @@ void main() {
     final errors = <String>[];
     controller.onFormulaEdited = (_, expression) => edits.add(expression);
     controller.onError = errors.add;
-    await tester.pumpWidget(MaterialApp(
-      home: MathDrawingPage(
-        controller: controller,
-        initialExpression: 'x',
-        initialShowWebView: false,
-        initialMathematicalMode: false,
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          initialExpression: 'x',
+          initialShowWebView: false,
+          initialMathematicalMode: false,
+        ),
       ),
-    ));
+    );
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField).first, 'x +');
@@ -148,13 +155,15 @@ void main() {
     tester,
   ) async {
     final controller = MathDrawingController();
-    await tester.pumpWidget(MaterialApp(
-      home: MathDrawingPage(
-        controller: controller,
-        initialShowWebView: false,
-        initialMathematicalMode: false,
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          initialShowWebView: false,
+          initialMathematicalMode: false,
+        ),
       ),
-    ));
+    );
     await tester.pumpAndSettle();
     expect(controller.formulas, hasLength(1));
 
@@ -166,13 +175,15 @@ void main() {
 
   testWidgets('snapshot restore preserves formula visibility', (tester) async {
     final controller = MathDrawingController();
-    await tester.pumpWidget(MaterialApp(
-      home: MathDrawingPage(
-        controller: controller,
-        initialShowWebView: false,
-        initialMathematicalMode: false,
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          initialShowWebView: false,
+          initialMathematicalMode: false,
+        ),
       ),
-    ));
+    );
     await tester.pumpAndSettle();
     controller.setFormulas(const [
       FormulaEntry(rawExpression: 'x^2', visible: false),
@@ -181,13 +192,15 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
 
     final restoredController = MathDrawingController()..restore(savedSnapshot);
-    await tester.pumpWidget(MaterialApp(
-      home: MathDrawingPage(
-        controller: restoredController,
-        initialShowWebView: false,
-        initialMathematicalMode: false,
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: restoredController,
+          initialShowWebView: false,
+          initialMathematicalMode: false,
+        ),
       ),
-    ));
+    );
     await tester.pumpAndSettle();
 
     expect(restoredController.formulas.single.visible, isFalse);

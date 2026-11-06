@@ -384,10 +384,7 @@ void main() {
     tester,
   ) async {
     var sceneChanges = 0;
-    final state = await setup(
-      tester,
-      onSceneChanged: () => sceneChanges++,
-    );
+    final state = await setup(tester, onSceneChanged: () => sceneChanges++);
     await tester.tapAt(const Offset(340, 330));
     await tester.pump();
     final beforeCancel = sceneChanges;

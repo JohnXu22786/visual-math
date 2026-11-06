@@ -64,9 +64,9 @@ class FormulaEntry {
       parsed: clearParsed
           ? null
           : parsed ??
-              (rawExpression != null && rawExpression != this.rawExpression
-                  ? null
-                  : this.parsed),
+                (rawExpression != null && rawExpression != this.rawExpression
+                    ? null
+                    : this.parsed),
       color: color ?? this.color,
       autoColor: autoColor ?? this.autoColor,
       visible: visible ?? this.visible,

@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:math' as dart_math;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Viewport;
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -111,7 +111,10 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       zoomIn3D: () => _canvas3DKey.currentState?.zoomIn(),
       zoomOut3D: () => _canvas3DKey.currentState?.zoomOut(),
       setViewport2D: (viewport) => _canvasKey.currentState?.setViewport(
-        viewport.xMin, viewport.yMin, viewport.xMax, viewport.yMax,
+        viewport.xMin,
+        viewport.yMin,
+        viewport.xMax,
+        viewport.yMax,
       ),
       setCamera3D: (camera) => _canvas3DKey.currentState?.setCamera(camera),
       setProjection3D: (projection) =>
@@ -143,7 +146,10 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         zoomIn3D: () => _canvas3DKey.currentState?.zoomIn(),
         zoomOut3D: () => _canvas3DKey.currentState?.zoomOut(),
         setViewport2D: (viewport) => _canvasKey.currentState?.setViewport(
-          viewport.xMin, viewport.yMin, viewport.xMax, viewport.yMax,
+          viewport.xMin,
+          viewport.yMin,
+          viewport.xMax,
+          viewport.yMax,
         ),
         setCamera3D: (camera) => _canvas3DKey.currentState?.setCamera(camera),
         setProjection3D: (projection) =>
@@ -298,13 +304,16 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     final snapshot = _makeSnapshot();
     controller.publish(snapshot);
     final camera = snapshot.camera3D;
-    final sceneChanged = previousScene.length != currentScene.length ||
-        List.generate(previousScene.length, (index) => index).any(
-          (index) => !identical(previousScene[index], currentScene[index]),
-        );
+    final sceneChanged =
+        previousScene.length != currentScene.length ||
+        List.generate(
+          previousScene.length,
+          (index) => index,
+        ).any((index) => !identical(previousScene[index], currentScene[index]));
     _lastReportedScene = List.of(currentScene);
     if (sceneChanged) controller.onSceneChanged?.call(snapshot.scene3D);
-    final cameraChanged = previousSnapshot != null &&
+    final cameraChanged =
+        previousSnapshot != null &&
         (previousSnapshot.camera3D.target != camera.target ||
             previousSnapshot.camera3D.distance != camera.distance ||
             previousSnapshot.camera3D.theta != camera.theta ||
@@ -332,9 +341,12 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       _activeFormula = null;
       _keyboardVisible = false;
       if (_formulas.isEmpty) {
-        _formulas.add(_FormulaState(
-          controller: TextEditingController(), color: formulaPalette[0],
-        ));
+        _formulas.add(
+          _FormulaState(
+            controller: TextEditingController(),
+            color: formulaPalette[0],
+          ),
+        );
       }
     });
     _syncController();
@@ -371,9 +383,12 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       _activeFormula = null;
       _keyboardVisible = false;
       if (_formulas.isEmpty) {
-        _formulas.add(_FormulaState(
-          controller: TextEditingController(), color: formulaPalette[0],
-        ));
+        _formulas.add(
+          _FormulaState(
+            controller: TextEditingController(),
+            color: formulaPalette[0],
+          ),
+        );
       }
       _parameters
         ..clear()
@@ -385,8 +400,10 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _canvasKey.currentState?.setViewport(
-        snapshot.viewport2D.xMin, snapshot.viewport2D.yMin,
-        snapshot.viewport2D.xMax, snapshot.viewport2D.yMax,
+        snapshot.viewport2D.xMin,
+        snapshot.viewport2D.yMin,
+        snapshot.viewport2D.xMax,
+        snapshot.viewport2D.yMax,
       );
       _canvas3DKey.currentState?.setCamera(snapshot.camera3D);
       _canvas3DKey.currentState?.setProjectionType(snapshot.projection3D);
