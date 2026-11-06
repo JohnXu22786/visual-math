@@ -202,6 +202,18 @@ instead. That fallback does not provide MathLive's structured editing
 interaction. The 2D `MathCanvas` and the 3D canvas are Flutter widgets and do
 not depend on WebView.
 
+Hosts can query `MathWorkspaceCapabilities.current` for the current runtime's
+MathLive support, source editor fallback, and the network requirement of the
+separate JSXGraph WebView canvas. The primary Flutter canvases remain offline.
+`MathWorkspaceOptions.persistence` controls whether input preferences are
+stored and accepts a stable namespace for independently embedded workspaces;
+the empty namespace preserves the historical keys. Set `enabled: false` for
+host-owned, non-persistent sessions. `clipboardReader` and `clipboardWriter`
+can take ownership of clipboard access for the built-in keyboard while
+preserving editor selection behavior; when omitted, the workspace uses
+Flutter's platform clipboard as before. Error presentation is
+host-controlled through `MathWorkspacePresentation.errorBuilder`.
+
 Native MathLive support is provided by `flutter_inappwebview`. Use Flutter's
 normal platform plugin setup when building the host app. The
 `flutter_inappwebview` 6.1.5 documentation lists these platform prerequisites

@@ -98,7 +98,9 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     _tabController.addListener(_onTabChanged);
 
     _mathMode = widget.initialMathematicalMode ?? MathFormulaField.supported;
-    if (widget.initialMathematicalMode == null && MathFormulaField.supported) {
+    if (widget.initialMathematicalMode == null &&
+        MathFormulaField.supported &&
+        widget.options.persistence.enabled) {
       unawaited(_restoreMode());
     }
     // Start with one formula row
@@ -191,7 +193,13 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   Future<void> _restoreMode() async {
     final preferences = await SharedPreferences.getInstance();
     if (mounted && !_modeTouched) {
-      setState(() => _mathMode = preferences.getBool(_modePreference) ?? true);
+      setState(
+        () => _mathMode =
+            preferences.getBool(
+              widget.options.persistence.key(_modePreference),
+            ) ??
+            true,
+      );
     }
   }
 
@@ -208,11 +216,16 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     if (mathematical) {
       _ensureFormulaVisible(formula);
     }
-    unawaited(
-      SharedPreferences.getInstance().then(
-        (prefs) => prefs.setBool(_modePreference, mathematical),
-      ),
-    );
+    if (widget.options.persistence.enabled) {
+      unawaited(
+        SharedPreferences.getInstance().then(
+          (prefs) => prefs.setBool(
+            widget.options.persistence.key(_modePreference),
+            mathematical,
+          ),
+        ),
+      );
+    }
   }
 
   void _ensureFormulaVisible(_FormulaState formula) {
@@ -1105,6 +1118,8 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       onPlot: _plotAll,
       labelResolver: widget.options.presentation.labels.resolve,
       dialogBuilder: widget.options.presentation.buildDialog,
+      persistenceEnabled: widget.options.persistence.enabled,
+      preferenceNamespace: widget.options.persistence.namespace,
     );
   }
 
@@ -1151,10 +1166,24 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     final editor =
         formula?.editorKey.currentState ?? _fallbackEditorKey.currentState;
     if (kind == 'clipboard') {
-      await editor?.clipboard(
-        value,
-        isTargetActive: () => mounted && _activeFormula == formula,
-      );
+      try {
+        await editor?.clipboard(
+          value,
+          isTargetActive: () => mounted && _activeFormula == formula,
+          clipboardReader: widget.options.clipboardReader,
+          clipboardWriter: widget.options.clipboardWriter,
+        );
+      } catch (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(
+            content: widget.options.presentation.buildError(
+              context,
+              '剪贴板操作失败：$error',
+            ),
+          ),
+        );
+      }
     } else {
       await editor?.command(kind, value);
     }

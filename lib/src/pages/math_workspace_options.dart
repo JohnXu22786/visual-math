@@ -4,6 +4,21 @@ import '../models/math_drawing_state.dart';
 import '../models/math_3d_tool.dart';
 import '../models/math_parameter.dart';
 
+/// Controls persistence of workspace input preferences.
+///
+/// An empty [namespace] preserves the historical preference keys. Embedded
+/// hosts with multiple workspaces should provide a stable, distinct namespace.
+class MathWorkspacePersistence {
+  final bool enabled;
+  final String namespace;
+
+  const MathWorkspacePersistence({this.enabled = true, this.namespace = ''});
+
+  String key(String legacyKey) => namespace.isEmpty
+      ? legacyKey
+      : 'visual_math.$namespace.$legacyKey';
+}
+
 /// Builds a workspace region from its default package-provided content.
 ///
 /// Return [defaultContent] unchanged to keep the default region, wrap it to
@@ -284,6 +299,16 @@ class MathWorkspaceRegionActions {
 /// wrap or replace package-provided controls. A host can set [showScaffold] to
 /// false when embedding the workspace inside its own page body.
 class MathWorkspaceOptions {
+  /// Persistence preferences; defaults retain standalone behavior.
+  final MathWorkspacePersistence persistence;
+
+  /// Optional host-owned clipboard reader. The package retains editor
+  /// selection handling and calls this for keyboard paste commands.
+  final Future<String?> Function()? clipboardReader;
+
+  /// Optional host-owned clipboard writer. The package retains editor
+  /// selection handling and calls this for keyboard copy and cut commands.
+  final Future<void> Function(String text)? clipboardWriter;
   /// Whether the 2D plotting view is available.
   final bool show2D;
 
@@ -349,6 +374,9 @@ class MathWorkspaceOptions {
 
   /// Creates workspace options with the turnkey UI enabled by default.
   const MathWorkspaceOptions({
+    this.persistence = const MathWorkspacePersistence(),
+    this.clipboardReader,
+    this.clipboardWriter,
     this.show2D = true,
     this.show3D = true,
     this.initialView = ViewMode.mode2D,

@@ -117,6 +117,39 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('clipboard failures use the configured error presentation', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          initialExpression: 'x+y',
+          initialMathematicalMode: false,
+          initialShowWebView: false,
+          options: MathWorkspaceOptions(
+            clipboardReader: () async => throw StateError('host clipboard'),
+            formulaEditorBuilder: (context, _, actions) => TextButton(
+              onPressed: () async {
+                actions.activateFormula(0);
+                await actions.sendEditorCommand('clipboard', 'paste');
+              },
+              child: const Text('Trigger clipboard paste'),
+            ),
+            presentation: MathWorkspacePresentation(
+              errorBuilder: (_, __) => const Text('Host clipboard error'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Trigger clipboard paste'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Host clipboard error'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('presentation labels preserve selector semantics', (
     tester,
   ) async {

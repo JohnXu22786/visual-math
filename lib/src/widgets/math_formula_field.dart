@@ -430,6 +430,8 @@ class MathFormulaFieldState extends State<MathFormulaField>
   Future<void> clipboard(
     String action, {
     bool Function()? isTargetActive,
+    Future<String?> Function()? clipboardReader,
+    Future<void> Function(String text)? clipboardWriter,
   }) async {
     if (_usesFallback) {
       final controller = widget.controller;
@@ -443,23 +445,31 @@ class MathFormulaFieldState extends State<MathFormulaField>
           ? selection.end.clamp(0, text.length).toInt()
           : text.length;
       if (action == 'paste') {
-        final data = await Clipboard.getData(Clipboard.kTextPlain);
+        final clipboardText = clipboardReader != null
+            ? await clipboardReader()
+            : (await Clipboard.getData(Clipboard.kTextPlain))?.text;
         if (mounted &&
             (isTargetActive?.call() ?? true) &&
-            data?.text != null &&
+            clipboardText != null &&
             identical(widget.controller, controller) &&
             controller.value == value) {
-          _fallbackCommand('insert', data!.text!);
+          _fallbackCommand('insert', clipboardText);
         }
       } else if (action == 'copy' && selection.isValid && start != end) {
-        await Clipboard.setData(
-          ClipboardData(text: text.substring(start, end)),
-        );
+        final selectedText = text.substring(start, end);
+        if (clipboardWriter != null) {
+          await clipboardWriter(selectedText);
+        } else {
+          await Clipboard.setData(ClipboardData(text: selectedText));
+        }
       } else if (action == 'cut' && selection.isValid && start != end) {
         final selectedValue = controller.value;
-        await Clipboard.setData(
-          ClipboardData(text: text.substring(start, end)),
-        );
+        final selectedText = text.substring(start, end);
+        if (clipboardWriter != null) {
+          await clipboardWriter(selectedText);
+        } else {
+          await Clipboard.setData(ClipboardData(text: selectedText));
+        }
         if (mounted &&
             (isTargetActive?.call() ?? true) &&
             identical(widget.controller, controller) &&
@@ -477,8 +487,10 @@ class MathFormulaFieldState extends State<MathFormulaField>
           source: 'window.stroomMath.capturePaste()',
         );
       });
-      final data = await Clipboard.getData(Clipboard.kTextPlain);
-      if (!mounted || data?.text == null || capturedValue is! String) return;
+      final clipboardText = clipboardReader != null
+          ? await clipboardReader()
+          : (await Clipboard.getData(Clipboard.kTextPlain))?.text;
+      if (!mounted || clipboardText == null || capturedValue is! String) return;
       final state = Map<String, dynamic>.from(jsonDecode(capturedValue) as Map);
       final revision = state['revision'];
       final sequence = state['sequence'];
@@ -499,7 +511,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
             source:
                 'window.stroomMath.pasteIfUnchanged('
                 '$revision, $sequence, ${jsonEncode(latex)}, '
-                '${jsonEncode(selection)}, ${jsonEncode(data!.text!)})',
+                '${jsonEncode(selection)}, ${jsonEncode(clipboardText)})',
           ),
         );
       });
@@ -515,7 +527,11 @@ class MathFormulaFieldState extends State<MathFormulaField>
         final latex = selection['latex'];
         final capturedSelection = selection['selection'];
         if (latex is String && latex.isNotEmpty) {
-          await Clipboard.setData(ClipboardData(text: latex));
+          if (clipboardWriter != null) {
+            await clipboardWriter(latex);
+          } else {
+            await Clipboard.setData(ClipboardData(text: latex));
+          }
           if (action == 'cut' &&
               mounted &&
               (isTargetActive?.call() ?? true) &&

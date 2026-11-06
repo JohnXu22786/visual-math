@@ -316,6 +316,47 @@ void main() {
     });
   });
 
+  testWidgets('host clipboard callbacks preserve fallback selection handling', (
+    tester,
+  ) async {
+    await _withTargetPlatformOverride(TargetPlatform.linux, () async {
+      final writes = <String>[];
+      final source = TextEditingController.fromValue(
+        const TextEditingValue(
+          text: 'x+y',
+          selection: TextSelection(baseOffset: 0, extentOffset: 1),
+        ),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MathFormulaField(
+              controller: source,
+              mathematical: true,
+              onModeChanged: (_) {},
+              onActivate: () {},
+              onChanged: () {},
+              onSubmitted: () {},
+              label: '公式 1',
+            ),
+          ),
+        ),
+      );
+      final editor = tester.state<MathFormulaFieldState>(
+        find.byType(MathFormulaField),
+      );
+
+      await editor.clipboard('copy', clipboardWriter: writes.add);
+      await editor.clipboard('paste', clipboardReader: () async => 'z');
+
+      expect(writes, ['x']);
+      expect(source.text, 'z+y');
+      expect(source.selection, const TextSelection.collapsed(offset: 1));
+      await tester.pumpWidget(const SizedBox.shrink());
+      source.dispose();
+    });
+  });
+
   testWidgets('formula fallback paste inserts at the current selection', (
     tester,
   ) async {
