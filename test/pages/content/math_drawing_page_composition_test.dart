@@ -135,10 +135,9 @@ void main() {
                   child: const Text('Activate formula'),
                 ),
                 TextButton(
-                  onPressed: () => actions.sendEditorCommand(
-                    'clipboard',
-                    'paste',
-                  ),
+                  onPressed: () async {
+                    await actions.sendEditorCommand('clipboard', 'paste');
+                  },
                   child: const Text('Trigger clipboard paste'),
                 ),
               ],
