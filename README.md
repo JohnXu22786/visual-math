@@ -325,11 +325,13 @@ do not claim identical runtime behavior on each target.
 | Target | Formula editor in `MathDrawingPage` | Main 2D and 3D canvases |
 | --- | --- | --- |
 | Android, iOS, macOS, Windows | MathLive editor in the platform WebView | Pure-Flutter canvases |
-| Linux, Web | Built-in formula preview and source editing fallback; no embedded MathLive editor | Pure-Flutter canvases |
+| Linux, Web, Fuchsia | Built-in formula preview and source editing fallback; no embedded MathLive editor | Pure-Flutter canvases |
 
-`MathFormulaField.supported` reports whether the embedded MathLive editor is
-used. Linux and Web use `flutter_math_fork` for formula preview and source input
-instead. That fallback does not provide MathLive's structured editing
+`MathFormulaField.supported` reports whether the runtime platform supports the
+embedded MathLive editor; it does not guarantee that a specific page is using
+it. `initialShowWebView: false` selects the fallback even on a supported
+platform. Linux, Web, and Fuchsia use `flutter_math_fork` for formula preview
+and source input. That fallback does not provide MathLive's structured editing
 interaction. The 2D `MathCanvas` and the 3D canvas are Flutter widgets and do
 not depend on WebView.
 
@@ -339,7 +341,7 @@ separate JSXGraph WebView canvas. The primary Flutter canvases remain offline.
 This capability object describes the current Flutter runtime; it is not a
 statement that a host build succeeded or that editor interactions are identical
 across targets. Android, iOS, macOS, and Windows use the embedded MathLive
-editor when enabled. Web and Linux use source editing and preview instead.
+editor when enabled. Web, Linux, and Fuchsia use source editing and preview instead.
 `MathWorkspaceOptions.persistence` controls whether input preferences are
 stored and accepts a stable namespace for independently embedded workspaces;
 the empty namespace preserves the historical keys. Set `enabled: false` for

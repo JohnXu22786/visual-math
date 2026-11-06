@@ -108,11 +108,11 @@ class _CustomizedWorkspaceExampleState
   void initState() {
     super.initState();
     _controller = MathDrawingController();
-    _controller
-      ..onPlotted = (snapshot) => debugPrint(
-        'Saved ${snapshot.formulas.length} formulas; '
-        'view=${snapshot.activeView.name}',
-      )..onError = (message) => debugPrint('Plot error: $message');
+    _controller.onPlotted = (snapshot) => debugPrint(
+      'Saved ${snapshot.formulas.length} formulas; '
+      'view=${snapshot.activeView.name}',
+    );
+    _controller.onError = (message) => debugPrint('Plot error: $message');
   }
 
   @override
