@@ -18,6 +18,8 @@ class MathFormulaField extends StatefulWidget {
   final bool mathematical;
   final bool showWebView;
   final String label;
+  final String Function(String sourceText)? labelResolver;
+  final Widget Function(BuildContext context, String message)? errorBuilder;
   final bool allowModeSwitch;
   final VoidCallback? onRevert;
   final VoidCallback? onReadyChanged;
@@ -37,6 +39,8 @@ class MathFormulaField extends StatefulWidget {
     required this.onChanged,
     required this.onSubmitted,
     required this.label,
+    this.labelResolver,
+    this.errorBuilder,
     this.showWebView = true,
     this.allowModeSwitch = true,
     this.onRevert,
@@ -78,6 +82,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
   late TextSelection _lastSelection;
   int? _preferredVerticalColumn;
   String? _failure;
+  String _label(String source) => widget.labelResolver?.call(source) ?? source;
   ColorScheme? _colorScheme;
   String _location = '公式';
   final List<TextEditingValue> _fallbackUndo = [];
@@ -165,7 +170,11 @@ class MathFormulaFieldState extends State<MathFormulaField>
       try {
         await action();
       } catch (_) {
-        if (mounted) setState(() => _failure = '公式编辑器加载失败，可切换到源码继续编辑。');
+        if (mounted) {
+          setState(
+            () => _failure = _label('公式编辑器加载失败，可切换到源码继续编辑。'),
+          );
+        }
         widget.onReadyChanged?.call();
       }
     });
@@ -584,13 +593,13 @@ class MathFormulaFieldState extends State<MathFormulaField>
               mathematicalMode ? Icons.keyboard : Icons.calculate_outlined,
               size: 20,
             ),
-            tooltip: usesFallback
+            tooltip: _label(usesFallback
                 ? mathematicalMode
                       ? '切换到 LaTeX 源码输入'
                       : '切换到数学键盘（内置公式预览）'
                 : mathematicalMode
                 ? '切换到系统键盘 / LaTeX 源码'
-                : '切换到数学键盘',
+                : '切换到数学键盘'),
             onPressed: _toggle,
             constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
           );
@@ -683,7 +692,9 @@ class MathFormulaFieldState extends State<MathFormulaField>
                                   if (request.isForMainFrame == true &&
                                       mounted) {
                                     setState(
-                                      () => _failure = '公式编辑器加载失败，可切换到源码继续编辑。',
+                                      () => _failure = _label(
+                                        '公式编辑器加载失败，可切换到源码继续编辑。',
+                                      ),
                                     );
                                     widget.onReadyChanged?.call();
                                   }
@@ -701,14 +712,17 @@ class MathFormulaFieldState extends State<MathFormulaField>
                                         )
                                       : Padding(
                                           padding: const EdgeInsets.all(4),
-                                          child: Text(
-                                            _failure!,
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: cs.error,
-                                            ),
-                                          ),
-                                        ),
+                                          child: widget.errorBuilder?.call(
+                                                context,
+                                                _failure!,
+                                              ) ??
+                                              Text(
+                                                _failure!,
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: cs.error,
+                                                ),
+                                              ),
                                 ),
                               if (_hasUnsupportedSyntax)
                                 Positioned.fill(
@@ -720,15 +734,19 @@ class MathFormulaFieldState extends State<MathFormulaField>
                                         horizontal: 6,
                                         vertical: 4,
                                       ),
-                                      child: Text(
-                                        '暂不支持此语法，请切换源码',
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: cs.error,
-                                        ),
-                                      ),
+                                      child: widget.errorBuilder?.call(
+                                            context,
+                                            _label('暂不支持此语法，请切换源码'),
+                                          ) ??
+                                          Text(
+                                            _label('暂不支持此语法，请切换源码'),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: cs.error,
+                                            ),
+                                          ),
                                     ),
                                   ),
                                 ),
@@ -763,7 +781,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
                 children: [
                   if (widget.onRevert != null)
                     IconButton(
-                      tooltip: '撤销修改',
+                      tooltip: _label('撤销修改'),
                       icon: const Icon(Icons.undo, size: 16),
                       onPressed: widget.onRevert,
                     ),

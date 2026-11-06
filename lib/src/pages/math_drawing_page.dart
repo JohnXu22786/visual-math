@@ -781,25 +781,43 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     if (index < 0 || _formulas.length <= 1) return;
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('删除公式'),
-        content: Text('确定要删除"公式 ${index + 1}"吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              _removeFormula(removing);
-            },
-            child: Text(
-              '删除',
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+      builder: (ctx) => widget.options.presentation.buildDialog(
+        ctx,
+        AlertDialog(
+          title: Text(
+            widget.options.presentation.labels.resolve(
+              widget.options.presentation.labels.removeFormulaTitle,
             ),
           ),
-        ],
+          content: Text(
+            widget.options.presentation.labels.withIndex(
+              widget.options.presentation.labels.confirmRemoveFormula,
+              index + 1,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(
+                widget.options.presentation.labels.resolve(
+                  widget.options.presentation.labels.cancel,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _removeFormula(removing);
+              },
+              child: Text(
+                widget.options.presentation.labels.resolve(
+                  widget.options.presentation.labels.removeFormula,
+                ),
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -819,73 +837,87 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     final currentColor = _formulas[formulaIndex].color;
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('选择颜色'),
-        content: Wrap(
-          spacing: MathUiTokens.canvasInset,
-          runSpacing: MathUiTokens.canvasInset,
-          children: [
-            for (
-              var swatchIndex = 0;
-              swatchIndex < formulaPalette.length;
-              swatchIndex++
-            )
-              Builder(
-                builder: (context) {
-                  final color = formulaPalette[swatchIndex];
-                  final selected = currentColor == color;
-                  final primary = Theme.of(context).colorScheme.primary;
-                  return Semantics(
-                    button: true,
-                    selected: selected,
-                    label: '公式颜色 ${swatchIndex + 1}',
-                    child: SizedBox.square(
-                      dimension: MathUiTokens.swatchTapTarget,
-                      child: InkWell(
-                        customBorder: const CircleBorder(),
-                        onTap: () {
-                          setState(() {
-                            _formulas[formulaIndex].color = color;
-                            _formulas[formulaIndex].autoColor = false;
-                          });
-                          Navigator.pop(ctx);
-                          _plotAll();
-                        },
-                        child: Center(
-                          child: Container(
-                            width: 32,
-                            height: 32,
-                            decoration: BoxDecoration(
-                              color: color,
-                              shape: BoxShape.circle,
-                              border: selected
-                                  ? Border.all(color: primary, width: 3)
+      builder: (ctx) => widget.options.presentation.buildDialog(
+        ctx,
+        AlertDialog(
+          title: Text(
+            widget.options.presentation.labels.resolve(
+              widget.options.presentation.labels.selectColorTitle,
+            ),
+          ),
+          content: Wrap(
+            spacing: MathUiTokens.canvasInset,
+            runSpacing: MathUiTokens.canvasInset,
+            children: [
+              for (
+                var swatchIndex = 0;
+                swatchIndex < formulaPalette.length;
+                swatchIndex++
+              )
+                Builder(
+                  builder: (context) {
+                    final color = formulaPalette[swatchIndex];
+                    final selected = currentColor == color;
+                    final primary = Theme.of(context).colorScheme.primary;
+                    return Semantics(
+                      button: true,
+                      selected: selected,
+                      label: widget.options.presentation.labels.withIndex(
+                        widget.options.presentation.labels.formulaColorLabel,
+                        swatchIndex + 1,
+                      ),
+                      child: SizedBox.square(
+                        dimension: MathUiTokens.swatchTapTarget,
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: () {
+                            setState(() {
+                              _formulas[formulaIndex].color = color;
+                              _formulas[formulaIndex].autoColor = false;
+                            });
+                            Navigator.pop(ctx);
+                            _plotAll();
+                          },
+                          child: Center(
+                            child: Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: color,
+                                shape: BoxShape.circle,
+                                border: selected
+                                    ? Border.all(color: primary, width: 3)
+                                    : null,
+                              ),
+                              child: selected
+                                  ? Icon(
+                                      Icons.check,
+                                      color: color.computeLuminance() > 0.5
+                                          ? Colors.black
+                                          : Colors.white,
+                                      size: 20,
+                                    )
                                   : null,
                             ),
-                            child: selected
-                                ? Icon(
-                                    Icons.check,
-                                    color: color.computeLuminance() > 0.5
-                                        ? Colors.black
-                                        : Colors.white,
-                                    size: 20,
-                                  )
-                                : null,
                           ),
                         ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(
+                widget.options.presentation.labels.resolve(
+                  widget.options.presentation.labels.cancel,
+                ),
               ),
+            ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-        ],
       ),
     );
   }
@@ -896,7 +928,10 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(msg),
+        content: widget.options.presentation.buildError(
+          context,
+          widget.options.presentation.labels.resolve(msg),
+        ),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 2),
       ),
@@ -910,13 +945,14 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final labels = widget.options.presentation.labels;
 
     final defaultAppBar = AppBar(
-      title: const Text('数学绘图'),
+      title: Text(labels.resolve(labels.pageTitle)),
       actions: [
         IconButton(
           icon: Icon(Icons.add, size: 24, color: cs.primary),
-          tooltip: '添加公式',
+          tooltip: labels.resolve(labels.addFormula),
           onPressed: _addFormula,
         ),
       ],
@@ -935,6 +971,9 @@ class _MathDrawingPageState extends State<MathDrawingPage>
 
     final workspace = LayoutBuilder(
       builder: (context, constraints) {
+        final compact = widget.options.presentation.isCompactForWidth(
+          constraints.maxWidth,
+        );
         final hasViewSelector =
             widget.options.show2D &&
             widget.options.show3D &&
@@ -944,10 +983,12 @@ class _MathDrawingPageState extends State<MathDrawingPage>
             (constraints.maxHeight - (hasViewSelector ? 48 : 0))
                 .clamp(0.0, double.infinity)
                 .toDouble();
-        final formulaListBaseHeight =
-            availableHeight * (_keyboardVisible ? 0.28 : 0.4);
+        final formulaListBaseHeight = availableHeight *
+            (_keyboardVisible
+                ? (compact ? 0.24 : 0.28)
+                : (compact ? 0.32 : 0.4));
         final keyboardBaseHeight = _keyboardVisible
-            ? availableHeight * 0.56
+            ? availableHeight * (compact ? 0.5 : 0.56)
             : 0.0;
         final keyboardMaxHeight = keyboardBaseHeight;
 
@@ -1051,11 +1092,18 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       supportsStructuralNavigation:
           editor?.supportsStructuralNavigation ?? false,
       supportsStructuredEditing: editor?.supportsStructuredEditing ?? false,
-      activeLabel: '公式 ${_formulas.indexOf(_activeFormula!) + 1}',
-      location: editor?.location ?? '公式',
+        activeLabel: widget.options.presentation.labels.withIndex(
+          widget.options.presentation.labels.formulaLabel,
+          _formulas.indexOf(_activeFormula!) + 1,
+        ),
+      location: widget.options.presentation.labels.resolve(
+        editor?.location ?? '公式',
+      ),
       onCommand: _sendEditorCommand,
       onDismiss: _dismissKeyboard,
       onPlot: _plotAll,
+      labelResolver: widget.options.presentation.labels.resolve,
+      dialogBuilder: widget.options.presentation.buildDialog,
     );
   }
 
@@ -1069,7 +1117,12 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         mathematical: true,
         allowModeSwitch: false,
         showWebView: false,
-        label: '公式 ${_formulas.indexOf(_activeFormula!) + 1}',
+        label: widget.options.presentation.labels.withIndex(
+          widget.options.presentation.labels.formulaLabel,
+          _formulas.indexOf(_activeFormula!) + 1,
+        ),
+        labelResolver: widget.options.presentation.labels.resolve,
+        errorBuilder: widget.options.presentation.errorBuilder,
         onModeChanged: (_) {},
         onActivate: () => _activateFormula(_activeFormula!),
         onChanged: () {
@@ -1111,25 +1164,45 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       color: cs.surfaceContainerLow,
       child: TabBar(
         controller: _tabController,
-        tabs: const [
+        tabs: [
           Tab(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.show_chart, size: 18),
-                SizedBox(width: 6),
-                Text('2D'),
-              ],
+            child: Semantics(
+              label: widget.options.presentation.labels.resolve(
+                widget.options.presentation.labels.view2D,
+              ),
+              button: true,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.show_chart, size: 18),
+                  SizedBox(width: 6),
+                  Text(
+                    widget.options.presentation.labels.resolve(
+                      widget.options.presentation.labels.view2D,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           Tab(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.view_in_ar, size: 18),
-                SizedBox(width: 6),
-                Text('3D'),
-              ],
+            child: Semantics(
+              label: widget.options.presentation.labels.resolve(
+                widget.options.presentation.labels.view3D,
+              ),
+              button: true,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.view_in_ar, size: 18),
+                  SizedBox(width: 6),
+                  Text(
+                    widget.options.presentation.labels.resolve(
+                      widget.options.presentation.labels.view3D,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -1170,6 +1243,12 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                           name: _parameters[name]!,
                       },
                       onChanged: _updateParameter,
+                      labelResolver:
+                          widget.options.presentation.labels.resolve,
+                      dialogBuilder:
+                          widget.options.presentation.buildDialog,
+                      errorBuilder:
+                          widget.options.presentation.errorBuilder,
                     )
                   : const SizedBox.shrink(),
             ),
@@ -1194,6 +1273,9 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                 for (final name in parameterNames) name: _parameters[name]!,
               },
               onChanged: _updateParameter,
+              labelResolver: widget.options.presentation.labels.resolve,
+              dialogBuilder: widget.options.presentation.buildDialog,
+              errorBuilder: widget.options.presentation.errorBuilder,
             )
           : const SizedBox.shrink(),
     );
@@ -1238,7 +1320,12 @@ class _MathDrawingPageState extends State<MathDrawingPage>
               mathematical: _mathMode,
               allowModeSwitch: true,
               showWebView: widget.initialShowWebView,
-              label: '公式 ${index + 1}',
+              label: widget.options.presentation.labels.withIndex(
+                widget.options.presentation.labels.formulaLabel,
+                index + 1,
+              ),
+              labelResolver: widget.options.presentation.labels.resolve,
+              errorBuilder: widget.options.presentation.errorBuilder,
               fillColor: f.color.withValues(alpha: 0.06),
               onModeChanged: (mode) => _setMode(mode, f),
               onActivate: () => _activateFormula(f),
@@ -1273,7 +1360,13 @@ class _MathDrawingPageState extends State<MathDrawingPage>
             icon: f.visible ? Icons.visibility : Icons.visibility_off,
             iconSize: 20,
             color: f.visible ? cs.onSurface : cs.onSurfaceVariant,
-            tooltip: f.visible ? '隐藏公式' : '显示公式',
+            tooltip: f.visible
+                ? widget.options.presentation.labels.resolve(
+                    widget.options.presentation.labels.hideFormula,
+                  )
+                : widget.options.presentation.labels.resolve(
+                    widget.options.presentation.labels.showFormula,
+                  ),
             onPressed: () => _toggleVisibility(index),
           ),
 
@@ -1283,7 +1376,9 @@ class _MathDrawingPageState extends State<MathDrawingPage>
               icon: Icons.remove_circle_outline,
               iconSize: 16,
               color: cs.error.withValues(alpha: 0.7),
-              tooltip: '删除公式',
+              tooltip: widget.options.presentation.labels.resolve(
+                widget.options.presentation.labels.removeFormula,
+              ),
               onPressed: () => _confirmRemove(f),
             ),
 
@@ -1294,7 +1389,9 @@ class _MathDrawingPageState extends State<MathDrawingPage>
             color: hasChanged
                 ? cs.primary
                 : cs.onSurface.withValues(alpha: 0.2),
-            tooltip: '绘制',
+            tooltip: widget.options.presentation.labels.resolve(
+              widget.options.presentation.labels.plotFormula,
+            ),
             onPressed: _canPlot ? _plotAll : null,
           ),
         ],
@@ -1348,7 +1445,9 @@ class _MathDrawingPageState extends State<MathDrawingPage>
               children: [
                 _floatingControl(
                   icon: Icons.filter_center_focus,
-                  tooltip: '缩放至适合',
+                  tooltip: widget.options.presentation.labels.resolve(
+                    widget.options.presentation.labels.fit2DCanvas,
+                  ),
                   onPressed: () {
                     final controller = widget.controller;
                     if (controller != null) {
@@ -1360,7 +1459,9 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                 ),
                 _floatingControl(
                   icon: Icons.zoom_in,
-                  tooltip: '放大',
+                  tooltip: widget.options.presentation.labels.resolve(
+                    widget.options.presentation.labels.zoomIn,
+                  ),
                   onPressed: () {
                     final controller = widget.controller;
                     if (controller != null) {
@@ -1372,7 +1473,9 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                 ),
                 _floatingControl(
                   icon: Icons.zoom_out,
-                  tooltip: '缩小',
+                  tooltip: widget.options.presentation.labels.resolve(
+                    widget.options.presentation.labels.zoomOut,
+                  ),
                   onPressed: () {
                     final controller = widget.controller;
                     if (controller != null) {
@@ -1389,10 +1492,21 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     final defaultOverlay =
         widget.options.show2DCanvasActions ||
             widget.options.canvas2DActionsBuilder != null
-        ? Positioned(right: 8, bottom: 8, child: defaultActions)
+        ? Positioned(
+            left: widget.options.presentation.controlPlacement ==
+                    MathWorkspaceControlPlacement.bottomStart
+                ? widget.options.presentation.controlInset.left
+                : null,
+            right: widget.options.presentation.controlPlacement ==
+                    MathWorkspaceControlPlacement.bottomEnd
+                ? widget.options.presentation.controlInset.right
+                : null,
+            bottom: widget.options.presentation.controlInset.bottom,
+            child: defaultActions,
+          )
         : const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: MathUiTokens.canvasInset),
+      padding: widget.options.presentation.canvasInset2D,
       child: Stack(
         children: [
           Positioned.fill(
@@ -1406,6 +1520,16 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                 child: MathCanvas(
                   key: _canvasKey,
                   initialExpression: null,
+                  allowTouchGestures: widget
+                      .options
+                      .presentation
+                      .interactionPolicy
+                      .allowTouchGestures,
+                  allowMouseGestures: widget
+                      .options
+                      .presentation
+                      .interactionPolicy
+                      .allowMouseGestures,
                   onReady: () {
                     debugPrint('[MathDrawing] Canvas ready');
                     _syncController();
@@ -1420,7 +1544,10 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text(msg),
+                          content: widget.options.presentation.buildError(
+                            context,
+                            widget.options.presentation.labels.resolve(msg),
+                          ),
                           behavior: SnackBarBehavior.floating,
                           duration: const Duration(seconds: 3),
                         ),
@@ -1446,17 +1573,30 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     required VoidCallback? onPressed,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(top: 8),
+      padding: EdgeInsets.only(
+        top: widget.options.presentation.density == MathWorkspaceDensity.compact
+            ? 4
+            : 8,
+      ),
       child: Material(
         color: Theme.of(context).colorScheme.surface,
         elevation: 2,
         shape: const CircleBorder(),
         child: IconButton(
-          icon: Icon(icon, size: 21),
+          icon: Icon(
+            icon,
+            size: widget.options.presentation.density ==
+                    MathWorkspaceDensity.compact
+                ? 19
+                : 21,
+          ),
           tooltip: tooltip,
           onPressed: onPressed,
           style: IconButton.styleFrom(
-            fixedSize: const Size(40, 40),
+            fixedSize: widget.options.presentation.density ==
+                    MathWorkspaceDensity.compact
+                ? const Size(36, 36)
+                : const Size(40, 40),
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
         ),
@@ -1480,6 +1620,8 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                 ? Math3DToolbar(
                     activeTool: _current3DTool,
                     polygonSides: _polygonSides,
+                    labelResolver:
+                        widget.options.presentation.labels.resolve,
                     onPolygonSidesChanged: (sides) =>
                         setState(() => _polygonSides = sides),
                     instruction: _current3DTool != ConstructionTool.move
@@ -1500,12 +1642,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         // 3D canvas
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(
-              MathUiTokens.canvasInset,
-              4,
-              MathUiTokens.canvasInset,
-              MathUiTokens.canvasInset,
-            ),
+            padding: widget.options.presentation.canvasInset3D,
             child: Container(
               decoration: BoxDecoration(
                 border: Border.all(color: cs.outlineVariant, width: 0.5),
@@ -1520,6 +1657,22 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                         key: _canvas3DKey,
                         currentTool: _current3DTool,
                         polygonSides: _polygonSides,
+                        allowTouchGestures: widget
+                            .options
+                            .presentation
+                            .interactionPolicy
+                            .allowTouchGestures,
+                        allowMouseGestures: widget
+                            .options
+                            .presentation
+                            .interactionPolicy
+                            .allowMouseGestures,
+                        labelResolver:
+                            widget.options.presentation.labels.resolve,
+                        dialogBuilder:
+                            widget.options.presentation.buildDialog,
+                        errorBuilder:
+                            widget.options.presentation.errorBuilder,
                         onViewportChange: _publish3DChange,
                         onSceneChanged: _publish3DChange,
                         onObjectCreated: (obj) {

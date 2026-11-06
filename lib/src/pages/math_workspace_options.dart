@@ -20,6 +20,125 @@ typedef MathWorkspaceAppBarBuilder = PreferredSizeWidget Function(
   PreferredSizeWidget defaultAppBar,
 );
 
+/// Labels for the workspace chrome that commonly needs host localization.
+/// Unspecified values retain the package's Chinese defaults.
+class MathWorkspaceLabels {
+  final String pageTitle;
+  final String addFormula;
+  final String view2D;
+  final String view3D;
+  final String removeFormulaTitle;
+  final String confirmRemoveFormula;
+  final String selectColorTitle;
+  final String cancel;
+  final String removeFormula;
+  final String hideFormula;
+  final String showFormula;
+  final String plotFormula;
+  final String fit2DCanvas;
+  final String zoomIn;
+  final String zoomOut;
+  final String formulaLabel;
+  final String formulaColorLabel;
+  final String Function(String sourceText)? translate;
+
+  const MathWorkspaceLabels({
+    this.pageTitle = '数学绘图',
+    this.addFormula = '添加公式',
+    this.view2D = '2D',
+    this.view3D = '3D',
+    this.removeFormulaTitle = '删除公式',
+    this.confirmRemoveFormula = '确定要删除"公式 {index}"吗？',
+    this.selectColorTitle = '选择颜色',
+    this.cancel = '取消',
+    this.removeFormula = '删除公式',
+    this.hideFormula = '隐藏公式',
+    this.showFormula = '显示公式',
+    this.plotFormula = '绘制',
+    this.fit2DCanvas = '缩放至适合',
+    this.zoomIn = '放大',
+    this.zoomOut = '缩小',
+    this.formulaLabel = '公式 {index}',
+    this.formulaColorLabel = '公式颜色 {index}',
+    this.translate,
+  });
+
+  /// Replaces a numbered `{index}` placeholder in a workspace label.
+  String withIndex(String pattern, int index) =>
+      resolve(pattern.replaceAll('{index}', '$index'));
+
+  /// Translates a package default label when a host translation callback exists.
+  String resolve(String sourceText) => translate?.call(sourceText) ?? sourceText;
+}
+
+/// Density choices for the package-owned workspace layout.
+enum MathWorkspaceDensity { comfortable, compact }
+
+/// Anchor for the built-in 2D canvas actions.
+enum MathWorkspaceControlPlacement { bottomEnd, bottomStart }
+
+/// Selects which pointer families can manipulate package-owned canvases.
+class MathWorkspaceInteractionPolicy {
+  final bool allowTouchGestures;
+  final bool allowMouseGestures;
+
+  const MathWorkspaceInteractionPolicy({
+    this.allowTouchGestures = true,
+    this.allowMouseGestures = true,
+  });
+}
+
+/// Presentation-level controls for hosts embedding [MathDrawingPage].
+///
+/// Flutter [Theme] remains the source of colors and typography. These options
+/// adjust package layout and provide localized labels and error surfaces.
+class MathWorkspacePresentation {
+  final MathWorkspaceLabels labels;
+  final MathWorkspaceDensity density;
+  /// Optional inset applied to both canvases. Omission preserves each view's
+  /// historical spacing.
+  final EdgeInsets? canvasInset;
+  final EdgeInsets controlInset;
+  final double responsiveBreakpoint;
+  final MathWorkspaceControlPlacement controlPlacement;
+  final MathWorkspaceInteractionPolicy interactionPolicy;
+  final Widget Function(BuildContext context, Widget dialog)? dialogBuilder;
+  final Widget Function(BuildContext context, String message)? errorBuilder;
+
+  const MathWorkspacePresentation({
+    this.labels = const MathWorkspaceLabels(),
+    this.density = MathWorkspaceDensity.comfortable,
+    this.canvasInset,
+    this.controlInset = const EdgeInsets.fromLTRB(8, 0, 8, 8),
+    this.responsiveBreakpoint = 0,
+    this.controlPlacement = MathWorkspaceControlPlacement.bottomEnd,
+    this.interactionPolicy = const MathWorkspaceInteractionPolicy(),
+    this.dialogBuilder,
+    this.errorBuilder,
+  }) : assert(responsiveBreakpoint >= 0);
+
+  /// Whether the compact layout should be used for the supplied width.
+  /// A zero breakpoint keeps the default layout at every width.
+  bool isCompactForWidth(double width) =>
+      density == MathWorkspaceDensity.compact || width < responsiveBreakpoint;
+
+  /// Inset applied to the 2D canvas, retaining its original default spacing.
+  EdgeInsets get canvasInset2D =>
+      canvasInset ?? const EdgeInsets.symmetric(horizontal: 8);
+
+  /// Inset applied to the 3D canvas, retaining its original default spacing.
+  EdgeInsets get canvasInset3D =>
+      canvasInset ?? const EdgeInsets.fromLTRB(8, 4, 8, 8);
+
+  /// Builds the configured error content, or the default plain message.
+  Widget buildError(BuildContext context, String message) =>
+      errorBuilder?.call(context, message) ?? Text(message);
+
+  /// Wraps a package dialog with the host's dialog surface when configured.
+  Widget buildDialog(BuildContext context, Widget dialog) =>
+      dialogBuilder?.call(context, dialog) ?? dialog;
+}
+
 /// Page-owned values and actions available to custom workspace regions.
 ///
 /// A replacement builder can use these callbacks to keep its controls
@@ -221,6 +340,9 @@ class MathWorkspaceOptions {
   /// Wraps or replaces overlays on top of the 3D canvas.
   final MathWorkspaceRegionBuilder? canvas3DOverlayBuilder;
 
+  /// Localized labels, responsive density, spacing, and error presentation.
+  final MathWorkspacePresentation presentation;
+
   /// Creates workspace options with the turnkey UI enabled by default.
   const MathWorkspaceOptions({
     this.show2D = true,
@@ -243,6 +365,7 @@ class MathWorkspaceOptions {
     this.canvas2DActionsBuilder,
     this.canvas2DOverlayBuilder,
     this.canvas3DOverlayBuilder,
+    this.presentation = const MathWorkspacePresentation(),
   }) : assert(show2D || show3D, 'At least one workspace view is required.'),
        assert(
          (show2D && initialView == ViewMode.mode2D) ||

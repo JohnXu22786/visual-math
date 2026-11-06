@@ -9,18 +9,32 @@ import 'math_keyboard.dart';
 class MathParameterControls extends StatelessWidget {
   final Map<String, MathParameter> parameters;
   final void Function(String name, MathParameter parameter) onChanged;
+  final String Function(String sourceText)? labelResolver;
+  final Widget Function(BuildContext context, Widget dialog)? dialogBuilder;
+  final Widget Function(BuildContext context, String message)? errorBuilder;
 
   const MathParameterControls({
     super.key,
     required this.parameters,
     required this.onChanged,
+    this.labelResolver,
+    this.dialogBuilder,
+    this.errorBuilder,
   });
 
   Future<void> _configure(
       BuildContext context, String name, MathParameter parameter) async {
     final result = await showDialog<MathParameter>(
       context: context,
-      builder: (_) => _ParameterDialog(name: name, parameter: parameter),
+      builder: (dialogContext) {
+        final dialog = _ParameterDialog(
+          name: name,
+          parameter: parameter,
+          labelResolver: labelResolver,
+          errorBuilder: errorBuilder,
+        );
+        return dialogBuilder?.call(dialogContext, dialog) ?? dialog;
+      },
     );
     if (result != null && context.mounted) onChanged(name, result);
   }
@@ -54,7 +68,8 @@ class MathParameterControls extends StatelessWidget {
                     ),
                   ),
                   IconButton(
-                    tooltip: '设置参数 ${entry.key}',
+                    tooltip: labelResolver?.call('设置参数 ${entry.key}') ??
+                        '设置参数 ${entry.key}',
                     icon: const Icon(Icons.tune, size: 20),
                     onPressed: () =>
                         _configure(context, entry.key, entry.value),
@@ -64,6 +79,7 @@ class MathParameterControls extends StatelessWidget {
                   key: ValueKey(entry.key),
                   name: entry.key,
                   parameter: entry.value,
+                  labelResolver: labelResolver,
                   onChanged: (parameter) => onChanged(entry.key, parameter),
                 ),
               ],
@@ -78,12 +94,14 @@ class _ParameterSlider extends StatefulWidget {
   final String name;
   final MathParameter parameter;
   final ValueChanged<MathParameter> onChanged;
+  final String Function(String sourceText)? labelResolver;
 
   const _ParameterSlider({
     super.key,
     required this.name,
     required this.parameter,
     required this.onChanged,
+    this.labelResolver,
   });
 
   @override
@@ -143,7 +161,9 @@ class _ParameterSliderState extends State<_ParameterSlider> {
       enabled: true,
       focusable: true,
       focused: _focusNode.hasFocus,
-      label: '参数 ${widget.name}',
+      label:
+          widget.labelResolver?.call('参数 ${widget.name}') ??
+          '参数 ${widget.name}',
       value: _announce(parameter.value),
       increasedValue: increased > parameter.value ? _announce(increased) : null,
       decreasedValue: decreased < parameter.value ? _announce(decreased) : null,
@@ -167,14 +187,23 @@ class _ParameterSliderState extends State<_ParameterSlider> {
 class _ParameterDialog extends StatefulWidget {
   final String name;
   final MathParameter parameter;
+  final String Function(String sourceText)? labelResolver;
+  final Widget Function(BuildContext context, String message)? errorBuilder;
 
-  const _ParameterDialog({required this.name, required this.parameter});
+  const _ParameterDialog({
+    required this.name,
+    required this.parameter,
+    this.labelResolver,
+    this.errorBuilder,
+  });
 
   @override
   State<_ParameterDialog> createState() => _ParameterDialogState();
 }
 
 class _ParameterDialogState extends State<_ParameterDialog> {
+  String _label(String source) => widget.labelResolver?.call(source) ?? source;
+
   late final Map<String, TextEditingController> _controllers = {
     'value': TextEditingController(text: widget.parameter.formatValue()),
     'min': TextEditingController(text: widget.parameter.min.toString()),
@@ -282,7 +311,8 @@ class _ParameterDialogState extends State<_ParameterDialog> {
       isScrollControlled: true,
       useSafeArea: true,
       builder: (sheetContext) => MathNumericKeyboard(
-        activeLabel: _labels[key]!,
+        activeLabel: _label(_labels[key]!),
+        labelResolver: widget.labelResolver,
         onDismiss: () => Navigator.of(sheetContext).pop(),
         onInsert: (text, {cursorFromEnd}) =>
             _insertText(key, text, cursorFromEnd: cursorFromEnd),
@@ -360,12 +390,18 @@ class _ParameterDialogState extends State<_ParameterDialog> {
           textInputAction: last ? TextInputAction.done : TextInputAction.next,
           onFieldSubmitted: last ? (_) => _apply() : null,
           decoration: InputDecoration(
-            labelText: label,
-            errorText: _errors[key],
+            labelText: _label(label),
+            error: _errors[key] == null
+                ? null
+                : widget.errorBuilder?.call(context, _label(_errors[key]!)) ??
+                    Text(
+                      _label(_errors[key]!),
+                      style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    ),
             errorMaxLines: 2,
             border: const OutlineInputBorder(),
             suffixIcon: IconButton(
-              tooltip: '使用数学键盘',
+              tooltip: _label('使用数学键盘'),
               icon: const Icon(Icons.calculate_outlined),
               onPressed: () => _openMathKeyboard(key),
             ),
@@ -377,7 +413,7 @@ class _ParameterDialogState extends State<_ParameterDialog> {
   Widget build(BuildContext context) => AlertDialog(
         scrollable: true,
         insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        title: Text('设置参数 ${widget.name}'),
+        title: Text('${_label('设置参数')} ${widget.name}'),
         content: SizedBox(
           width: 320,
           child: Column(
@@ -389,7 +425,9 @@ class _ParameterDialogState extends State<_ParameterDialog> {
               _field('max', '最大值'),
               _field('step', '步长', last: true),
               Text(
-                '滑块从最小值按步长递增；最大值不在步长刻度上时，最大值仍可作为最后一个较短步长到达。数值可直接输入。',
+                _label(
+                  '滑块从最小值按步长递增；最大值不在步长刻度上时，最大值仍可作为最后一个较短步长到达。数值可直接输入。',
+                ),
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
@@ -398,9 +436,9 @@ class _ParameterDialogState extends State<_ParameterDialog> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('取消'),
+            child: Text(_label('取消')),
           ),
-          FilledButton(onPressed: _apply, child: const Text('应用')),
+          FilledButton(onPressed: _apply, child: Text(_label('应用'))),
         ],
       );
 }
