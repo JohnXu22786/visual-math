@@ -32,6 +32,7 @@ class MathWorkspaceLabels {
   final String selectColorTitle;
   final String cancel;
   final String removeFormula;
+  final String removeFormulaTooltip;
   final String hideFormula;
   final String showFormula;
   final String plotFormula;
@@ -51,7 +52,8 @@ class MathWorkspaceLabels {
     this.confirmRemoveFormula = '确定要删除"公式 {index}"吗？',
     this.selectColorTitle = '选择颜色',
     this.cancel = '取消',
-    this.removeFormula = '删除公式',
+    this.removeFormula = '删除',
+    this.removeFormulaTooltip = '删除公式',
     this.hideFormula = '隐藏公式',
     this.showFormula = '显示公式',
     this.plotFormula = '绘制',

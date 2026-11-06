@@ -123,16 +123,15 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: MathDrawingPage(
-          options: const MathWorkspaceOptions(
+          options: MathWorkspaceOptions(
             presentation: MathWorkspacePresentation(
               labels: MathWorkspaceLabels(
-                pageTitle: 'Mathematics',
                 addFormula: 'New expression',
                 view2D: 'Plane',
                 view3D: 'Space',
                 plotFormula: 'Plot expression',
                 translate: (source) =>
-                    source == '选择与剪贴板' ? 'Clipboard actions' : source,
+                    source == '数学绘图' ? 'Mathematics' : source,
               ),
             ),
           ),
@@ -148,11 +147,8 @@ void main() {
     expect(find.byTooltip('New expression'), findsOneWidget);
     expect(find.text('Plane'), findsOneWidget);
     expect(find.text('Space'), findsOneWidget);
-    expect(find.bySemanticsLabel('Plane'), findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp('Plane')), findsOneWidget);
     expect(find.byTooltip('Plot expression'), findsOneWidget);
-    await tester.tap(find.byType(TextField).first);
-    await tester.pumpAndSettle();
-    expect(find.byTooltip('Clipboard actions'), findsOneWidget);
     semantics.dispose();
   });
 

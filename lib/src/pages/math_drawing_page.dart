@@ -1375,7 +1375,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
               iconSize: 16,
               color: cs.error.withValues(alpha: 0.7),
               tooltip: widget.options.presentation.labels.resolve(
-                widget.options.presentation.labels.removeFormula,
+                widget.options.presentation.labels.removeFormulaTooltip,
               ),
               onPressed: () => _confirmRemove(f),
             ),
