@@ -97,6 +97,8 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   void dispose() {
     for (final f in _formulas) {
       f.controller.dispose();
+      f.domainMinController.dispose();
+      f.domainMaxController.dispose();
     }
     _formulaScroll.dispose();
     _tabController.removeListener(_onTabChanged);
@@ -204,6 +206,15 @@ class _MathDrawingPageState extends State<MathDrawingPage>
 
   void _plotAll2D() {
     final entries = <FormulaEntry>[];
+    final endpointParameters = _formulas
+        .where((f) => f.visible && f.controller.text.trim().isNotEmpty)
+        .expand((f) => [f.domainMinController.text, f.domainMaxController.text])
+        .where((input) => input.trim().isNotEmpty)
+        .expand((input) => MathExpression.fromInput(input).parameters)
+        .where((name) => name != 'x' && name != 'y');
+    for (final name in endpointParameters) {
+      _parameters.putIfAbsent(name, MathParameter.new);
+    }
     for (final f in _formulas) {
       final text = f.controller.text.trim();
       if (text.isEmpty) continue;
@@ -218,12 +229,39 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         );
         return;
       }
+      final lower = f.domainMinController.text.trim();
+      final upper = f.domainMaxController.text.trim();
+      for (final endpoint in [lower, upper].where((value) => value.isNotEmpty)) {
+        final endpointExpression = MathExpression.fromInput(endpoint);
+        if (!endpointExpression.isValid) {
+          _showError('定义域端点无法解析，请检查表达式。');
+          return;
+        }
+        if (RegExp(r'\b[xy]\b').hasMatch(endpointExpression.normalizedExpression)) {
+          _showError('定义域端点不能依赖坐标变量 x 或 y。');
+          return;
+        }
+      }
+      final lowerValue = _resolveDomainEndpoint(lower);
+      final upperValue = _resolveDomainEndpoint(upper);
+      if ((lower.isNotEmpty && lowerValue == null) ||
+          (upper.isNotEmpty && upperValue == null)) {
+        _showError('定义域端点必须计算为有限数值。');
+        return;
+      }
       entries.add(
         FormulaEntry(
           rawExpression: text,
           parsed: parsed,
           color: f.color,
           autoColor: f.autoColor,
+          domainMinExpression: lower,
+          domainMaxExpression: upper,
+          identity: identityHashCode(f).toString(),
+          includeDomainMin: f.includeDomainMin,
+          includeDomainMax: f.includeDomainMax,
+          domainMin: lowerValue,
+          domainMax: upperValue,
         ),
       );
     }
@@ -234,6 +272,11 @@ class _MathDrawingPageState extends State<MathDrawingPage>
           ...entry.parsed!.parameters.where(
             (name) => name != 'x' && name != 'y',
           ),
+        ...entries
+            .expand((entry) => [entry.domainMinExpression, entry.domainMaxExpression])
+            .where((input) => input.isNotEmpty)
+            .expand((input) => MathExpression.fromInput(input).parameters)
+            .where((name) => name != 'x' && name != 'y'),
       };
       for (final name in _activeParameterNames) {
         _parameters.putIfAbsent(name, MathParameter.new);
@@ -245,6 +288,22 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     });
 
     _refreshParameterCurves();
+  }
+
+  double? _resolveDomainEndpoint(String input) {
+    if (input.trim().isEmpty) return null;
+    final expression = MathExpression.fromInput(input);
+    if (!expression.isValid) return null;
+    final values = {
+      for (final name in expression.parameters)
+        if (_parameters.containsKey(name)) name: _parameters[name]!.value,
+    };
+    try {
+      final value = expression.withParameters(values).evaluator(0);
+      return value.isFinite ? value : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Keep slider redraws tied to the last plotted formulas, not editor drafts.
@@ -260,6 +319,12 @@ class _MathDrawingPageState extends State<MathDrawingPage>
             for (final name in entry.parsed!.parameters)
               if (_parameters.containsKey(name)) name: _parameters[name]!.value,
           }),
+          domainMin: _resolveDomainEndpoint(entry.domainMinExpression),
+          domainMax: _resolveDomainEndpoint(entry.domainMaxExpression),
+          clearDomainMin: entry.domainMinExpression.isNotEmpty &&
+              _resolveDomainEndpoint(entry.domainMinExpression) == null,
+          clearDomainMax: entry.domainMaxExpression.isNotEmpty &&
+              _resolveDomainEndpoint(entry.domainMaxExpression) == null,
         ),
     ];
     _canvasKey.currentState?.setFormulas(entries);
@@ -370,6 +435,30 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     });
   }
 
+  Future<void> _editDomain(_FormulaState formula, int index) async {
+    final result = await showDialog<(String, String, bool, bool)?>(
+      context: context,
+      builder: (_) => _DomainEditorDialog(
+        title: '公式 ${index + 1} 定义域',
+        lowerExpression: formula.domainMinController.text,
+        upperExpression: formula.domainMaxController.text,
+        includeLower: formula.includeDomainMin,
+        includeUpper: formula.includeDomainMax,
+        mathematical: _mathMode,
+        showWebView: widget.initialShowWebView,
+      ),
+    );
+    if (result != null && mounted) {
+      setState(() {
+        formula.domainMinController.text = result.$1;
+        formula.domainMaxController.text = result.$2;
+        formula.includeDomainMin = result.$3;
+        formula.includeDomainMax = result.$4;
+      });
+      if (formula.committedText.isNotEmpty) _plotAll();
+    }
+  }
+
   Future<void> _removeFormula(_FormulaState removing) async {
     if (_formulas.length <= 1) return;
     await _flushEditors();
@@ -382,6 +471,8 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         _keyboardVisible = false;
       }
       _formulas[index].controller.dispose();
+      _formulas[index].domainMinController.dispose();
+      _formulas[index].domainMaxController.dispose();
       _formulas.removeAt(index);
     });
     // Re-plot after deletion so the canvas reflects the remaining formulas
@@ -735,6 +826,13 @@ class _MathDrawingPageState extends State<MathDrawingPage>
           // Each action button carries a uniform 12px leading gap. This also
           // matches the left-side gap between the color circle and the input.
           _buildActionButton(
+            icon: Icons.tune,
+            iconSize: 18,
+            color: cs.onSurfaceVariant,
+            tooltip: '设置定义域',
+            onPressed: () => _editDomain(f, index),
+          ),
+          _buildActionButton(
             icon: f.visible ? Icons.visibility : Icons.visibility_off,
             iconSize: 20,
             color: f.visible ? cs.onSurface : cs.onSurfaceVariant,
@@ -961,15 +1059,137 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   }
 }
 
+class _DomainEditorDialog extends StatefulWidget {
+  final String title;
+  final String lowerExpression;
+  final String upperExpression;
+  final bool includeLower;
+  final bool includeUpper;
+  final bool mathematical;
+  final bool showWebView;
+
+  const _DomainEditorDialog({
+    required this.title,
+    required this.lowerExpression,
+    required this.upperExpression,
+    required this.includeLower,
+    required this.includeUpper,
+    required this.mathematical,
+    required this.showWebView,
+  });
+
+  @override
+  State<_DomainEditorDialog> createState() => _DomainEditorDialogState();
+}
+
+class _DomainEditorDialogState extends State<_DomainEditorDialog> {
+  late final TextEditingController _lower;
+  late final TextEditingController _upper;
+  late bool _mathematical;
+  late bool _includeLower;
+  late bool _includeUpper;
+
+  @override
+  void initState() {
+    super.initState();
+    _lower = TextEditingController(text: widget.lowerExpression);
+    _upper = TextEditingController(text: widget.upperExpression);
+    _mathematical = widget.mathematical;
+    _includeLower = widget.includeLower;
+    _includeUpper = widget.includeUpper;
+  }
+
+  @override
+  void dispose() {
+    _lower.dispose();
+    _upper.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.title),
+    content: Column(mainAxisSize: MainAxisSize.min, children: [
+      SegmentedButton<bool>(
+        segments: const [
+          ButtonSegment(value: false, label: Text('源码输入')),
+          ButtonSegment(value: true, label: Text('数学输入')),
+        ],
+        selected: {_mathematical},
+        onSelectionChanged: (selection) =>
+            setState(() => _mathematical = selection.first),
+      ),
+      const SizedBox(height: 12),
+      MathFormulaField(
+        controller: _lower,
+        mathematical: _mathematical,
+        allowModeSwitch: false,
+        showWebView: widget.showWebView,
+        label: '左端点（留空表示 −∞）',
+        onModeChanged: (_) {},
+        onActivate: () {},
+        onChanged: () => setState(() {}),
+        onSubmitted: () {},
+      ),
+      CheckboxListTile(
+        dense: true,
+        contentPadding: EdgeInsets.zero,
+        title: const Text('包含左端点'),
+        value: _includeLower,
+        onChanged: (value) => setState(() => _includeLower = value ?? true),
+      ),
+      MathFormulaField(
+        controller: _upper,
+        mathematical: _mathematical,
+        allowModeSwitch: false,
+        showWebView: widget.showWebView,
+        label: '右端点（留空表示 +∞）',
+        onModeChanged: (_) {},
+        onActivate: () {},
+        onChanged: () => setState(() {}),
+        onSubmitted: () {},
+      ),
+      CheckboxListTile(
+        dense: true,
+        contentPadding: EdgeInsets.zero,
+        title: const Text('包含右端点'),
+        value: _includeUpper,
+        onChanged: (value) => setState(() => _includeUpper = value ?? true),
+      ),
+      const Align(
+        alignment: Alignment.centerLeft,
+        child: Text('端点支持公式参数与数学表达式。'),
+      ),
+    ]),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('取消'),
+      ),
+      FilledButton(
+        onPressed: () => Navigator.pop(
+          context,
+          (_lower.text, _upper.text, _includeLower, _includeUpper),
+        ),
+        child: const Text('应用'),
+      ),
+    ],
+  );
+}
+
 /// State for a single formula row.
 class _FormulaState {
   final TextEditingController controller;
+  final TextEditingController domainMinController = TextEditingController();
+  final TextEditingController domainMaxController = TextEditingController();
   final GlobalKey rowKey = GlobalKey();
   final GlobalKey<MathFormulaFieldState> editorKey = GlobalKey();
   Color color;
   bool autoColor;
   String committedText;
   bool visible;
+  bool includeDomainMin = true;
+  bool includeDomainMax = true;
 
   _FormulaState({
     required this.controller,
