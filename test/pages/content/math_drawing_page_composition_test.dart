@@ -117,6 +117,184 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('presentation labels preserve selector semantics', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          options: MathWorkspaceOptions(
+            presentation: MathWorkspacePresentation(
+              labels: MathWorkspaceLabels(
+                addFormula: 'New expression',
+                view2D: 'Plane',
+                view3D: 'Space',
+                plotFormula: 'Plot expression',
+                translate: (source) =>
+                    source == '数学绘图' ? 'Mathematics' : source,
+              ),
+            ),
+          ),
+          initialMathematicalMode: false,
+          initialShowWebView: false,
+        ),
+      ),
+    );
+    await tester.pump();
+    final semantics = tester.ensureSemantics();
+
+    expect(find.text('Mathematics'), findsOneWidget);
+    expect(find.byTooltip('New expression'), findsOneWidget);
+    expect(find.text('Plane'), findsOneWidget);
+    expect(find.text('Space'), findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp('Plane')), findsOneWidget);
+    expect(find.byTooltip('Plot expression'), findsOneWidget);
+    semantics.dispose();
+  });
+
+  testWidgets('compact density and host theme use configured insets', (
+    tester,
+  ) async {
+    expect(const MathWorkspacePresentation().isCompactForWidth(400), isFalse);
+    const inset = EdgeInsets.fromLTRB(17, 19, 17, 21);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.purple),
+        ),
+        home: MathDrawingPage(
+          options: const MathWorkspaceOptions(
+            show3D: false,
+            presentation: MathWorkspacePresentation(
+              density: MathWorkspaceDensity.compact,
+              canvasInset: inset,
+              controlInset: const EdgeInsets.fromLTRB(10, 0, 11, 13),
+              controlPlacement: MathWorkspaceControlPlacement.bottomStart,
+              interactionPolicy: const MathWorkspaceInteractionPolicy(
+                allowTouchGestures: false,
+              ),
+            ),
+          ),
+          initialMathematicalMode: false,
+          initialShowWebView: false,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      tester
+          .widget<Padding>(
+            find
+                .ancestor(
+                  of: find.byType(MathCanvas),
+                  matching: find.byWidgetPredicate(
+                    (widget) => widget is Padding && widget.padding == inset,
+                  ),
+                )
+                .first,
+          )
+          .padding,
+      inset,
+    );
+    final canvas = tester.widget<MathCanvas>(find.byType(MathCanvas));
+    expect(canvas.allowTouchGestures, isFalse);
+    expect(canvas.allowMouseGestures, isTrue);
+    expect(
+      tester
+          .widgetList<Positioned>(find.byType(Positioned))
+          .any((control) => control.left == 10 && control.right == null),
+      isTrue,
+    );
+    expect(
+      Theme.of(tester.element(find.byType(MathCanvas))).colorScheme.primary,
+      ColorScheme.fromSeed(seedColor: Colors.purple).primary,
+    );
+  });
+
+  testWidgets('responsive threshold and error surface are host configurable', (
+    tester,
+  ) async {
+    const presentation = MathWorkspacePresentation(responsiveBreakpoint: 500);
+    expect(presentation.isCompactForWidth(400), isTrue);
+    expect(presentation.isCompactForWidth(700), isFalse);
+    Widget errorSurface(BuildContext context, String message) =>
+        Text('Host error: $message');
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          options: MathWorkspaceOptions(
+            show3D: false,
+            presentation: MathWorkspacePresentation(
+              responsiveBreakpoint: 500,
+              dialogBuilder: (_, dialog) => Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [const Text('Host dialog'), dialog],
+              ),
+              errorBuilder: errorSurface,
+            ),
+          ),
+          initialExpression: 'x+',
+          initialMathematicalMode: false,
+          initialShowWebView: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('添加公式'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('删除公式').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Host dialog'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('绘制').first);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Host error:'), findsOneWidget);
+    expect(find.byType(MathCanvas), findsOneWidget);
+
+    const threeDInset = EdgeInsets.fromLTRB(11, 12, 13, 14);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          options: MathWorkspaceOptions(
+            show2D: false,
+            show3D: true,
+            initialView: ViewMode.mode3D,
+            presentation: MathWorkspacePresentation(
+              canvasInset: threeDInset,
+              interactionPolicy: MathWorkspaceInteractionPolicy(
+                allowMouseGestures: false,
+              ),
+              labels: MathWorkspaceLabels(
+                translate: (source) => 'Localized $source',
+              ),
+            ),
+          ),
+          initialMathematicalMode: false,
+          initialShowWebView: false,
+        ),
+      ),
+    );
+    await tester.pump();
+    final threeDCanvasPadding = find.ancestor(
+      of: find.byType(MathCanvas3D),
+      matching: find.byWidgetPredicate(
+        (widget) => widget is Padding && widget.padding == threeDInset,
+      ),
+    );
+    expect(threeDCanvasPadding, findsOneWidget);
+    expect(
+      tester.widget<MathCanvas3D>(find.byType(MathCanvas3D)).allowMouseGestures,
+      isFalse,
+    );
+    expect(find.byTooltip('Localized 3D 视图设置'), findsOneWidget);
+    expect(find.byTooltip('Localized 放大'), findsOneWidget);
+  });
+
   testWidgets('custom 3D tool selection updates the workspace controller', (
     tester,
   ) async {
@@ -403,5 +581,32 @@ void main() {
       'x+',
     );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('parameter validation errors use the host error surface', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MathParameterControls(
+            parameters: {'A': MathParameter()},
+            onChanged: (_, __) {},
+            errorBuilder: (_, message) => Text(
+              'Host validation error: $message',
+              key: const ValueKey('host-validation-error'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byTooltip('设置参数 A'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField).first, 'not a number');
+    await tester.tap(find.text('应用'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('host-validation-error')), findsOneWidget);
+    expect(find.textContaining('Host validation error:'), findsOneWidget);
   });
 }

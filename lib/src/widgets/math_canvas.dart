@@ -45,6 +45,12 @@ class MathCanvas extends StatefulWidget {
   /// Called when an expression cannot be parsed or plotted.
   final OnError? onError;
 
+  /// Whether touch and stylus gestures can pan or zoom the canvas.
+  final bool allowTouchGestures;
+
+  /// Whether mouse and trackpad gestures and wheel signals can navigate.
+  final bool allowMouseGestures;
+
   /// Creates a Flutter-rendered 2D graph canvas.
   const MathCanvas({
     super.key,
@@ -53,6 +59,8 @@ class MathCanvas extends StatefulWidget {
     this.onCoordinateUpdate,
     this.onViewportChange,
     this.onError,
+    this.allowTouchGestures = true,
+    this.allowMouseGestures = true,
   });
 
   @override
@@ -546,12 +554,25 @@ class MathCanvasState extends State<MathCanvas> {
           _resampleAll();
         }
 
+        final supportedDevices =
+            widget.allowTouchGestures && widget.allowMouseGestures
+            ? null
+            : <PointerDeviceKind>{
+                if (widget.allowTouchGestures) PointerDeviceKind.touch,
+                if (widget.allowTouchGestures) PointerDeviceKind.stylus,
+                if (widget.allowTouchGestures) PointerDeviceKind.invertedStylus,
+                if (widget.allowMouseGestures) PointerDeviceKind.mouse,
+                if (widget.allowMouseGestures) PointerDeviceKind.trackpad,
+              };
         return GestureDetector(
+          supportedDevices: supportedDevices,
           onScaleStart: _onScaleStart,
           onScaleUpdate: _onScaleUpdate,
           onScaleEnd: _onScaleEnd,
           child: Listener(
-            onPointerSignal: _onPointerSignal,
+            onPointerSignal: widget.allowMouseGestures
+                ? _onPointerSignal
+                : null,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(MathUiTokens.cornerRadius),
               child: CustomPaint(
