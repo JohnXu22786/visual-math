@@ -9,13 +9,13 @@ class VisualMathExampleApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'Visual Math integration examples',
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
-          useMaterial3: true,
-        ),
-        home: const ExampleMenu(),
-      );
+    title: 'Visual Math integration examples',
+    theme: ThemeData(
+      colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
+      useMaterial3: true,
+    ),
+    home: const ExampleMenu(),
+  );
 }
 
 class ExampleMenu extends StatelessWidget {
@@ -23,29 +23,29 @@ class ExampleMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Visual Math examples')),
-        body: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            _ExampleLink(
-              title: 'Standalone 2D canvas',
-              subtitle: 'A graph without the formula editor or 3D workspace.',
-              page: const Standalone2DExample(),
-            ),
-            _ExampleLink(
-              title: 'Standalone 3D canvas',
-              subtitle: 'A pure-Flutter 3D canvas embedded by the host.',
-              page: const Standalone3DExample(),
-            ),
-            _ExampleLink(
-              title: 'Customized workspace',
-              subtitle: 'Host branding, labels, controller, and preferences.',
-              page: const CustomizedWorkspaceExample(),
-            ),
-            const _CapabilitiesCard(),
-          ],
+    appBar: AppBar(title: const Text('Visual Math examples')),
+    body: ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _ExampleLink(
+          title: 'Standalone 2D canvas',
+          subtitle: 'A graph without the formula editor or 3D workspace.',
+          page: const Standalone2DExample(),
         ),
-      );
+        _ExampleLink(
+          title: 'Standalone 3D canvas',
+          subtitle: 'A pure-Flutter 3D canvas embedded by the host.',
+          page: const Standalone3DExample(),
+        ),
+        _ExampleLink(
+          title: 'Customized workspace',
+          subtitle: 'Host branding, labels, controller, and preferences.',
+          page: const CustomizedWorkspaceExample(),
+        ),
+        const _CapabilitiesCard(),
+      ],
+    ),
+  );
 }
 
 class _ExampleLink extends StatelessWidget {
@@ -61,15 +61,15 @@ class _ExampleLink extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Card(
-        child: ListTile(
-          title: Text(title),
-          subtitle: Text(subtitle),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(builder: (_) => page),
-          ),
-        ),
-      );
+    child: ListTile(
+      title: Text(title),
+      subtitle: Text(subtitle),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () =>
+          Navigator.of(context)
+              .push(MaterialPageRoute<void>(builder: (_) => page)),
+    ),
+  );
 }
 
 class Standalone2DExample extends StatelessWidget {
@@ -77,11 +77,9 @@ class Standalone2DExample extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('2D only')),
-        body: const SafeArea(
-          child: MathCanvas(initialExpression: 'sin(x)'),
-        ),
-      );
+    appBar: AppBar(title: const Text('2D only')),
+    body: const SafeArea(child: MathCanvas(initialExpression: 'sin(x)')),
+  );
 }
 
 class Standalone3DExample extends StatelessWidget {
@@ -89,9 +87,9 @@ class Standalone3DExample extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('3D only')),
-        body: const SafeArea(child: MathCanvas3D()),
-      );
+    appBar: AppBar(title: const Text('3D only')),
+    body: const SafeArea(child: MathCanvas3D()),
+  );
 }
 
 class CustomizedWorkspaceExample extends StatefulWidget {
@@ -109,87 +107,86 @@ class _CustomizedWorkspaceExampleState
   @override
   void initState() {
     super.initState();
-    _controller = MathDrawingController()
+    _controller = MathDrawingController();
+    _controller
       ..onPlotted = (snapshot) => debugPrint(
-            'Saved ${snapshot.formulas.length} formulas; '
-            'view=${snapshot.activeView.name}',
-          )
-      ..onError = (message) => debugPrint('Plot error: $message');
+        'Saved ${snapshot.formulas.length} formulas; '
+        'view=${snapshot.activeView.name}',
+      )..onError = (message) => debugPrint('Plot error: $message');
   }
 
   @override
   Widget build(BuildContext context) => MathDrawingPage(
-        initialExpression: 'x^2',
-        controller: _controller,
-        options: MathWorkspaceOptions(
-          persistence: const MathWorkspacePersistence(
-            namespace: 'integration_demo',
-          ),
-          clipboardReader: () async =>
-              (await Clipboard.getData(Clipboard.kTextPlain))?.text,
-          clipboardWriter: (text) => Clipboard.setData(
-            ClipboardData(text: text),
-          ),
-          presentation: const MathWorkspacePresentation(
-            labels: MathWorkspaceLabels(
-              pageTitle: 'Studio Math',
-              addFormula: 'Add equation',
-              view2D: 'Graphs',
-              view3D: 'Geometry',
-              removeFormulaTitle: 'Remove equation',
-              confirmRemoveFormula: 'Remove equation {index}?',
-              selectColorTitle: 'Choose color',
-              cancel: 'Cancel',
-              removeFormula: 'Remove',
-              removeFormulaTooltip: 'Remove equation',
-              hideFormula: 'Hide equation',
-              showFormula: 'Show equation',
-              plotFormula: 'Plot',
-              fit2DCanvas: 'Fit graph',
-              zoomIn: 'Zoom in',
-              zoomOut: 'Zoom out',
-              formulaLabel: 'Equation {index}',
-              formulaColorLabel: 'Equation color {index}',
-              translate: _englishWorkspaceLabel,
-            ),
-            density: MathWorkspaceDensity.compact,
-            responsiveBreakpoint: 720,
-          ),
-          appBarBuilder: (context, defaultAppBar) => AppBar(
-            title: const Text('Acme • Studio Math'),
-            actions: [
-              IconButton(
-                tooltip: 'Zoom in',
-                onPressed: _controller.zoomIn,
-                icon: const Icon(Icons.zoom_in),
-              ),
-              IconButton(
-                tooltip: 'Reset view',
-                onPressed: _controller.resetView,
-                icon: const Icon(Icons.restart_alt),
-              ),
-            ],
-          ),
-          canvas2DOverlayBuilder: (context, defaultOverlay, actions) => Stack(
-            children: [
-              defaultOverlay,
-              Positioned(
-                left: 12,
-                top: 12,
-                child: FilledButton.tonal(
-                  onPressed: actions.fit2DCanvas,
-                  child: const Text('Fit'),
-                ),
-              ),
-            ],
-          ),
+    initialExpression: 'x^2',
+    controller: _controller,
+    options: MathWorkspaceOptions(
+      persistence: const MathWorkspacePersistence(
+        namespace: 'integration_demo',
+      ),
+      clipboardReader: () async =>
+          (await Clipboard.getData(Clipboard.kTextPlain))?.text,
+      clipboardWriter: (text) => Clipboard.setData(ClipboardData(text: text)),
+      presentation: const MathWorkspacePresentation(
+        labels: MathWorkspaceLabels(
+          pageTitle: 'Studio Math',
+          addFormula: 'Add equation',
+          view2D: 'Graphs',
+          view3D: 'Geometry',
+          removeFormulaTitle: 'Remove equation',
+          confirmRemoveFormula: 'Remove equation {index}?',
+          selectColorTitle: 'Choose color',
+          cancel: 'Cancel',
+          removeFormula: 'Remove',
+          removeFormulaTooltip: 'Remove equation',
+          hideFormula: 'Hide equation',
+          showFormula: 'Show equation',
+          plotFormula: 'Plot',
+          fit2DCanvas: 'Fit graph',
+          zoomIn: 'Zoom in',
+          zoomOut: 'Zoom out',
+          formulaLabel: 'Equation {index}',
+          formulaColorLabel: 'Equation color {index}',
+          translate: _englishWorkspaceLabel,
         ),
-      );
+        density: MathWorkspaceDensity.compact,
+        responsiveBreakpoint: 720,
+      ),
+      appBarBuilder: (context, defaultAppBar) => AppBar(
+        title: const Text('Acme • Studio Math'),
+        actions: [
+          IconButton(
+            tooltip: 'Zoom in',
+            onPressed: _controller.zoomIn,
+            icon: const Icon(Icons.zoom_in),
+          ),
+          IconButton(
+            tooltip: 'Reset view',
+            onPressed: _controller.resetView,
+            icon: const Icon(Icons.restart_alt),
+          ),
+        ],
+      ),
+      canvas2DOverlayBuilder: (context, defaultOverlay, actions) => Stack(
+        children: [
+          defaultOverlay,
+          Positioned(
+            left: 12,
+            top: 12,
+            child: FilledButton.tonal(
+              onPressed: actions.fit2DCanvas,
+              child: const Text('Fit'),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 // Translate additional package-owned canvas and toolbar strings as needed.
 // Unmapped text intentionally remains the package's source-language label.
-String _englishWorkspaceLabel(String source) => const {
+String _englishWorkspaceLabel(String source) =>
+    const {
       '3D 视图设置': '3D view settings',
       'xOy 平面': 'xOy plane',
       '侧视 yOz': 'Side view yOz',
@@ -231,7 +228,8 @@ String _englishWorkspaceLabel(String source) => const {
       '移动': 'Move',
       '拖动点移动对象；点击已选点切换平面/高度移动；空白处拖动旋转视图':
           'Drag points to move objects; drag empty space to orbit',
-    }[source] ?? source;
+    }[source] ??
+    source;
 
 class _CapabilitiesCard extends StatelessWidget {
   const _CapabilitiesCard();
@@ -245,11 +243,15 @@ class _CapabilitiesCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Runtime capabilities',
-                style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              'Runtime capabilities',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: 8),
             Text('MathLive editor: ${capabilities.mathLiveEditor}'),
-            Text('Source editor fallback: ${capabilities.sourceEditorFallback}'),
+            Text(
+              'Source editor fallback: ${capabilities.sourceEditorFallback}',
+            ),
             Text(
               'Separate JSXGraph WebView needs network: '
               '${capabilities.mathCanvasWebViewRequiresNetwork}',
