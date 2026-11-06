@@ -23,7 +23,10 @@ class MathParameterControls extends StatelessWidget {
   });
 
   Future<void> _configure(
-      BuildContext context, String name, MathParameter parameter) async {
+    BuildContext context,
+    String name,
+    MathParameter parameter,
+  ) async {
     final result = await showDialog<MathParameter>(
       context: context,
       builder: (dialogContext) {
@@ -51,30 +54,33 @@ class MathParameterControls extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(children: [
-                  Expanded(
-                    child: TextButton(
-                      style: TextButton.styleFrom(
-                        alignment: Alignment.centerLeft,
-                        minimumSize: const Size(44, 44),
-                      ),
-                      onPressed: () =>
-                          _configure(context, entry.key, entry.value),
-                      child: Text(
-                        '${entry.key} = ${entry.value.formatValue()}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        style: TextButton.styleFrom(
+                          alignment: Alignment.centerLeft,
+                          minimumSize: const Size(44, 44),
+                        ),
+                        onPressed: () =>
+                            _configure(context, entry.key, entry.value),
+                        child: Text(
+                          '${entry.key} = ${entry.value.formatValue()}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ),
-                  ),
-                  IconButton(
-                    tooltip: labelResolver?.call('设置参数 ${entry.key}') ??
-                        '设置参数 ${entry.key}',
-                    icon: const Icon(Icons.tune, size: 20),
-                    onPressed: () =>
-                        _configure(context, entry.key, entry.value),
-                  ),
-                ]),
+                    IconButton(
+                      tooltip:
+                          labelResolver?.call('设置参数 ${entry.key}') ??
+                          '设置参数 ${entry.key}',
+                      icon: const Icon(Icons.tune, size: 20),
+                      onPressed: () =>
+                          _configure(context, entry.key, entry.value),
+                    ),
+                  ],
+                ),
                 _ParameterSlider(
                   key: ValueKey(entry.key),
                   name: entry.key,
@@ -167,10 +173,12 @@ class _ParameterSliderState extends State<_ParameterSlider> {
       value: _announce(parameter.value),
       increasedValue: increased > parameter.value ? _announce(increased) : null,
       decreasedValue: decreased < parameter.value ? _announce(decreased) : null,
-      onIncrease:
-          increased > parameter.value ? () => _changeValue(increased) : null,
-      onDecrease:
-          decreased < parameter.value ? () => _changeValue(decreased) : null,
+      onIncrease: increased > parameter.value
+          ? () => _changeValue(increased)
+          : null,
+      onDecrease: decreased < parameter.value
+          ? () => _changeValue(decreased)
+          : null,
       onFocus: _focusNode.requestFocus,
       child: Slider(
         focusNode: _focusNode,
@@ -280,7 +288,8 @@ class _ParameterDialogState extends State<_ParameterDialog> {
 
     final numericSyntax = source.replaceAll(RegExp(r'\s+'), '');
     final token = RegExp(
-        r'(?:sqrt|abs|(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|[+\-*/%^()])');
+      r'(?:sqrt|abs|(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|[+\-*/%^()])',
+    );
     var offset = 0;
     for (final match in token.allMatches(numericSyntax)) {
       if (match.start != offset) return null;
@@ -327,10 +336,12 @@ class _ParameterDialogState extends State<_ParameterDialog> {
       return TextSelection.collapsed(offset: value.text.length);
     }
     return TextSelection(
-      baseOffset:
-          value.selection.baseOffset.clamp(0, value.text.length).toInt(),
-      extentOffset:
-          value.selection.extentOffset.clamp(0, value.text.length).toInt(),
+      baseOffset: value.selection.baseOffset
+          .clamp(0, value.text.length)
+          .toInt(),
+      extentOffset: value.selection.extentOffset
+          .clamp(0, value.text.length)
+          .toInt(),
     );
   }
 
@@ -374,71 +385,73 @@ class _ParameterDialogState extends State<_ParameterDialog> {
     final offset = selection.isCollapsed
         ? selection.extentOffset + direction
         : direction < 0
-            ? selection.start
-            : selection.end;
+        ? selection.start
+        : selection.end;
     controller.selection = TextSelection.collapsed(
       offset: offset.clamp(0, value.text.length).toInt(),
     );
   }
 
   Widget _field(String key, String label, {bool last = false}) => Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: TextFormField(
-          controller: _controllers[key],
-          keyboardType: const TextInputType.numberWithOptions(
-              decimal: true, signed: true),
-          textInputAction: last ? TextInputAction.done : TextInputAction.next,
-          onFieldSubmitted: last ? (_) => _apply() : null,
-          decoration: InputDecoration(
-            labelText: _label(label),
-            error: _errors[key] == null
-                ? null
-                : widget.errorBuilder?.call(context, _label(_errors[key]!)) ??
-                    Text(
-                      _label(_errors[key]!),
-                      style: TextStyle(color: Theme.of(context).colorScheme.error),
+    padding: const EdgeInsets.only(bottom: 12),
+    child: TextFormField(
+      controller: _controllers[key],
+      keyboardType: const TextInputType.numberWithOptions(
+        decimal: true,
+        signed: true,
+      ),
+      textInputAction: last ? TextInputAction.done : TextInputAction.next,
+      onFieldSubmitted: last ? (_) => _apply() : null,
+      decoration: InputDecoration(
+        labelText: _label(label),
+        error: _errors[key] == null
+            ? null
+            : widget.errorBuilder?.call(context, _label(_errors[key]!)) ??
+                  Text(
+                    _label(_errors[key]!),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
                     ),
-            errorMaxLines: 2,
-            border: const OutlineInputBorder(),
-            suffixIcon: IconButton(
-              tooltip: _label('使用数学键盘'),
-              icon: const Icon(Icons.calculate_outlined),
-              onPressed: () => _openMathKeyboard(key),
-            ),
-          ),
+                  ),
+        errorMaxLines: 2,
+        border: const OutlineInputBorder(),
+        suffixIcon: IconButton(
+          tooltip: _label('使用数学键盘'),
+          icon: const Icon(Icons.calculate_outlined),
+          onPressed: () => _openMathKeyboard(key),
         ),
-      );
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        scrollable: true,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        title: Text('${_label('设置参数')} ${widget.name}'),
-        content: SizedBox(
-          width: 320,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _field('value', '数值'),
-              _field('min', '最小值'),
-              _field('max', '最大值'),
-              _field('step', '步长', last: true),
-              Text(
-                _label(
-                  '滑块从最小值按步长递增；最大值不在步长刻度上时，最大值仍可作为最后一个较短步长到达。数值可直接输入。',
-                ),
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ],
+    scrollable: true,
+    insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+    title: Text('${_label('设置参数')} ${widget.name}'),
+    content: SizedBox(
+      width: 320,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _field('value', '数值'),
+          _field('min', '最小值'),
+          _field('max', '最大值'),
+          _field('step', '步长', last: true),
+          Text(
+            _label('滑块从最小值按步长递增；最大值不在步长刻度上时，最大值仍可作为最后一个较短步长到达。数值可直接输入。'),
+            style: Theme.of(context).textTheme.bodySmall,
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(_label('取消')),
-          ),
-          FilledButton(onPressed: _apply, child: Text(_label('应用'))),
         ],
-      );
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: Text(_label('取消')),
+      ),
+      FilledButton(onPressed: _apply, child: Text(_label('应用'))),
+    ],
+  );
 }

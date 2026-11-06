@@ -153,61 +153,61 @@ class _MathKeyboardState extends State<MathKeyboard> {
       builder: (dialogContext) => _dialog(
         dialogContext,
         StatefulBuilder(
-        builder: (context, setDialogState) {
-          final cs = Theme.of(context).colorScheme;
-          return AlertDialog(
-            title: Text(_label('选择符号分类')),
-            content: SizedBox(
-              width: 320,
-              height: 420,
-              child: ReorderableListView.builder(
-                itemCount: _categoryOrder.length,
-                buildDefaultDragHandles: false,
-                onReorderItem: (oldIndex, newIndex) =>
-                    _reorderCategories(oldIndex, newIndex, setDialogState),
-                itemBuilder: (context, index) {
-                  final category = _categoryOrder[index];
-                  return ListTile(
-                    key: ValueKey('category-row-$category'),
-                    selected: category == _category,
-                    selectedTileColor: cs.secondaryContainer,
-                    title: Text(_label(category)),
-                    subtitle: Text(
-                      _label(_categoryDescriptions[category]!),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    onTap: () {
-                      _selectCategory(category);
-                      Navigator.of(dialogContext).pop();
-                    },
-                    trailing: ReorderableDragStartListener(
-                      key: ValueKey('category-order-handle-$category'),
-                      index: index,
-                      child: const Icon(Icons.drag_handle),
-                    ),
-                  );
-                },
+          builder: (context, setDialogState) {
+            final cs = Theme.of(context).colorScheme;
+            return AlertDialog(
+              title: Text(_label('选择符号分类')),
+              content: SizedBox(
+                width: 320,
+                height: 420,
+                child: ReorderableListView.builder(
+                  itemCount: _categoryOrder.length,
+                  buildDefaultDragHandles: false,
+                  onReorderItem: (oldIndex, newIndex) =>
+                      _reorderCategories(oldIndex, newIndex, setDialogState),
+                  itemBuilder: (context, index) {
+                    final category = _categoryOrder[index];
+                    return ListTile(
+                      key: ValueKey('category-row-$category'),
+                      selected: category == _category,
+                      selectedTileColor: cs.secondaryContainer,
+                      title: Text(_label(category)),
+                      subtitle: Text(
+                        _label(_categoryDescriptions[category]!),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      onTap: () {
+                        _selectCategory(category);
+                        Navigator.of(dialogContext).pop();
+                      },
+                      trailing: ReorderableDragStartListener(
+                        key: ValueKey('category-order-handle-$category'),
+                        index: index,
+                        child: const Icon(Icons.drag_handle),
+                      ),
+                    );
+                  },
+                ),
               ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  final defaults = List<String>.of(_defaultCategoryOrder);
-                  setState(() => _categoryOrder = defaults);
-                  setDialogState(() {});
-                  _ensureCategoryVisible(_category);
-                  unawaited(_saveCategoryOrder());
-                },
-                child: Text(_label('恢复默认')),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                child: Text(_label('完成')),
-              ),
-            ],
-          );
-        },
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    final defaults = List<String>.of(_defaultCategoryOrder);
+                    setState(() => _categoryOrder = defaults);
+                    setDialogState(() {});
+                    _ensureCategoryVisible(_category);
+                    unawaited(_saveCategoryOrder());
+                  },
+                  child: Text(_label('恢复默认')),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: Text(_label('完成')),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -659,9 +659,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
     onTap: widget.enabled ? _toggleShift : null,
     child: Tooltip(
       excludeFromSemantics: true,
-      message: _label(
-        _shifted ? 'Shift：大写已开启，切换小写' : 'Shift：小写，切换大写',
-      ),
+      message: _label(_shifted ? 'Shift：大写已开启，切换小写' : 'Shift：小写，切换大写'),
       child: SizedBox(
         height: 44,
         child: FilledButton.tonal(

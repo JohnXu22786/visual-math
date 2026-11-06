@@ -171,9 +171,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
         await action();
       } catch (_) {
         if (mounted) {
-          setState(
-            () => _failure = _label('公式编辑器加载失败，可切换到源码继续编辑。'),
-          );
+          setState(() => _failure = _label('公式编辑器加载失败，可切换到源码继续编辑。'));
         }
         widget.onReadyChanged?.call();
       }
@@ -593,13 +591,15 @@ class MathFormulaFieldState extends State<MathFormulaField>
               mathematicalMode ? Icons.keyboard : Icons.calculate_outlined,
               size: 20,
             ),
-            tooltip: _label(usesFallback
-                ? mathematicalMode
-                      ? '切换到 LaTeX 源码输入'
-                      : '切换到数学键盘（内置公式预览）'
-                : mathematicalMode
-                ? '切换到系统键盘 / LaTeX 源码'
-                : '切换到数学键盘'),
+            tooltip: _label(
+              usesFallback
+                  ? mathematicalMode
+                        ? '切换到 LaTeX 源码输入'
+                        : '切换到数学键盘（内置公式预览）'
+                  : mathematicalMode
+                  ? '切换到系统键盘 / LaTeX 源码'
+                  : '切换到数学键盘',
+            ),
             onPressed: _toggle,
             constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
           );
@@ -712,7 +712,8 @@ class MathFormulaFieldState extends State<MathFormulaField>
                                         )
                                       : Padding(
                                           padding: const EdgeInsets.all(4),
-                                          child: widget.errorBuilder?.call(
+                                          child:
+                                              widget.errorBuilder?.call(
                                                 context,
                                                 _failure!,
                                               ) ??
@@ -723,6 +724,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
                                                   color: cs.error,
                                                 ),
                                               ),
+                                        ),
                                 ),
                               if (_hasUnsupportedSyntax)
                                 Positioned.fill(
@@ -734,7 +736,8 @@ class MathFormulaFieldState extends State<MathFormulaField>
                                         horizontal: 6,
                                         vertical: 4,
                                       ),
-                                      child: widget.errorBuilder?.call(
+                                      child:
+                                          widget.errorBuilder?.call(
                                             context,
                                             _label('暂不支持此语法，请切换源码'),
                                           ) ??

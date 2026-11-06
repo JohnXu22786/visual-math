@@ -531,9 +531,17 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         SimpleDialog(
           title: Text(_label('视图方向')),
           children: [
-            _viewDirectionOption(dialogContext, _ViewAction.standardView, '标准视图'),
+            _viewDirectionOption(
+              dialogContext,
+              _ViewAction.standardView,
+              '标准视图',
+            ),
             _viewDirectionOption(dialogContext, _ViewAction.topView, '俯视 xOy'),
-            _viewDirectionOption(dialogContext, _ViewAction.frontView, '正视 xOz'),
+            _viewDirectionOption(
+              dialogContext,
+              _ViewAction.frontView,
+              '正视 xOz',
+            ),
             _viewDirectionOption(dialogContext, _ViewAction.sideView, '侧视 yOz'),
           ],
         ),
@@ -1900,7 +1908,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         final volume = _objectVolume(_objects[index]);
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           SnackBar(
-          content: _error(
+            content: _error(
               volume == null
                   ? '该对象不是封闭立体，无法测量体积'
                   : '${_objects[index].label ?? '对象'} · 体积 ${volume.toStringAsFixed(3)}',
@@ -1917,11 +1925,8 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           final points = _createIntersectionPoints(first, _objects[index]);
           _pointIntersectionSourceIndex = null;
           if (points.isEmpty) {
-            ScaffoldMessenger.maybeOf(
-              context,
-            )?.showSnackBar(
-              SnackBar(content: _error('这两个对象没有可显示的离散交点')),
-            );
+            ScaffoldMessenger.maybeOf(context)
+                ?.showSnackBar(SnackBar(content: _error('这两个对象没有可显示的离散交点')));
           } else {
             for (final point in points) {
               _appendCreatedObject(Object3D.point(point, color: 0xFFD81B60));
@@ -2038,11 +2043,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       final canSelectLine = isPolarDiameter && source.type == Object3DType.line;
       if (!canSelectPoint && !canSelectLine) {
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-          SnackBar(
-            content: _error(
-              isPolarDiameter ? '请先选择一个点或直线' : '请先选择一个点',
-            ),
-          ),
+          SnackBar(content: _error(isPolarDiameter ? '请先选择一个点或直线' : '请先选择一个点')),
         );
       } else {
         _conicSourceIndex = index;
@@ -4420,8 +4421,8 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   }
 
   bool _interactionAllowed(PointerDeviceKind kind) => switch (kind) {
-    PointerDeviceKind.mouse || PointerDeviceKind.trackpad =>
-      widget.allowMouseGestures,
+    PointerDeviceKind.mouse ||
+    PointerDeviceKind.trackpad => widget.allowMouseGestures,
     PointerDeviceKind.touch ||
     PointerDeviceKind.stylus ||
     PointerDeviceKind.invertedStylus => widget.allowTouchGestures,
@@ -4905,23 +4906,23 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       builder: (dialogContext) => _dialog(
         dialogContext,
         AlertDialog(
-        title: Text(_label('添加文本')),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: InputDecoration(hintText: _label('输入要显示的内容')),
-          onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: Text(_label('取消')),
+          title: Text(_label('添加文本')),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: InputDecoration(hintText: _label('输入要显示的内容')),
+            onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
           ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
-            child: Text(_label('添加')),
-          ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(_label('取消')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+              child: Text(_label('添加')),
+            ),
+          ],
         ),
       ),
     );
@@ -5100,8 +5101,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
             : <PointerDeviceKind>{
                 if (widget.allowTouchGestures) PointerDeviceKind.touch,
                 if (widget.allowTouchGestures) PointerDeviceKind.stylus,
-                if (widget.allowTouchGestures)
-                  PointerDeviceKind.invertedStylus,
+                if (widget.allowTouchGestures) PointerDeviceKind.invertedStylus,
                 if (widget.allowMouseGestures) PointerDeviceKind.mouse,
                 if (widget.allowMouseGestures) PointerDeviceKind.trackpad,
               };
@@ -5367,69 +5367,69 @@ class _SolidStyleControlsState extends State<_SolidStyleControls> {
       builder: (dialogContext) => _dialog(
         dialogContext,
         AlertDialog(
-        title: Text(_label('选择颜色')),
-        content: Wrap(
-          spacing: MathUiTokens.canvasInset,
-          runSpacing: MathUiTokens.canvasInset,
-          children: [
-            for (var index = 0; index < formulaPalette.length; index++)
-              Builder(
-                builder: (context) {
-                  final color = formulaPalette[index];
-                  final selected = widget.object.color == color.toARGB32();
-                  return Semantics(
-                    button: true,
-                    selected: selected,
-                    label: _label('物体颜色 ${index + 1}'),
-                    child: SizedBox.square(
-                      dimension: MathUiTokens.swatchTapTarget,
-                      child: InkWell(
-                        key: ValueKey('solid-color-$index'),
-                        customBorder: const CircleBorder(),
-                        onTap: () {
-                          widget.onColorChanged(color.toARGB32());
-                          Navigator.pop(dialogContext);
-                        },
-                        child: Center(
-                          child: Container(
-                            width: 32,
-                            height: 32,
-                            decoration: BoxDecoration(
-                              color: color,
-                              shape: BoxShape.circle,
-                              border: selected
-                                  ? Border.all(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .primary,
-                                      width: 3,
+          title: Text(_label('选择颜色')),
+          content: Wrap(
+            spacing: MathUiTokens.canvasInset,
+            runSpacing: MathUiTokens.canvasInset,
+            children: [
+              for (var index = 0; index < formulaPalette.length; index++)
+                Builder(
+                  builder: (context) {
+                    final color = formulaPalette[index];
+                    final selected = widget.object.color == color.toARGB32();
+                    return Semantics(
+                      button: true,
+                      selected: selected,
+                      label: _label('物体颜色 ${index + 1}'),
+                      child: SizedBox.square(
+                        dimension: MathUiTokens.swatchTapTarget,
+                        child: InkWell(
+                          key: ValueKey('solid-color-$index'),
+                          customBorder: const CircleBorder(),
+                          onTap: () {
+                            widget.onColorChanged(color.toARGB32());
+                            Navigator.pop(dialogContext);
+                          },
+                          child: Center(
+                            child: Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: color,
+                                shape: BoxShape.circle,
+                                border: selected
+                                    ? Border.all(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .primary,
+                                        width: 3,
+                                      )
+                                    : null,
+                              ),
+                              child: selected
+                                  ? Icon(
+                                      Icons.check,
+                                      color: color.computeLuminance() > 0.5
+                                          ? Colors.black
+                                          : Colors.white,
+                                      size: 20,
                                     )
                                   : null,
                             ),
-                            child: selected
-                                ? Icon(
-                                    Icons.check,
-                                    color: color.computeLuminance() > 0.5
-                                        ? Colors.black
-                                        : Colors.white,
-                                    size: 20,
-                                  )
-                                : null,
                           ),
                         ),
                       ),
-                    ),
-                  );
-                },
-              ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text(_label('取消')),
+                    );
+                  },
+                ),
+            ],
           ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(_label('取消')),
+            ),
+          ],
         ),
       ),
     );
@@ -5452,7 +5452,7 @@ class _SolidStyleControlsState extends State<_SolidStyleControls> {
               children: [
                 Expanded(
                   child: Text(
-                    widget.object.label ?? '立体图形',
+                    widget.object.label ?? _label('立体图形'),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.labelLarge,

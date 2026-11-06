@@ -117,7 +117,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('presentation labels preserve selector semantics', (tester) async {
+  testWidgets('presentation labels preserve selector semantics', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         home: MathDrawingPage(
@@ -129,9 +131,8 @@ void main() {
                 view2D: 'Plane',
                 view3D: 'Space',
                 plotFormula: 'Plot expression',
-                translate: (source) => source == '选择与剪贴板'
-                    ? 'Clipboard actions'
-                    : source,
+                translate: (source) =>
+                    source == '选择与剪贴板' ? 'Clipboard actions' : source,
               ),
             ),
           ),
@@ -186,25 +187,33 @@ void main() {
     await tester.pump();
 
     expect(
-      tester.widget<Padding>(find.ancestor(
-        of: find.byType(MathCanvas),
-        matching: find.byWidgetPredicate(
-          (widget) => widget is Padding && widget.padding == inset,
-        ),
-      ).first).padding,
+      tester
+          .widget<Padding>(
+            find
+                .ancestor(
+                  of: find.byType(MathCanvas),
+                  matching: find.byWidgetPredicate(
+                    (widget) => widget is Padding && widget.padding == inset,
+                  ),
+                )
+                .first,
+          )
+          .padding,
       inset,
     );
     final canvas = tester.widget<MathCanvas>(find.byType(MathCanvas));
     expect(canvas.allowTouchGestures, isFalse);
     expect(canvas.allowMouseGestures, isTrue);
     expect(
-      tester.widgetList<Positioned>(find.byType(Positioned)).any(
-        (control) => control.left == 10 && control.right == null,
-      ),
+      tester
+          .widgetList<Positioned>(find.byType(Positioned))
+          .any((control) => control.left == 10 && control.right == null),
       isTrue,
     );
-    expect(Theme.of(tester.element(find.byType(MathCanvas))).colorScheme.primary,
-        ColorScheme.fromSeed(seedColor: Colors.purple).primary);
+    expect(
+      Theme.of(tester.element(find.byType(MathCanvas))).colorScheme.primary,
+      ColorScheme.fromSeed(seedColor: Colors.purple).primary,
+    );
   });
 
   testWidgets('responsive threshold and error surface are host configurable', (

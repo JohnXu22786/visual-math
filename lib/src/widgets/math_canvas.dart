@@ -560,8 +560,7 @@ class MathCanvasState extends State<MathCanvas> {
             : <PointerDeviceKind>{
                 if (widget.allowTouchGestures) PointerDeviceKind.touch,
                 if (widget.allowTouchGestures) PointerDeviceKind.stylus,
-                if (widget.allowTouchGestures)
-                  PointerDeviceKind.invertedStylus,
+                if (widget.allowTouchGestures) PointerDeviceKind.invertedStylus,
                 if (widget.allowMouseGestures) PointerDeviceKind.mouse,
                 if (widget.allowMouseGestures) PointerDeviceKind.trackpad,
               };

@@ -68,7 +68,8 @@ class MathWorkspaceLabels {
       resolve(pattern.replaceAll('{index}', '$index'));
 
   /// Translates a package default label when a host translation callback exists.
-  String resolve(String sourceText) => translate?.call(sourceText) ?? sourceText;
+  String resolve(String sourceText) =>
+      translate?.call(sourceText) ?? sourceText;
 }
 
 /// Density choices for the package-owned workspace layout.
@@ -95,6 +96,7 @@ class MathWorkspaceInteractionPolicy {
 class MathWorkspacePresentation {
   final MathWorkspaceLabels labels;
   final MathWorkspaceDensity density;
+
   /// Optional inset applied to both canvases. Omission preserves each view's
   /// historical spacing.
   final EdgeInsets? canvasInset;

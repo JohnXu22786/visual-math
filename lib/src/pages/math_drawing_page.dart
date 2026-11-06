@@ -983,7 +983,8 @@ class _MathDrawingPageState extends State<MathDrawingPage>
             (constraints.maxHeight - (hasViewSelector ? 48 : 0))
                 .clamp(0.0, double.infinity)
                 .toDouble();
-        final formulaListBaseHeight = availableHeight *
+        final formulaListBaseHeight =
+            availableHeight *
             (_keyboardVisible
                 ? (compact ? 0.24 : 0.28)
                 : (compact ? 0.32 : 0.4));
@@ -1092,10 +1093,10 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       supportsStructuralNavigation:
           editor?.supportsStructuralNavigation ?? false,
       supportsStructuredEditing: editor?.supportsStructuredEditing ?? false,
-        activeLabel: widget.options.presentation.labels.withIndex(
-          widget.options.presentation.labels.formulaLabel,
-          _formulas.indexOf(_activeFormula!) + 1,
-        ),
+      activeLabel: widget.options.presentation.labels.withIndex(
+        widget.options.presentation.labels.formulaLabel,
+        _formulas.indexOf(_activeFormula!) + 1,
+      ),
       location: widget.options.presentation.labels.resolve(
         editor?.location ?? '公式',
       ),
@@ -1243,12 +1244,9 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                           name: _parameters[name]!,
                       },
                       onChanged: _updateParameter,
-                      labelResolver:
-                          widget.options.presentation.labels.resolve,
-                      dialogBuilder:
-                          widget.options.presentation.buildDialog,
-                      errorBuilder:
-                          widget.options.presentation.errorBuilder,
+                      labelResolver: widget.options.presentation.labels.resolve,
+                      dialogBuilder: widget.options.presentation.buildDialog,
+                      errorBuilder: widget.options.presentation.errorBuilder,
                     )
                   : const SizedBox.shrink(),
             ),
@@ -1493,11 +1491,13 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         widget.options.show2DCanvasActions ||
             widget.options.canvas2DActionsBuilder != null
         ? Positioned(
-            left: widget.options.presentation.controlPlacement ==
+            left:
+                widget.options.presentation.controlPlacement ==
                     MathWorkspaceControlPlacement.bottomStart
                 ? widget.options.presentation.controlInset.left
                 : null,
-            right: widget.options.presentation.controlPlacement ==
+            right:
+                widget.options.presentation.controlPlacement ==
                     MathWorkspaceControlPlacement.bottomEnd
                 ? widget.options.presentation.controlInset.right
                 : null,
@@ -1585,7 +1585,8 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         child: IconButton(
           icon: Icon(
             icon,
-            size: widget.options.presentation.density ==
+            size:
+                widget.options.presentation.density ==
                     MathWorkspaceDensity.compact
                 ? 19
                 : 21,
@@ -1593,7 +1594,8 @@ class _MathDrawingPageState extends State<MathDrawingPage>
           tooltip: tooltip,
           onPressed: onPressed,
           style: IconButton.styleFrom(
-            fixedSize: widget.options.presentation.density ==
+            fixedSize:
+                widget.options.presentation.density ==
                     MathWorkspaceDensity.compact
                 ? const Size(36, 36)
                 : const Size(40, 40),
@@ -1620,8 +1622,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                 ? Math3DToolbar(
                     activeTool: _current3DTool,
                     polygonSides: _polygonSides,
-                    labelResolver:
-                        widget.options.presentation.labels.resolve,
+                    labelResolver: widget.options.presentation.labels.resolve,
                     onPolygonSidesChanged: (sides) =>
                         setState(() => _polygonSides = sides),
                     instruction: _current3DTool != ConstructionTool.move
@@ -1669,10 +1670,8 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                             .allowMouseGestures,
                         labelResolver:
                             widget.options.presentation.labels.resolve,
-                        dialogBuilder:
-                            widget.options.presentation.buildDialog,
-                        errorBuilder:
-                            widget.options.presentation.errorBuilder,
+                        dialogBuilder: widget.options.presentation.buildDialog,
+                        errorBuilder: widget.options.presentation.errorBuilder,
                         onViewportChange: _publish3DChange,
                         onSceneChanged: _publish3DChange,
                         onObjectCreated: (obj) {
