@@ -48,20 +48,27 @@ class VisualMathApp extends StatelessWidget {
 }
 ```
 
-Keep a controller in host state to integrate commands and lifecycle events:
+Keep a controller in host state to integrate commands and lifecycle events.
+The page attaches the controller when mounted; commands are safe to call from
+host callbacks after that point, and the snapshot remains null before attach:
 
 ```dart
-final drawingController = MathDrawingController();
-drawingController.onPlotted = (snapshot) => saveDraft(snapshot);
+class GraphHostState extends State<GraphHost> {
+  late final drawingController = MathDrawingController()
+    ..onPlotted = (snapshot) => debugPrint('Plotted ${snapshot.formulas.length}');
 
-MathDrawingPage(controller: drawingController);
+  @override
+  Widget build(BuildContext context) =>
+      MathDrawingPage(controller: drawingController);
 
-// The controller can also set formulas, view, tool, camera, and viewport.
-drawingController.setViewport2D(
-  const Viewport(xMin: -5, yMin: -4, xMax: 5, yMax: 4),
-);
-final snapshot = drawingController.snapshot;
+  void zoomInFromHostButton() => drawingController.zoomIn();
+
+  MathDrawingSnapshot? get currentSnapshot => drawingController.snapshot;
+}
 ```
+
+The controller can set formulas, view, tool, camera, and viewport after the
+page is mounted. It detaches automatically when the page is disposed.
 
 ## Embed individual components
 
@@ -112,6 +119,130 @@ not include the formula editor or formula list. `MathFormulaField` requires a
 controller it creates. `MathDrawingPage` creates and disposes its own editing
 controllers and other private resources. Do not dispose controllers managed
 by a package widget.
+
+### Standalone 2D or 3D
+
+The focused canvases are independent Flutter widgets. They include canvas
+interaction, but no formula field, formula list, workspace tabs, or formula
+keyboard. Supply your own surrounding UI when you need those pieces:
+
+```dart
+Scaffold(
+  appBar: AppBar(title: const Text('Graph only')),
+  body: const MathCanvas(initialExpression: 'sin(x)'),
+)
+```
+
+For a 3D-only screen, use `MathCanvas3D()` in the same way. Its canvas
+supports the package's built-in pointer interactions; add `Math3DToolbar` or
+your own controls when the user needs construction tools. The two examples are
+also runnable from the repository's `example/` app.
+
+### Customize the complete workspace
+
+`MathWorkspaceOptions` keeps every existing region enabled by default. It can
+also restrict a page to one view, hide package-owned controls, or wrap/replace
+individual regions. `MathWorkspacePresentation.labels` changes the built-in
+workspace labels. Its optional `translate` callback also receives strings from
+canvas and keyboard controls; return the host-language version for labels your
+app uses and return the source string for any untranslated label. Flutter
+`Theme` controls colors and typography. The app bar can be replaced while
+remaining connected to host-owned commands:
+
+```dart
+final controller = MathDrawingController();
+
+MathDrawingPage(
+  controller: controller,
+  options: MathWorkspaceOptions(
+    persistence: const MathWorkspacePersistence(
+      namespace: 'my_graph_screen',
+    ),
+    presentation: MathWorkspacePresentation(
+      labels: MathWorkspaceLabels(
+        pageTitle: 'Studio Math',
+        addFormula: 'Add equation',
+        view2D: 'Graphs',
+        view3D: 'Geometry',
+        plotFormula: 'Plot',
+        translate: (source) => switch (source) {
+          '标准视图' => 'Standard view',
+          '平行投影' => 'Parallel projection',
+          '透视投影' => 'Perspective projection',
+          _ => source,
+        },
+      ),
+      density: MathWorkspaceDensity.compact,
+    ),
+    appBarBuilder: (context, defaultAppBar) => AppBar(
+      title: const Text('Acme • Studio Math'),
+      actions: [
+        IconButton(
+          tooltip: 'Zoom in',
+          onPressed: controller.zoomIn,
+          icon: const Icon(Icons.zoom_in),
+        ),
+      ],
+    ),
+  ),
+)
+```
+
+For a focused built-in workspace, use `MathWorkspaceOptions(show3D: false)`
+or `MathWorkspaceOptions(show2D: false, initialView: ViewMode.mode3D)`. At
+least one view must remain enabled, and `initialView` must name an enabled
+view. Region builders receive both the default region and
+`MathWorkspaceRegionActions`; return the default to retain it, wrap it, or
+replace it and call its actions from host controls.
+
+### Host state, preferences, and lifecycle
+
+Keep `MathDrawingController` in the host's `State` when its callbacks, commands,
+or snapshots must live across rebuilds. It attaches to one mounted page at a
+time, is detached when that page is disposed, and has no separate `dispose`
+method. Use `snapshot` after attachment or handle `onPlotted`, `onViewportChanged`,
+`onFormulaEdited`, and other callbacks to save host data. A version 1 snapshot
+is an immutable in-memory package model, not a promised JSON or cross-version
+storage format. Persist data in a host-defined format and map it to supported
+models when restoring. Call `restore` before attachment to queue a snapshot, or
+after attachment to apply it.
+
+By default, the complete workspace keeps its historical shared-preference
+keys. That preserves current input-mode and math-keyboard category-order
+behavior. For multiple embedded instances, set a stable distinct
+`MathWorkspacePersistence.namespace`; use `enabled: false` when the host owns
+preference persistence or wants a non-persistent session. This setting covers
+workspace input preferences, not formula/scene snapshots. Optional
+`clipboardReader` and `clipboardWriter` let the host provide clipboard access
+for keyboard paste/copy/cut commands; leaving them unset retains Flutter's
+clipboard behavior. They do not replace the editor's selection handling.
+
+### Migrate imperative `GlobalKey` integrations
+
+Existing code that controls a canvas through a key remains supported while the
+canvas is mounted. For example, `MathCanvasState.setViewport` and
+`MathCanvas3DState.setCamera` still work with the corresponding `GlobalKey`.
+For a complete `MathDrawingPage`, prefer the controller so host code can issue
+commands and observe a typed snapshot without reaching into a canvas state:
+
+```dart
+// Before: call the key only from a host callback while the canvas is mounted.
+final canvasKey = GlobalKey<MathCanvasState>();
+MathCanvas(key: canvasKey);
+void onLegacyZoomButtonPressed() => canvasKey.currentState?.zoomIn();
+
+// After: retain the controller in host state and pass it to the page.
+final controller = MathDrawingController();
+MathDrawingPage(controller: controller);
+void onZoomButtonPressed() => controller.zoomIn(); // after page attachment
+final MathDrawingSnapshot? snapshot = controller.snapshot; // null until attach
+```
+
+The controller only covers the complete workspace APIs it documents. Keep a
+canvas `GlobalKey` for focused canvas APIs not exposed by that controller, and
+check `currentState` because key operations are available only while mounted.
+Do not read or dispose private controllers owned by package widgets. Attach one
+`MathDrawingController` to only one live `MathDrawingPage` at a time.
 
 The focused widgets are composable pieces. For example, `MathKeyboard` and
 `Math3DToolbar` need the host to connect their callbacks to the active editor or
@@ -205,6 +336,10 @@ not depend on WebView.
 Hosts can query `MathWorkspaceCapabilities.current` for the current runtime's
 MathLive support, source editor fallback, and the network requirement of the
 separate JSXGraph WebView canvas. The primary Flutter canvases remain offline.
+This capability object describes the current Flutter runtime; it is not a
+statement that a host build succeeded or that editor interactions are identical
+across targets. Android, iOS, macOS, and Windows use the embedded MathLive
+editor when enabled. Web and Linux use source editing and preview instead.
 `MathWorkspaceOptions.persistence` controls whether input preferences are
 stored and accepts a stable namespace for independently embedded workspaces;
 the empty namespace preserves the historical keys. Set `enabled: false` for
