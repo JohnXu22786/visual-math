@@ -73,6 +73,29 @@ jobs:
       - name: Run package tests
         run: flutter test
 
+  example-test:
+    name: Test standalone example
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.8
+          cache: true
+          pub-cache: true
+      - name: Resolve example dependencies
+        working-directory: example
+        run: flutter pub get
+      - name: Run example widget tests when present
+        working-directory: example
+        shell: bash
+        run: |
+          if [ -d test ] && find test -type f -name '*_test.dart' -print -quit | grep -q .; then
+            flutter test
+          else
+            echo "No standalone example widget tests are defined yet."
+          fi
+
   mathlive-bridge-test:
     name: Test MathLive JavaScript bridge
     runs-on: ubuntu-latest
