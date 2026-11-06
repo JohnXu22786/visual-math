@@ -113,18 +113,51 @@ controller it creates. `MathDrawingPage` creates and disposes its own editing
 controllers and other private resources. Do not dispose controllers managed
 by a package widget.
 
-The focused widgets are composable pieces, not a separate configurable
-workspace API. For example, `MathKeyboard` and `Math3DToolbar` need the host to
-connect their callbacks to the active editor or canvas. `MathNumericKeyboard`
-is the smaller numeric-entry panel; its host supplies insertion, backspace,
-caret-movement, and dismiss callbacks. The complete page
-provides the package's integrated defaults, including its formula controls and
-canvas actions. Its current constructor supports initial values, but does not
-offer switches to hide individual panels or replace those controls.
+The focused widgets are composable pieces. For example, `MathKeyboard` and
+`Math3DToolbar` need the host to connect their callbacks to the active editor or
+canvas. `MathNumericKeyboard` is the smaller numeric-entry panel; its host
+supplies insertion, backspace, caret-movement, and dismiss callbacks. The
+complete page provides integrated defaults and also accepts
+`MathWorkspaceOptions` to choose views, hide regions, and wrap or replace them.
+
+```dart
+MathDrawingPage(
+  options: MathWorkspaceOptions(
+    show2D: true,
+    show3D: false,
+    initialView: ViewMode.mode2D,
+    showScaffold: false,
+    showAppBar: false,
+    showFormulaEditor: false,
+    canvas2DOverlayBuilder: (context, defaultOverlay, actions) => Stack(
+      children: [
+        defaultOverlay,
+        Positioned(
+          left: 12,
+          top: 12,
+          child: TextButton(
+            onPressed: actions.zoomIn2DCanvas,
+            child: const Text('Zoom in'),
+          ),
+        ),
+      ],
+    ),
+  ),
+)
+```
+
+Both views, the 2D initial view, the formula editor, parameter controls,
+keyboard, 3D tools, 2D canvas actions, Scaffold, and AppBar are enabled by
+default. A region builder receives the default widget so an app can keep it,
+wrap it, or return a replacement. Builders also receive `MathWorkspaceRegionActions`
+with page-connected view, formula, parameter, keyboard, tool, and canvas
+operations. With `showScaffold: false`, the workspace returns its body for
+placement inside a host-owned page.
 
 The public `MathDrawingPage` inputs are `initialExpression` (empty by default),
 `initialShowWebView` (true by default), optional `initialMathematicalMode`, and
-an optional `MathDrawingController`.
+an optional `MathDrawingController` and `options` (a default
+`MathWorkspaceOptions` instance).
 Setting `initialShowWebView` to false uses the source editor and preview even on
 a platform that supports MathLive; the platform matrix below describes which
 platforms can use the embedded editor when it is enabled.

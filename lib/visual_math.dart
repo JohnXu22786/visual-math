@@ -19,6 +19,7 @@ export 'src/models/math_expression_3d.dart';
 export 'src/models/math_input_catalog.dart';
 export 'src/models/math_parameter.dart';
 export 'src/pages/math_drawing_page.dart';
+export 'src/pages/math_workspace_options.dart';
 export 'src/widgets/math_3d_toolbar.dart';
 export 'src/widgets/math_canvas.dart';
 export 'src/widgets/math_canvas_3d.dart';

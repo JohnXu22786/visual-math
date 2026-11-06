@@ -21,6 +21,7 @@ import '../widgets/math_formula_field.dart';
 import '../widgets/math_keyboard.dart';
 import '../widgets/math_parameter_controls.dart';
 import '../widgets/math_ui_tokens.dart';
+import 'math_workspace_options.dart';
 
 /// A complete math workspace with formula editing, graphing, and 3D geometry.
 ///
@@ -40,6 +41,9 @@ class MathDrawingPage extends StatefulWidget {
   /// Optional host controller for formulas, canvas state, commands, and events.
   final MathDrawingController? controller;
 
+  /// Configures the available views and composable workspace regions.
+  final MathWorkspaceOptions options;
+
   /// Creates a math workspace.
   const MathDrawingPage({
     super.key,
@@ -47,6 +51,7 @@ class MathDrawingPage extends StatefulWidget {
     this.initialShowWebView = true,
     this.initialMathematicalMode,
     this.controller,
+    this.options = const MathWorkspaceOptions(),
   });
 
   @override
@@ -58,8 +63,9 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   late final TabController _tabController;
   final GlobalKey<MathCanvasState> _canvasKey = GlobalKey();
   final GlobalKey<MathCanvas3DState> _canvas3DKey = GlobalKey();
+  final GlobalKey<MathFormulaFieldState> _fallbackEditorKey = GlobalKey();
 
-  ViewMode _currentView = ViewMode.mode2D;
+  late ViewMode _currentView;
 
   // 3D construction state
   ConstructionTool _current3DTool = ConstructionTool.move;
@@ -83,7 +89,12 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _currentView = widget.options.initialView;
+    _tabController = TabController(
+      length: 2,
+      initialIndex: _currentView == ViewMode.mode2D ? 0 : 1,
+      vsync: this,
+    );
     _tabController.addListener(_onTabChanged);
 
     _mathMode = widget.initialMathematicalMode ?? MathFormulaField.supported;
@@ -121,7 +132,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
           _canvas3DKey.currentState?.setProjectionType(projection),
       setScene3D: _setScene3D,
       setTool: _setActiveTool,
-      setView: _setActiveView,
+      setView: _controllerSetActiveView,
       setFormulas: _setFormulas,
       setParameters: _setParameters,
       restore: _restoreSnapshot,
@@ -156,7 +167,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
             _canvas3DKey.currentState?.setProjectionType(projection),
         setScene3D: _setScene3D,
         setTool: _setActiveTool,
-        setView: _setActiveView,
+        setView: _controllerSetActiveView,
         setFormulas: _setFormulas,
         setParameters: _setParameters,
         restore: _restoreSnapshot,
@@ -189,7 +200,10 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     setState(() {
       _mathMode = mathematical;
       _activeFormula = formula;
-      _keyboardVisible = mathematical;
+      _keyboardVisible =
+          mathematical &&
+          (widget.options.showKeyboard ||
+              widget.options.keyboardBuilder != null);
     });
     if (mathematical) {
       _ensureFormulaVisible(formula);
@@ -221,7 +235,8 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     if (!keyboardWasHidden && _activeFormula == formula) return;
     setState(() {
       _activeFormula = formula;
-      _keyboardVisible = true;
+      _keyboardVisible =
+          widget.options.showKeyboard || widget.options.keyboardBuilder != null;
     });
     if (keyboardWasHidden) {
       unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.hide'));
@@ -283,7 +298,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     widget.controller?.onToolChanged?.call(tool);
   }
 
-  void _setActiveView(ViewMode view) {
+  void _controllerSetActiveView(ViewMode view) {
     if (_tabController.index != (view == ViewMode.mode2D ? 0 : 1)) {
       _tabController.animateTo(view == ViewMode.mode2D ? 0 : 1);
     }
@@ -365,6 +380,11 @@ class _MathDrawingPageState extends State<MathDrawingPage>
 
   void _restoreSnapshot(MathDrawingSnapshot snapshot) {
     final controller = widget.controller;
+    final restoredView = switch (snapshot.activeView) {
+      ViewMode.mode2D when widget.options.show2D => ViewMode.mode2D,
+      ViewMode.mode3D when widget.options.show3D => ViewMode.mode3D,
+      _ => widget.options.initialView,
+    };
     setState(() {
       for (final formula in _formulas) {
         formula.controller.dispose();
@@ -393,7 +413,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       _parameters
         ..clear()
         ..addAll(snapshot.parameters);
-      _currentView = snapshot.activeView;
+      _currentView = restoredView;
       _current3DTool = snapshot.activeTool;
       _activeParameterNames = _parameters.keys.toSet();
     });
@@ -410,19 +430,118 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       _canvas3DKey.currentState?.setObjects(snapshot.scene3D);
       _canvas3DKey.currentState?.setTool(snapshot.activeTool);
       _publish3DChange();
-      _tabController.animateTo(snapshot.activeView == ViewMode.mode2D ? 0 : 1);
-      if (snapshot.activeView == ViewMode.mode2D) unawaited(_plotAll());
+      _tabController.animateTo(restoredView == ViewMode.mode2D ? 0 : 1);
+      if (restoredView == ViewMode.mode2D) unawaited(_plotAll());
     });
     _syncController();
     controller?.publish(_makeSnapshot());
   }
 
   void _dismissKeyboard() {
-    unawaited(_activeFormula?.editorKey.currentState?.dismiss());
+    unawaited(_activeEditor?.dismiss());
     setState(() => _keyboardVisible = false);
   }
 
+  Future<void> _setActiveView(ViewMode view) async {
+    final isAvailable = switch (view) {
+      ViewMode.mode2D => widget.options.show2D,
+      ViewMode.mode3D => widget.options.show3D,
+    };
+    if (!isAvailable || view == _currentView) return;
+    _dismissKeyboard();
+    await _flushEditors();
+    if (!mounted) return;
+    setState(() {
+      _currentView = view;
+      _tabController.index = view == ViewMode.mode2D ? 0 : 1;
+    });
+    _syncController();
+    widget.controller?.onViewChanged?.call(view);
+  }
+
+  void _setFormulaExpression(int index, String expression) {
+    if (index < 0 || index >= _formulas.length) return;
+    final formula = _formulas[index];
+    if (formula.controller.text == expression) return;
+    setState(() => formula.controller.text = expression);
+    _syncController();
+    widget.controller?.onFormulaEdited?.call(index, expression);
+  }
+
+  void _activateFormulaByIndex(int index) {
+    if (index < 0 || index >= _formulas.length) return;
+    final formula = _formulas[index];
+    if (_mathMode) {
+      _activateFormula(formula);
+    } else {
+      _setMode(true, formula);
+    }
+  }
+
+  void _select3DTool(ConstructionTool tool) {
+    if (ToolInfo.all[tool]!.behavior == ToolBehavior.command) {
+      _canvas3DKey.currentState?.performToolCommand(tool);
+      return;
+    }
+    _setActiveTool(tool);
+  }
+
+  void _setPolygonSides(int sides) {
+    setState(() => _polygonSides = sides);
+  }
+
+  MathWorkspaceRegionActions get _regionActions {
+    final parameterNames = _activeParameterNames.toList()..sort();
+    final editor = _activeEditor;
+    return MathWorkspaceRegionActions(
+      activeView: _currentView,
+      setActiveView: _setActiveView,
+      active3DTool: _current3DTool,
+      formulaCount: _formulas.length,
+      polygonSides: _polygonSides,
+      toolInstruction: _current3DTool == ConstructionTool.move
+          ? null
+          : (_canvas3DKey.currentState?.constructionInstruction ??
+                _toolInstruction),
+      parameters: {for (final name in parameterNames) name: _parameters[name]!},
+      editorReady: editor?.ready ?? _fallbackEditorAvailable,
+      supportsStructuralNavigation:
+          editor?.supportsStructuralNavigation ?? false,
+      supportsStructuredEditing: editor?.supportsStructuredEditing ?? false,
+      activeFormulaLabel: _activeFormula == null
+          ? null
+          : '公式 ${_formulas.indexOf(_activeFormula!) + 1}',
+      editorLocation:
+          editor?.location ?? (_fallbackEditorAvailable ? '公式' : null),
+      select3DTool: _select3DTool,
+      setPolygonSides: _setPolygonSides,
+      setFormulaExpression: _setFormulaExpression,
+      formulaExpression: (index) => index >= 0 && index < _formulas.length
+          ? _formulas[index].controller.text
+          : null,
+      addFormula: _addFormula,
+      activateFormula: _activateFormulaByIndex,
+      toggleFormulaVisibility: _toggleVisibility,
+      removeFormula: (index) {
+        if (index >= 0 && index < _formulas.length) {
+          _confirmRemove(_formulas[index]);
+        }
+      },
+      plot: _plotAll,
+      setParameter: _updateParameter,
+      dismissKeyboard: _dismissKeyboard,
+      sendEditorCommand: _sendEditorCommand,
+      fit2DCanvas: () => _canvasKey.currentState?.fitToView(),
+      zoomIn2DCanvas: () => _canvasKey.currentState?.zoomIn(),
+      zoomOut2DCanvas: () => _canvasKey.currentState?.zoomOut(),
+      fit3DCanvas: () => _canvas3DKey.currentState?.fitToView(),
+      zoomIn3DCanvas: () => _canvas3DKey.currentState?.zoomIn(),
+      zoomOut3DCanvas: () => _canvas3DKey.currentState?.zoomOut(),
+    );
+  }
+
   Future<void> _onTabChanged() async {
+    if (!widget.options.show2D || !widget.options.show3D) return;
     final target = _tabController.index == 0
         ? ViewMode.mode2D
         : ViewMode.mode3D;
@@ -792,96 +911,199 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
+    final defaultAppBar = AppBar(
+      title: const Text('数学绘图'),
+      actions: [
+        IconButton(
+          icon: Icon(Icons.add, size: 24, color: cs.primary),
+          tooltip: '添加公式',
+          onPressed: _addFormula,
+        ),
+      ],
+    );
+    final appBar =
+        widget.options.appBarBuilder?.call(
+          context,
+          widget.options.showAppBar
+              ? defaultAppBar
+              : const PreferredSize(
+                  preferredSize: Size.zero,
+                  child: SizedBox.shrink(),
+                ),
+        ) ??
+        defaultAppBar;
+
+    final workspace = LayoutBuilder(
+      builder: (context, constraints) {
+        final hasViewSelector =
+            widget.options.show2D &&
+            widget.options.show3D &&
+            (widget.options.showViewSelector ||
+                widget.options.viewSelectorBuilder != null);
+        final availableHeight =
+            (constraints.maxHeight - (hasViewSelector ? 48 : 0))
+                .clamp(0.0, double.infinity)
+                .toDouble();
+        final formulaListBaseHeight =
+            availableHeight * (_keyboardVisible ? 0.28 : 0.4);
+        final keyboardBaseHeight = _keyboardVisible
+            ? availableHeight * 0.56
+            : 0.0;
+        final keyboardMaxHeight = keyboardBaseHeight;
+
+        return Column(
+          children: [
+            if (hasViewSelector)
+              _workspaceRegion(
+                widget.options.viewSelectorBuilder,
+                widget.options.showViewSelector
+                    ? _buildTabBar(cs)
+                    : const SizedBox.shrink(),
+              ),
+            if (widget.options.showFormulaEditor ||
+                widget.options.showParameterControls ||
+                widget.options.formulaEditorBuilder != null ||
+                widget.options.parameterControlsBuilder != null)
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: formulaListBaseHeight),
+                child: _buildFormulaPanel(cs),
+              ),
+            Expanded(child: _buildAvailableCanvases(cs)),
+            if (_keyboardVisible &&
+                (widget.options.showKeyboard ||
+                    widget.options.keyboardBuilder != null) &&
+                _activeFormula != null)
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: keyboardMaxHeight),
+                child: _workspaceRegion(
+                  widget.options.keyboardBuilder,
+                  widget.options.showKeyboard
+                      ? _buildKeyboard()
+                      : const SizedBox.shrink(),
+                ),
+              ),
+            if (_keyboardVisible && _activeFormula != null)
+              _buildFallbackEditor(),
+          ],
+        );
+      },
+    );
+
     return PopScope(
       canPop: !_keyboardVisible,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop && _keyboardVisible) _dismissKeyboard();
       },
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('数学绘图'),
-          actions: [
-            IconButton(
-              icon: Icon(Icons.add, size: 24, color: cs.primary),
-              tooltip: '添加公式',
-              onPressed: _addFormula,
-            ),
-          ],
-        ),
-        body: LayoutBuilder(
-          builder: (context, constraints) {
-            final availableHeight = (constraints.maxHeight - 48)
-                .clamp(0.0, double.infinity)
-                .toDouble();
-            final formulaListBaseHeight =
-                availableHeight * (_keyboardVisible ? 0.28 : 0.4);
-            final keyboardBaseHeight = _keyboardVisible
-                ? availableHeight * 0.56
-                : 0.0;
-            final keyboardMaxHeight = keyboardBaseHeight;
-
-            return Column(
-              children: [
-                _buildTabBar(cs),
-                // Formula list (always shown)
-                ConstrainedBox(
-                  constraints: BoxConstraints(maxHeight: formulaListBaseHeight),
-                  child: _buildFormulaList(cs),
-                ),
-                // Canvas + 3D canvas kept alive via IndexedStack
-                Expanded(
-                  child: IndexedStack(
-                    index: _currentView == ViewMode.mode2D ? 0 : 1,
-                    children: [_buildCanvas(cs), _build3DCanvas(cs)],
-                  ),
-                ),
-                if (_keyboardVisible && _activeFormula != null)
-                  ConstrainedBox(
-                    constraints: BoxConstraints(maxHeight: keyboardMaxHeight),
-                    child: MathKeyboard(
-                      enabled:
-                          _activeFormula?.editorKey.currentState?.ready ??
-                          false,
-                      supportsStructuralNavigation:
-                          _activeFormula
-                              ?.editorKey
-                              .currentState
-                              ?.supportsStructuralNavigation ??
-                          false,
-                      supportsStructuredEditing:
-                          _activeFormula
-                              ?.editorKey
-                              .currentState
-                              ?.supportsStructuredEditing ??
-                          false,
-                      activeLabel:
-                          '公式 ${_formulas.indexOf(_activeFormula!) + 1}',
-                      location:
-                          _activeFormula?.editorKey.currentState?.location ??
-                          '公式',
-                      onCommand: (kind, value) async {
-                        final formula = _activeFormula;
-                        final editor = formula?.editorKey.currentState;
-                        if (kind == 'clipboard') {
-                          await editor?.clipboard(
-                            value,
-                            isTargetActive: () =>
-                                mounted && _activeFormula == formula,
-                          );
-                        } else {
-                          await editor?.command(kind, value);
-                        }
-                      },
-                      onDismiss: _dismissKeyboard,
-                      onPlot: _plotAll,
-                    ),
-                  ),
-              ],
-            );
-          },
-        ),
-      ),
+      child: widget.options.showScaffold
+          ? Scaffold(
+              appBar:
+                  widget.options.showAppBar ||
+                      widget.options.appBarBuilder != null
+                  ? appBar
+                  : null,
+              body: workspace,
+            )
+          : workspace,
     );
+  }
+
+  Widget _workspaceRegion(
+    MathWorkspaceRegionBuilder? builder,
+    Widget defaultContent,
+  ) => builder?.call(context, defaultContent, _regionActions) ?? defaultContent;
+
+  Widget _buildFormulaPanel(ColorScheme cs) {
+    final formulaBuilder = widget.options.formulaEditorBuilder;
+    if (formulaBuilder == null) return _buildFormulaList(cs);
+
+    final parameterControls = _buildParameterControls(cs);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          fit: FlexFit.loose,
+          child: _workspaceRegion(
+            formulaBuilder,
+            widget.options.showFormulaEditor
+                ? _buildFormulaList(cs, includeParameters: false)
+                : const SizedBox.shrink(),
+          ),
+        ),
+        if (parameterControls != null) parameterControls,
+      ],
+    );
+  }
+
+  Widget _buildAvailableCanvases(ColorScheme cs) {
+    if (widget.options.show2D && widget.options.show3D) {
+      return IndexedStack(
+        index: _currentView == ViewMode.mode2D ? 0 : 1,
+        children: [_buildCanvas(cs), _build3DCanvas(cs)],
+      );
+    }
+    return widget.options.show2D ? _buildCanvas(cs) : _build3DCanvas(cs);
+  }
+
+  Widget _buildKeyboard() {
+    final editor = _activeEditor;
+    return MathKeyboard(
+      enabled: editor?.ready ?? _fallbackEditorAvailable,
+      supportsStructuralNavigation:
+          editor?.supportsStructuralNavigation ?? false,
+      supportsStructuredEditing: editor?.supportsStructuredEditing ?? false,
+      activeLabel: '公式 ${_formulas.indexOf(_activeFormula!) + 1}',
+      location: editor?.location ?? '公式',
+      onCommand: _sendEditorCommand,
+      onDismiss: _dismissKeyboard,
+      onPlot: _plotAll,
+    );
+  }
+
+  Widget _buildFallbackEditor() => Offstage(
+    offstage: true,
+    child: Material(
+      type: MaterialType.transparency,
+      child: MathFormulaField(
+        key: _fallbackEditorKey,
+        controller: _activeFormula!.controller,
+        mathematical: true,
+        allowModeSwitch: false,
+        showWebView: false,
+        label: '公式 ${_formulas.indexOf(_activeFormula!) + 1}',
+        onModeChanged: (_) {},
+        onActivate: () => _activateFormula(_activeFormula!),
+        onChanged: () {
+          if (mounted) setState(() {});
+        },
+        onSubmitted: _plotAll,
+        onReadyChanged: () {
+          if (mounted) setState(() {});
+        },
+        onCaretChanged: () {
+          if (mounted) setState(() {});
+        },
+      ),
+    ),
+  );
+
+  MathFormulaFieldState? get _activeEditor =>
+      _activeFormula?.editorKey.currentState ?? _fallbackEditorKey.currentState;
+
+  bool get _fallbackEditorAvailable =>
+      _keyboardVisible && _activeFormula != null;
+
+  Future<void> _sendEditorCommand(String kind, String value) async {
+    final formula = _activeFormula;
+    final editor =
+        formula?.editorKey.currentState ?? _fallbackEditorKey.currentState;
+    if (kind == 'clipboard') {
+      await editor?.clipboard(
+        value,
+        isTargetActive: () => mounted && _activeFormula == formula,
+      );
+    } else {
+      await editor?.command(kind, value);
+    }
   }
 
   Widget _buildTabBar(ColorScheme cs) {
@@ -919,25 +1141,61 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   // Formula list
   // ==================================================================
 
-  Widget _buildFormulaList(ColorScheme cs) {
+  Widget _buildFormulaList(ColorScheme cs, {bool includeParameters = true}) {
     final parameterNames = _activeParameterNames.toList()..sort();
     final showParameters =
-        _currentView == ViewMode.mode2D && parameterNames.isNotEmpty;
+        includeParameters &&
+        (widget.options.showParameterControls ||
+            widget.options.parameterControlsBuilder != null) &&
+        _currentView == ViewMode.mode2D &&
+        parameterNames.isNotEmpty;
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(8, 4, 8, 2),
       shrinkWrap: true,
       controller: _formulaScroll,
       physics: const ClampingScrollPhysics(),
-      itemCount: _formulas.length + (showParameters ? 1 : 0),
-      itemBuilder: (_, index) => index < _formulas.length
+      itemCount:
+          (widget.options.showFormulaEditor ? _formulas.length : 0) +
+          (showParameters ? 1 : 0),
+      itemBuilder: (_, index) =>
+          widget.options.showFormulaEditor && index < _formulas.length
           ? _buildFormulaRow(cs, index)
-          : MathParameterControls(
+          : _workspaceRegion(
+              widget.options.parameterControlsBuilder,
+              widget.options.showParameterControls
+                  ? MathParameterControls(
+                      key: const ValueKey('math-parameter-controls'),
+                      parameters: {
+                        for (final name in parameterNames)
+                          name: _parameters[name]!,
+                      },
+                      onChanged: _updateParameter,
+                    )
+                  : const SizedBox.shrink(),
+            ),
+    );
+  }
+
+  Widget? _buildParameterControls(ColorScheme cs) {
+    final parameterNames = _activeParameterNames.toList()..sort();
+    final showParameters =
+        (widget.options.showParameterControls ||
+            widget.options.parameterControlsBuilder != null) &&
+        _currentView == ViewMode.mode2D &&
+        parameterNames.isNotEmpty;
+    if (!showParameters) return null;
+
+    return _workspaceRegion(
+      widget.options.parameterControlsBuilder,
+      widget.options.showParameterControls
+          ? MathParameterControls(
               key: const ValueKey('math-parameter-controls'),
               parameters: {
                 for (final name in parameterNames) name: _parameters[name]!,
               },
               onChanged: _updateParameter,
-            ),
+            )
+          : const SizedBox.shrink(),
     );
   }
 
@@ -970,7 +1228,6 @@ class _MathDrawingPageState extends State<MathDrawingPage>
               ),
             ),
           ),
-
           const SizedBox(width: 12),
 
           // A retained editor per row keeps its structural cursor and undo.
@@ -1083,6 +1340,57 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   // ==================================================================
 
   Widget _buildCanvas(ColorScheme cs) {
+    final defaultActions = _workspaceRegion(
+      widget.options.canvas2DActionsBuilder,
+      widget.options.show2DCanvasActions
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _floatingControl(
+                  icon: Icons.filter_center_focus,
+                  tooltip: '缩放至适合',
+                  onPressed: () {
+                    final controller = widget.controller;
+                    if (controller != null) {
+                      controller.fitToView();
+                    } else {
+                      _canvasKey.currentState?.fitToView();
+                    }
+                  },
+                ),
+                _floatingControl(
+                  icon: Icons.zoom_in,
+                  tooltip: '放大',
+                  onPressed: () {
+                    final controller = widget.controller;
+                    if (controller != null) {
+                      controller.zoomIn();
+                    } else {
+                      _canvasKey.currentState?.zoomIn();
+                    }
+                  },
+                ),
+                _floatingControl(
+                  icon: Icons.zoom_out,
+                  tooltip: '缩小',
+                  onPressed: () {
+                    final controller = widget.controller;
+                    if (controller != null) {
+                      controller.zoomOut();
+                    } else {
+                      _canvasKey.currentState?.zoomOut();
+                    }
+                  },
+                ),
+              ],
+            )
+          : const SizedBox.shrink(),
+    );
+    final defaultOverlay =
+        widget.options.show2DCanvasActions ||
+            widget.options.canvas2DActionsBuilder != null
+        ? Positioned(right: 8, bottom: 8, child: defaultActions)
+        : const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: MathUiTokens.canvasInset),
       child: Stack(
@@ -1123,50 +1431,9 @@ class _MathDrawingPageState extends State<MathDrawingPage>
               ),
             ),
           ),
-          Positioned(
-            right: 8,
-            bottom: 8,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _floatingControl(
-                  icon: Icons.filter_center_focus,
-                  tooltip: '缩放至适合',
-                  onPressed: () {
-                    final controller = widget.controller;
-                    if (controller != null) {
-                      controller.fitToView();
-                    } else {
-                      _canvasKey.currentState?.fitToView();
-                    }
-                  },
-                ),
-                _floatingControl(
-                  icon: Icons.zoom_in,
-                  tooltip: '放大',
-                  onPressed: () {
-                    final controller = widget.controller;
-                    if (controller != null) {
-                      controller.zoomIn();
-                    } else {
-                      _canvasKey.currentState?.zoomIn();
-                    }
-                  },
-                ),
-                _floatingControl(
-                  icon: Icons.zoom_out,
-                  tooltip: '缩小',
-                  onPressed: () {
-                    final controller = widget.controller;
-                    if (controller != null) {
-                      controller.zoomOut();
-                    } else {
-                      _canvasKey.currentState?.zoomOut();
-                    }
-                  },
-                ),
-              ],
-            ),
+          _workspaceRegion(
+            widget.options.canvas2DOverlayBuilder,
+            defaultOverlay,
           ),
         ],
       ),
@@ -1205,23 +1472,31 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     return Column(
       children: [
         // Construction toolbar
-        Math3DToolbar(
-          activeTool: _current3DTool,
-          polygonSides: _polygonSides,
-          onPolygonSidesChanged: (sides) =>
-              setState(() => _polygonSides = sides),
-          instruction: _current3DTool != ConstructionTool.move
-              ? (_canvas3DKey.currentState?.constructionInstruction ??
-                    _toolInstruction)
-              : null,
-          onToolSelected: (tool) {
-            if (ToolInfo.all[tool]!.behavior == ToolBehavior.command) {
-              _canvas3DKey.currentState?.performToolCommand(tool);
-              return;
-            }
-            _setActiveTool(tool);
-          },
-        ),
+        if (widget.options.show3DTools ||
+            widget.options.threeDToolsBuilder != null)
+          _workspaceRegion(
+            widget.options.threeDToolsBuilder,
+            widget.options.show3DTools
+                ? Math3DToolbar(
+                    activeTool: _current3DTool,
+                    polygonSides: _polygonSides,
+                    onPolygonSidesChanged: (sides) =>
+                        setState(() => _polygonSides = sides),
+                    instruction: _current3DTool != ConstructionTool.move
+                        ? (_canvas3DKey.currentState?.constructionInstruction ??
+                              _toolInstruction)
+                        : null,
+                    onToolSelected: (tool) {
+                      if (ToolInfo.all[tool]!.behavior ==
+                          ToolBehavior.command) {
+                        _canvas3DKey.currentState?.performToolCommand(tool);
+                        return;
+                      }
+                      _setActiveTool(tool);
+                    },
+                  )
+                : const SizedBox.shrink(),
+          ),
         // 3D canvas
         Expanded(
           child: Padding(
@@ -1238,28 +1513,40 @@ class _MathDrawingPageState extends State<MathDrawingPage>
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(MathUiTokens.cornerRadius),
-                child: MathCanvas3D(
-                  key: _canvas3DKey,
-                  currentTool: _current3DTool,
-                  polygonSides: _polygonSides,
-                  onViewportChange: _publish3DChange,
-                  onSceneChanged: _publish3DChange,
-                  onObjectCreated: (obj) {
-                    widget.controller?.onObjectCreated?.call(obj);
-                    _canvas3DKey.currentState?.setObjects([
-                      ...?_canvas3DKey.currentState?.objects,
-                      obj,
-                    ]);
-                    _publish3DChange();
-                  },
-                  onToolInstruction: (instruction) {
-                    setState(() {
-                      _toolInstruction = instruction;
-                    });
-                  },
-                  onSelectionChanged: (object) =>
-                      widget.controller?.onSelectionChanged?.call(object),
-                  onReady: _syncController,
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: MathCanvas3D(
+                        key: _canvas3DKey,
+                        currentTool: _current3DTool,
+                        polygonSides: _polygonSides,
+                        onViewportChange: _publish3DChange,
+                        onSceneChanged: _publish3DChange,
+                        onObjectCreated: (obj) {
+                          widget.controller?.onObjectCreated?.call(obj);
+                          _canvas3DKey.currentState?.setObjects([
+                            ...?_canvas3DKey.currentState?.objects,
+                            obj,
+                          ]);
+                          _publish3DChange();
+                        },
+                        onToolInstruction: (instruction) {
+                          setState(() {
+                            _toolInstruction = instruction;
+                          });
+                        },
+                        onSelectionChanged: (object) =>
+                            widget.controller?.onSelectionChanged?.call(object),
+                        onReady: _syncController,
+                      ),
+                    ),
+                    Positioned.fill(
+                      child: _workspaceRegion(
+                        widget.options.canvas3DOverlayBuilder,
+                        const SizedBox.shrink(),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
