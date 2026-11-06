@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:visual_math/visual_math.dart';
 import 'package:visual_math/visual_math.dart' as vm;
 
@@ -13,6 +14,29 @@ Widget _app(MathWorkspaceOptions options) => MaterialApp(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets('disabled persistence skips saving the editor mode', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          initialMathematicalMode: false,
+          initialShowWebView: false,
+          options: const MathWorkspaceOptions(
+            persistence: MathWorkspacePersistence(enabled: false),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byTooltip('切换到数学键盘（内置公式预览）'));
+    await tester.pumpAndSettle();
+
+    final preferences = await SharedPreferences.getInstance();
+    expect(preferences.getBool('math_drawing_mathematical_input'), isNull);
+  });
 
   testWidgets('3D-only workspaces omit the selector and start in 3D', (
     tester,
