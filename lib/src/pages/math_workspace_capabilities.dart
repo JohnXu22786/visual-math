@@ -32,7 +32,8 @@ class MathWorkspaceCapabilities {
 
   /// Capabilities detected for the current Flutter runtime.
   static MathWorkspaceCapabilities get current => MathWorkspaceCapabilities(
-    mathLiveEditor: !kIsWeb && _mathLivePlatforms.contains(defaultTargetPlatform),
+    mathLiveEditor:
+        !kIsWeb && _mathLivePlatforms.contains(defaultTargetPlatform),
     sourceEditorFallback: true,
     mathCanvasWebViewRequiresNetwork: true,
     flutterCanvasesRequireNetwork: false,

@@ -160,44 +160,45 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('category order uses the workspace namespace and can be disabled', (
-    tester,
-  ) async {
-    SharedPreferences.setMockInitialValues({
-      'visual_math.first.math_keyboard_category_order_v1': ['函数'],
-      'visual_math.second.math_keyboard_category_order_v1': ['字母'],
-    });
-    final commands = <String>[];
-    await _pumpKeyboard(tester, commands, preferenceNamespace: 'second');
-    await tester.pumpAndSettle();
-    final chipOrder = tester
-        .widgetList<ChoiceChip>(find.byType(ChoiceChip))
-        .map((chip) => (chip.label as Text).data!)
-        .toList();
-    expect(chipOrder.first, '字母');
+  testWidgets(
+    'category order uses the workspace namespace and can be disabled',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({
+        'visual_math.first.math_keyboard_category_order_v1': ['函数'],
+        'visual_math.second.math_keyboard_category_order_v1': ['字母'],
+      });
+      final commands = <String>[];
+      await _pumpKeyboard(tester, commands, preferenceNamespace: 'second');
+      await tester.pumpAndSettle();
+      final chipOrder = tester
+          .widgetList<ChoiceChip>(find.byType(ChoiceChip))
+          .map((chip) => (chip.label as Text).data!)
+          .toList();
+      expect(chipOrder.first, '字母');
 
-    await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
-    await _pumpKeyboard(
-      tester,
-      commands,
-      preferenceNamespace: 'isolated',
-      persistenceEnabled: false,
-    );
-    await tester.tap(find.byTooltip('全部符号分类'));
-    await tester.pumpAndSettle();
-    await tester.drag(
-      find.byKey(const ValueKey('category-order-handle-常用')),
-      const Offset(0, 100),
-    );
-    await tester.pumpAndSettle();
-    final preferences = await SharedPreferences.getInstance();
-    expect(
-      preferences.getStringList(
-        'visual_math.isolated.math_keyboard_category_order_v1',
-      ),
-      isNull,
-    );
-  });
+      await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
+      await _pumpKeyboard(
+        tester,
+        commands,
+        preferenceNamespace: 'isolated',
+        persistenceEnabled: false,
+      );
+      await tester.tap(find.byTooltip('全部符号分类'));
+      await tester.pumpAndSettle();
+      await tester.drag(
+        find.byKey(const ValueKey('category-order-handle-常用')),
+        const Offset(0, 100),
+      );
+      await tester.pumpAndSettle();
+      final preferences = await SharedPreferences.getInstance();
+      expect(
+        preferences.getStringList(
+          'visual_math.isolated.math_keyboard_category_order_v1',
+        ),
+        isNull,
+      );
+    },
+  );
 
   testWidgets('reordering keeps the selected category visible in the strip', (
     tester,

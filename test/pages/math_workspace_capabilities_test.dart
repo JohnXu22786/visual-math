@@ -10,12 +10,19 @@ void main() {
     expect(capabilities.flutterCanvasesRequireNetwork, isFalse);
   });
 
-  test('persistence keeps legacy keys by default and namespaces embedded use', () {
-    const defaults = MathWorkspacePersistence();
-    const isolated = MathWorkspacePersistence(namespace: 'editor-2');
-    expect(defaults.key('math_drawing_mathematical_input'),
-        'math_drawing_mathematical_input');
-    expect(isolated.key('math_drawing_mathematical_input'),
-        'visual_math.editor-2.math_drawing_mathematical_input');
-  });
+  test(
+    'persistence keeps legacy keys by default and namespaces embedded use',
+    () {
+      const defaults = MathWorkspacePersistence();
+      const isolated = MathWorkspacePersistence(namespace: 'editor-2');
+      expect(
+        defaults.key('math_drawing_mathematical_input'),
+        'math_drawing_mathematical_input',
+      );
+      expect(
+        isolated.key('math_drawing_mathematical_input'),
+        'visual_math.editor-2.math_drawing_mathematical_input',
+      );
+    },
+  );
 }

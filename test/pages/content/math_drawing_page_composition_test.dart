@@ -128,12 +128,20 @@ void main() {
           initialShowWebView: false,
           options: MathWorkspaceOptions(
             clipboardReader: () async => throw StateError('host clipboard'),
-            formulaEditorBuilder: (context, _, actions) => TextButton(
-              onPressed: () async {
-                actions.activateFormula(0);
-                await actions.sendEditorCommand('clipboard', 'paste');
-              },
-              child: const Text('Trigger clipboard paste'),
+            formulaEditorBuilder: (context, _, actions) => Column(
+              children: [
+                TextButton(
+                  onPressed: () => actions.activateFormula(0),
+                  child: const Text('Activate formula'),
+                ),
+                TextButton(
+                  onPressed: () => actions.sendEditorCommand(
+                    'clipboard',
+                    'paste',
+                  ),
+                  child: const Text('Trigger clipboard paste'),
+                ),
+              ],
             ),
             presentation: MathWorkspacePresentation(
               errorBuilder: (_, __) => const Text('Host clipboard error'),
@@ -143,6 +151,8 @@ void main() {
       ),
     );
 
+    await tester.tap(find.text('Activate formula'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Trigger clipboard paste'));
     await tester.pumpAndSettle();
 

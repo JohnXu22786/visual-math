@@ -14,9 +14,8 @@ class MathWorkspacePersistence {
 
   const MathWorkspacePersistence({this.enabled = true, this.namespace = ''});
 
-  String key(String legacyKey) => namespace.isEmpty
-      ? legacyKey
-      : 'visual_math.$namespace.$legacyKey';
+  String key(String legacyKey) =>
+      namespace.isEmpty ? legacyKey : 'visual_math.$namespace.$legacyKey';
 }
 
 /// Builds a workspace region from its default package-provided content.
@@ -309,6 +308,7 @@ class MathWorkspaceOptions {
   /// Optional host-owned clipboard writer. The package retains editor
   /// selection handling and calls this for keyboard copy and cut commands.
   final Future<void> Function(String text)? clipboardWriter;
+
   /// Whether the 2D plotting view is available.
   final bool show2D;
 

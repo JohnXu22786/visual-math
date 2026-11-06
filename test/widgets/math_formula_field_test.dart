@@ -346,7 +346,10 @@ void main() {
         find.byType(MathFormulaField),
       );
 
-      await editor.clipboard('copy', clipboardWriter: writes.add);
+      await editor.clipboard(
+        'copy',
+        clipboardWriter: (text) async => writes.add(text),
+      );
       await editor.clipboard('paste', clipboardReader: () async => 'z');
 
       expect(writes, ['x']);
