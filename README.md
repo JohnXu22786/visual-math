@@ -62,12 +62,77 @@ MathCanvas(
 ```
 
 The library also exports `MathCanvas3D`, `MathFormulaField`, `MathKeyboard`,
-`MathParameterControls`, `Math3DToolbar`, `MathCanvasWebView`, `FormulaEntry`,
-the expression and geometry models, and the parser. These widgets expose their
-current constructors and callbacks directly; see their API documentation for
-the inputs each component requires. `MathCanvasWebView` is a separate
-JSXGraph-backed canvas with network requirements described below; it is not the
-canvas used by `MathDrawingPage`.
+`MathParameterControls`, `Math3DToolbar`, `MathNumericKeyboard`,
+`MathCanvasWebView`, `FormulaEntry`, and the expression and geometry models. These exports form three integration
+levels, with different ownership responsibilities.
+
+## Integration levels and ownership
+
+| Level | Public entry points | State and responsibility |
+| --- | --- | --- |
+| App-owned UI | Exported models: `MathExpression`, `FormulaEntry`, `MathParameter`, `CoordinatePoint`, `Viewport`, `MathInputTemplate`; 3D data types including `Point3D`, `Vector3D`, `Object3D`, `SurfaceMesh`, `Camera3D`, `Projection3D`, `Scene3D`; and `ConstructionState`, `ConstructionTool`, and related enums | The host builds its own UI and owns its application state. Models provide math, scene, and construction data; they do not create a workspace or coordinate widgets. |
+| Embeddable components | `MathCanvas`, `MathCanvas3D`, `MathFormulaField`, `MathKeyboard`, `MathParameterControls`, `Math3DToolbar`, `MathNumericKeyboard`, and `MathCanvasWebView` | The host composes the widgets and wires their inputs and callbacks. Stateful widgets manage their interaction state. Stateless controls such as `MathParameterControls` and `MathNumericKeyboard` use host-provided values and callbacks, so the host owns the state passed to them. `MathKeyboard` also stores its category order in shared preferences. |
+| Complete workspace | `MathDrawingPage` | The package owns the formula rows, plotting state, parameter state, 2D/3D tab selection, editor mode, and workspace controls. On supported platforms it restores a saved input mode when `initialMathematicalMode` is omitted; later user changes are saved regardless. The host supplies the page and optional initial values; the workspace does not expose its internal state as an app controller. |
+
+There is no separately exported controller for the complete workspace,
+formula list, or editor state today; apps that build their own UI own and wire
+that state themselves. The canvases expose imperative controls on their public
+`State` classes, which a host can access with its own `GlobalKey` while the
+widget is mounted. For 2D, `MathCanvasState` includes `setFormulas`, `setExpression`,
+`setViewport`, `resetView`, `fitToView`, `zoomIn`, and `zoomOut`. For 3D, `MathCanvas3DState` includes scene methods `setObjects`, `setSurface`,
+and `clearObjects`; tool methods `setTool` and `performToolCommand`; projection
+and visibility methods `setProjectionType`, `toggleAxes`, `toggleGrid`, and
+`togglePlane`; and camera methods `resetView`, `fitToView`, `zoomIn`, and
+`zoomOut`. A host can use these methods
+to connect its own controls to a canvas; the full page's controls remain part
+of `MathDrawingPage`.
+
+Choose the model and component level when the host decides which tools or
+views to show. For example, an app can include only `MathCanvas` for a 2D-only
+experience or only `MathCanvas3D` for a 3D-only experience. These canvases do
+not include the formula editor or formula list. `MathFormulaField` requires a
+`TextEditingController` and callbacks, so the host owns and disposes a
+controller it creates. `MathDrawingPage` creates and disposes its own editing
+controllers and other private resources. Do not dispose controllers managed
+by a package widget.
+
+The focused widgets are composable pieces, not a separate configurable
+workspace API. For example, `MathKeyboard` and `Math3DToolbar` need the host to
+connect their callbacks to the active editor or canvas. `MathNumericKeyboard`
+is the smaller numeric-entry panel; its host supplies insertion, backspace,
+caret-movement, and dismiss callbacks. The complete page
+provides the package's integrated defaults, including its formula controls and
+canvas actions. Its current constructor supports initial values, but does not
+offer switches to hide individual panels or replace those controls.
+
+The public `MathDrawingPage` inputs are `initialExpression` (empty by default),
+`initialShowWebView` (true by default), and optional `initialMathematicalMode`.
+Setting `initialShowWebView` to false uses the source editor and preview even on
+a platform that supports MathLive; the platform matrix below describes which
+platforms can use the embedded editor when it is enabled.
+
+Existing defaults remain the baseline: `MathDrawingPage` starts with one
+formula row, opens on the 2D tab, and includes both the 2D and 3D workspaces;
+the initial formula is empty unless `initialExpression` is supplied. The 2D
+canvas starts with bounds from -10 to 10 on each axis. The 3D canvas starts
+with an empty scene and its move tool, parallel projection, visible axes,
+plane and labels, and hidden grid. Optional initial values and documented
+callbacks or canvas `State` methods are the current host control surface.
+
+`visual_math.dart` is the canonical package import. It exports the model files
+for formulas, expressions, parameters, input templates, drawing state, and 3D
+geometry, scene, and construction, along with the widgets listed above. Parse
+text with `MathExpression.fromInput`; the lower-level parser implementation is
+not a separate public export. `dart_math.dart` remains a compatibility export
+of the same library. The package does not currently mark
+public APIs deprecated; when a public symbol must change, treat that as a
+compatibility change and document the replacement and migration in the
+changelog. The package is currently pre-1.0, so check release notes when
+upgrading for API changes.
+
+`MathCanvasWebView` is a separate JSXGraph-backed canvas with network
+requirements described below; it is not the canvas used by
+`MathDrawingPage`.
 
 ## Platform behavior
 

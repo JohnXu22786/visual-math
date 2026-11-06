@@ -1,7 +1,10 @@
 /// Public models and widgets for the Visual Math Flutter package.
 ///
-/// Start with [MathDrawingPage] for the complete editor, graphing, and geometry
-/// experience, or compose individual widgets such as [MathCanvas] in an app.
+/// Use exported models to build app-owned math UI, compose focused widgets such
+/// as [MathCanvas] and [MathCanvas3D], or place [MathDrawingPage] for the
+/// complete editor, graphing, and geometry workspace. The focused widgets
+/// expose their documented inputs, callbacks, and state APIs; the complete
+/// workspace keeps its internal state package-owned.
 library visual_math;
 
 export 'src/models/formula_entry.dart';
