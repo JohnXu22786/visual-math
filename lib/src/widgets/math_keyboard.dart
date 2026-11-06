@@ -19,6 +19,8 @@ class MathKeyboard extends StatefulWidget {
   final bool supportsStructuralNavigation;
   final bool supportsStructuredEditing;
   final String location;
+  final bool persistenceEnabled;
+  final String preferenceNamespace;
   final String Function(String sourceText)? labelResolver;
   final Widget Function(BuildContext context, Widget dialog)? dialogBuilder;
   const MathKeyboard({
@@ -31,6 +33,8 @@ class MathKeyboard extends StatefulWidget {
     this.supportsStructuralNavigation = true,
     this.supportsStructuredEditing = true,
     this.location = '公式',
+    this.persistenceEnabled = true,
+    this.preferenceNamespace = '',
     this.labelResolver,
     this.dialogBuilder,
   });
@@ -52,7 +56,9 @@ class _MathKeyboardState extends State<MathKeyboard> {
     for (final category in _groups.keys) category: GlobalKey(),
   };
 
-  static const _categoryOrderPreferenceKey = 'math_keyboard_category_order_v1';
+  String get _categoryOrderPreferenceKey => widget.preferenceNamespace.isEmpty
+      ? 'math_keyboard_category_order_v1'
+      : 'visual_math.${widget.preferenceNamespace}.math_keyboard_category_order_v1';
 
   String _label(String source) => widget.labelResolver?.call(source) ?? source;
 
@@ -84,6 +90,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
   }
 
   Future<void> _loadCategoryOrder() async {
+    if (!widget.persistenceEnabled) return;
     final preferences = await SharedPreferences.getInstance();
     final storedOrder = preferences.getStringList(_categoryOrderPreferenceKey);
     if (!mounted) return;
@@ -108,6 +115,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
   }
 
   Future<void> _saveCategoryOrder() async {
+    if (!widget.persistenceEnabled) return;
     final preferences = await SharedPreferences.getInstance();
     await preferences.setStringList(
       _categoryOrderPreferenceKey,
