@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'dart:math' as dart_math;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Viewport;
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/math_3d_object.dart';
+import '../models/math_3d_scene.dart';
 import '../models/math_3d_tool.dart';
+import '../models/math_drawing_controller.dart';
 import '../models/math_drawing_state.dart';
 import '../models/math_expression.dart' show MathExpression;
 import '../models/math_expression_3d.dart';
@@ -35,12 +37,16 @@ class MathDrawingPage extends StatefulWidget {
   /// Initial input mode; defaults to the platform's supported editor mode.
   final bool? initialMathematicalMode;
 
+  /// Optional host controller for formulas, canvas state, commands, and events.
+  final MathDrawingController? controller;
+
   /// Creates a math workspace.
   const MathDrawingPage({
     super.key,
     this.initialExpression,
     this.initialShowWebView = true,
     this.initialMathematicalMode,
+    this.controller,
   });
 
   @override
@@ -71,6 +77,8 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   final Map<String, MathParameter> _parameters = {};
   Set<String> _activeParameterNames = {};
   List<FormulaEntry> _plottedFormulas = [];
+  String? _plotError;
+  List<Object3D> _lastReportedScene = const [];
 
   @override
   void initState() {
@@ -91,6 +99,70 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         visible: true,
       ),
     );
+    widget.controller?.attach(
+      initialSnapshot: _makeSnapshot(),
+      plot: _plotAll,
+      reset2D: () => _canvasKey.currentState?.resetView(),
+      reset3D: () => _canvas3DKey.currentState?.resetView(),
+      fit2D: () => _canvasKey.currentState?.fitToView(),
+      zoomIn2D: () => _canvasKey.currentState?.zoomIn(),
+      zoomOut2D: () => _canvasKey.currentState?.zoomOut(),
+      fit3D: () => _canvas3DKey.currentState?.fitToView(),
+      zoomIn3D: () => _canvas3DKey.currentState?.zoomIn(),
+      zoomOut3D: () => _canvas3DKey.currentState?.zoomOut(),
+      setViewport2D: (viewport) => _canvasKey.currentState?.setViewport(
+        viewport.xMin,
+        viewport.yMin,
+        viewport.xMax,
+        viewport.yMax,
+      ),
+      setCamera3D: (camera) => _canvas3DKey.currentState?.setCamera(camera),
+      setProjection3D: (projection) =>
+          _canvas3DKey.currentState?.setProjectionType(projection),
+      setScene3D: _setScene3D,
+      setTool: _setActiveTool,
+      setView: _setActiveView,
+      setFormulas: _setFormulas,
+      setParameters: _setParameters,
+      restore: _restoreSnapshot,
+    );
+    _syncController();
+  }
+
+  @override
+  void didUpdateWidget(MathDrawingPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller?.detach();
+      widget.controller?.attach(
+        initialSnapshot: _makeSnapshot(),
+        plot: _plotAll,
+        reset2D: () => _canvasKey.currentState?.resetView(),
+        reset3D: () => _canvas3DKey.currentState?.resetView(),
+        fit2D: () => _canvasKey.currentState?.fitToView(),
+        zoomIn2D: () => _canvasKey.currentState?.zoomIn(),
+        zoomOut2D: () => _canvasKey.currentState?.zoomOut(),
+        fit3D: () => _canvas3DKey.currentState?.fitToView(),
+        zoomIn3D: () => _canvas3DKey.currentState?.zoomIn(),
+        zoomOut3D: () => _canvas3DKey.currentState?.zoomOut(),
+        setViewport2D: (viewport) => _canvasKey.currentState?.setViewport(
+          viewport.xMin,
+          viewport.yMin,
+          viewport.xMax,
+          viewport.yMax,
+        ),
+        setCamera3D: (camera) => _canvas3DKey.currentState?.setCamera(camera),
+        setProjection3D: (projection) =>
+            _canvas3DKey.currentState?.setProjectionType(projection),
+        setScene3D: _setScene3D,
+        setTool: _setActiveTool,
+        setView: _setActiveView,
+        setFormulas: _setFormulas,
+        setParameters: _setParameters,
+        restore: _restoreSnapshot,
+      );
+      _syncController();
+    }
   }
 
   @override
@@ -101,6 +173,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     _formulaScroll.dispose();
     _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
+    widget.controller?.detach();
     super.dispose();
   }
 
@@ -162,6 +235,188 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     }
   }
 
+  MathDrawingSnapshot _makeSnapshot() {
+    final formulas = [
+      for (final formula in _formulas)
+        FormulaEntry(
+          rawExpression: formula.controller.text,
+          parsed: MathExpression.fromInput(formula.controller.text),
+          color: formula.color,
+          autoColor: formula.autoColor,
+          visible: formula.visible,
+        ),
+    ];
+    final viewport =
+        _canvasKey.currentState?.viewport ?? (-10.0, -10.0, 10.0, 10.0);
+    return MathDrawingSnapshot(
+      formulas: formulas,
+      parameters: _parameters,
+      activeView: _currentView,
+      activeTool: _current3DTool,
+      viewport2D: Viewport(
+        xMin: viewport.$1,
+        yMin: viewport.$2,
+        xMax: viewport.$3,
+        yMax: viewport.$4,
+      ),
+      camera3D: _canvas3DKey.currentState?.camera ?? const Camera3D(),
+      projection3D:
+          _canvas3DKey.currentState?.projectionType ?? ProjectionType.parallel,
+      scene3D: _canvas3DKey.currentState?.objects ?? const [],
+    );
+  }
+
+  void _syncController() {
+    final controller = widget.controller;
+    if (controller != null) controller.publish(_makeSnapshot());
+  }
+
+  void _setActiveTool(ConstructionTool tool) {
+    if (tool == _current3DTool) {
+      _canvas3DKey.currentState?.setTool(tool);
+    }
+    setState(() {
+      _current3DTool = tool;
+      _toolInstruction = '';
+    });
+    _syncController();
+    widget.controller?.onToolChanged?.call(tool);
+  }
+
+  void _setActiveView(ViewMode view) {
+    if (_tabController.index != (view == ViewMode.mode2D ? 0 : 1)) {
+      _tabController.animateTo(view == ViewMode.mode2D ? 0 : 1);
+    }
+  }
+
+  void _setScene3D(List<Object3D> objects) {
+    _canvas3DKey.currentState?.setObjects(objects);
+    _publish3DChange();
+  }
+
+  void _publish3DChange() {
+    final controller = widget.controller;
+    if (controller == null) return;
+    final previousScene = _lastReportedScene;
+    final currentScene =
+        _canvas3DKey.currentState?.objects ?? const <Object3D>[];
+    final previousSnapshot = controller.snapshot;
+    final snapshot = _makeSnapshot();
+    controller.publish(snapshot);
+    final camera = snapshot.camera3D;
+    final sceneChanged =
+        previousScene.length != currentScene.length ||
+        List.generate(
+          previousScene.length,
+          (index) => index,
+        ).any((index) => !identical(previousScene[index], currentScene[index]));
+    _lastReportedScene = List.of(currentScene);
+    if (sceneChanged) controller.onSceneChanged?.call(snapshot.scene3D);
+    final cameraChanged =
+        previousSnapshot != null &&
+        (previousSnapshot.camera3D.target != camera.target ||
+            previousSnapshot.camera3D.distance != camera.distance ||
+            previousSnapshot.camera3D.theta != camera.theta ||
+            previousSnapshot.camera3D.phi != camera.phi ||
+            previousSnapshot.projection3D != snapshot.projection3D);
+    if (cameraChanged) controller.onViewportChanged?.call(snapshot);
+  }
+
+  void _setFormulas(List<FormulaEntry> formulas) {
+    setState(() {
+      for (final formula in _formulas) {
+        formula.controller.dispose();
+      }
+      _formulas
+        ..clear()
+        ..addAll([
+          for (final entry in formulas)
+            _FormulaState(
+              controller: TextEditingController(text: entry.rawExpression),
+              color: entry.color,
+              autoColor: entry.autoColor,
+              visible: entry.visible,
+            ),
+        ]);
+      _activeFormula = null;
+      _keyboardVisible = false;
+      if (_formulas.isEmpty) {
+        _formulas.add(
+          _FormulaState(
+            controller: TextEditingController(),
+            color: formulaPalette[0],
+          ),
+        );
+      }
+    });
+    _syncController();
+  }
+
+  void _setParameters(Map<String, MathParameter> parameters) {
+    setState(() {
+      _parameters
+        ..clear()
+        ..addAll(parameters);
+      _activeParameterNames = parameters.keys.toSet();
+    });
+    _refreshParameterCurves();
+    _syncController();
+  }
+
+  void _restoreSnapshot(MathDrawingSnapshot snapshot) {
+    final controller = widget.controller;
+    setState(() {
+      for (final formula in _formulas) {
+        formula.controller.dispose();
+      }
+      _formulas
+        ..clear()
+        ..addAll([
+          for (final entry in snapshot.formulas)
+            _FormulaState(
+              controller: TextEditingController(text: entry.rawExpression),
+              color: entry.color,
+              autoColor: entry.autoColor,
+              visible: entry.visible,
+            )..committedText = entry.rawExpression.trim(),
+        ]);
+      _activeFormula = null;
+      _keyboardVisible = false;
+      if (_formulas.isEmpty) {
+        _formulas.add(
+          _FormulaState(
+            controller: TextEditingController(),
+            color: formulaPalette[0],
+          ),
+        );
+      }
+      _parameters
+        ..clear()
+        ..addAll(snapshot.parameters);
+      _currentView = snapshot.activeView;
+      _current3DTool = snapshot.activeTool;
+      _activeParameterNames = _parameters.keys.toSet();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _canvasKey.currentState?.setViewport(
+        snapshot.viewport2D.xMin,
+        snapshot.viewport2D.yMin,
+        snapshot.viewport2D.xMax,
+        snapshot.viewport2D.yMax,
+      );
+      _canvas3DKey.currentState?.setCamera(snapshot.camera3D);
+      _canvas3DKey.currentState?.setProjectionType(snapshot.projection3D);
+      _canvas3DKey.currentState?.setObjects(snapshot.scene3D);
+      _canvas3DKey.currentState?.setTool(snapshot.activeTool);
+      _publish3DChange();
+      _tabController.animateTo(snapshot.activeView == ViewMode.mode2D ? 0 : 1);
+      if (snapshot.activeView == ViewMode.mode2D) unawaited(_plotAll());
+    });
+    _syncController();
+    controller?.publish(_makeSnapshot());
+  }
+
   void _dismissKeyboard() {
     unawaited(_activeFormula?.editorKey.currentState?.dismiss());
     setState(() => _keyboardVisible = false);
@@ -177,6 +432,8 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     if (!mounted || (_tabController.index == 0) != (target == ViewMode.mode2D))
       return;
     setState(() => _currentView = target);
+    _syncController();
+    widget.controller?.onViewChanged?.call(target);
   }
 
   // ==================================================================
@@ -195,10 +452,19 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     final view = _currentView;
     await _flushEditors();
     if (!mounted) return;
+    _plotError = null;
     if (view == ViewMode.mode2D) {
       _plotAll2D();
     } else {
       _plotAll3D();
+    }
+    if (view == ViewMode.mode3D) {
+      _publish3DChange();
+    } else {
+      _syncController();
+    }
+    if (_plotError == null) {
+      widget.controller?.onPlotted?.call(_makeSnapshot());
     }
   }
 
@@ -269,6 +535,8 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     if (!mounted || !_activeParameterNames.contains(name)) return;
     setState(() => _parameters[name] = parameter);
     _refreshParameterCurves();
+    _syncController();
+    widget.controller?.onParameterChanged?.call(name, parameter);
   }
 
   void _plotAll3D() {
@@ -368,6 +636,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         ),
       );
     });
+    _syncController();
   }
 
   Future<void> _removeFormula(_FormulaState removing) async {
@@ -503,6 +772,8 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   }
 
   void _showError(String msg) {
+    _plotError = msg;
+    widget.controller?.onError?.call(msg);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -714,7 +985,14 @@ class _MathDrawingPageState extends State<MathDrawingPage>
               fillColor: f.color.withValues(alpha: 0.06),
               onModeChanged: (mode) => _setMode(mode, f),
               onActivate: () => _activateFormula(f),
-              onChanged: () => setState(() {}),
+              onChanged: () {
+                setState(() {});
+                _syncController();
+                widget.controller?.onFormulaEdited?.call(
+                  index,
+                  f.controller.text,
+                );
+              },
               onSubmitted: _plotAll,
               onReadyChanged: () {
                 if (mounted) setState(() {});
@@ -820,9 +1098,17 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                 child: MathCanvas(
                   key: _canvasKey,
                   initialExpression: null,
-                  onReady: () => debugPrint('[MathDrawing] Canvas ready'),
+                  onReady: () {
+                    debugPrint('[MathDrawing] Canvas ready');
+                    _syncController();
+                  },
+                  onViewportChange: (_, __, ___, ____) {
+                    _syncController();
+                    widget.controller?.onViewportChanged?.call(_makeSnapshot());
+                  },
                   onError: (msg) {
                     debugPrint('[MathDrawing] Canvas error: $msg');
+                    widget.controller?.onError?.call(msg);
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
@@ -846,17 +1132,38 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                 _floatingControl(
                   icon: Icons.filter_center_focus,
                   tooltip: '缩放至适合',
-                  onPressed: () => _canvasKey.currentState?.fitToView(),
+                  onPressed: () {
+                    final controller = widget.controller;
+                    if (controller != null) {
+                      controller.fitToView();
+                    } else {
+                      _canvasKey.currentState?.fitToView();
+                    }
+                  },
                 ),
                 _floatingControl(
                   icon: Icons.zoom_in,
                   tooltip: '放大',
-                  onPressed: () => _canvasKey.currentState?.zoomIn(),
+                  onPressed: () {
+                    final controller = widget.controller;
+                    if (controller != null) {
+                      controller.zoomIn();
+                    } else {
+                      _canvasKey.currentState?.zoomIn();
+                    }
+                  },
                 ),
                 _floatingControl(
                   icon: Icons.zoom_out,
                   tooltip: '缩小',
-                  onPressed: () => _canvasKey.currentState?.zoomOut(),
+                  onPressed: () {
+                    final controller = widget.controller;
+                    if (controller != null) {
+                      controller.zoomOut();
+                    } else {
+                      _canvasKey.currentState?.zoomOut();
+                    }
+                  },
                 ),
               ],
             ),
@@ -912,10 +1219,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
               _canvas3DKey.currentState?.performToolCommand(tool);
               return;
             }
-            setState(() {
-              _current3DTool = tool;
-              _toolInstruction = '';
-            });
+            _setActiveTool(tool);
           },
         ),
         // 3D canvas
@@ -938,19 +1242,24 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                   key: _canvas3DKey,
                   currentTool: _current3DTool,
                   polygonSides: _polygonSides,
-                  onReady: () {},
-                  onViewportChange: () {},
+                  onViewportChange: _publish3DChange,
+                  onSceneChanged: _publish3DChange,
                   onObjectCreated: (obj) {
+                    widget.controller?.onObjectCreated?.call(obj);
                     _canvas3DKey.currentState?.setObjects([
                       ...?_canvas3DKey.currentState?.objects,
                       obj,
                     ]);
+                    _publish3DChange();
                   },
                   onToolInstruction: (instruction) {
                     setState(() {
                       _toolInstruction = instruction;
                     });
                   },
+                  onSelectionChanged: (object) =>
+                      widget.controller?.onSelectionChanged?.call(object),
+                  onReady: _syncController,
                 ),
               ),
             ),

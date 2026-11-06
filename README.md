@@ -48,6 +48,21 @@ class VisualMathApp extends StatelessWidget {
 }
 ```
 
+Keep a controller in host state to integrate commands and lifecycle events:
+
+```dart
+final drawingController = MathDrawingController();
+drawingController.onPlotted = (snapshot) => saveDraft(snapshot);
+
+MathDrawingPage(controller: drawingController);
+
+// The controller can also set formulas, view, tool, camera, and viewport.
+drawingController.setViewport2D(
+  const Viewport(xMin: -5, yMin: -4, xMax: 5, yMax: 4),
+);
+final snapshot = drawingController.snapshot;
+```
+
 ## Embed individual components
 
 `MathCanvas` is a pure-Flutter 2D plot that can be embedded independently. It
@@ -72,11 +87,13 @@ levels, with different ownership responsibilities.
 | --- | --- | --- |
 | App-owned UI | Exported models: `MathExpression`, `FormulaEntry`, `MathParameter`, `CoordinatePoint`, `Viewport`, `MathInputTemplate`; 3D data types including `Point3D`, `Vector3D`, `Object3D`, `SurfaceMesh`, `Camera3D`, `Projection3D`, `Scene3D`; and `ConstructionState`, `ConstructionTool`, and related enums | The host builds its own UI and owns its application state. Models provide math, scene, and construction data; they do not create a workspace or coordinate widgets. |
 | Embeddable components | `MathCanvas`, `MathCanvas3D`, `MathFormulaField`, `MathKeyboard`, `MathParameterControls`, `Math3DToolbar`, `MathNumericKeyboard`, and `MathCanvasWebView` | The host composes the widgets and wires their inputs and callbacks. Stateful widgets manage their interaction state. Stateless controls such as `MathParameterControls` and `MathNumericKeyboard` use host-provided values and callbacks, so the host owns the state passed to them. `MathKeyboard` also stores its category order in shared preferences. |
-| Complete workspace | `MathDrawingPage` | The package owns the formula rows, plotting state, parameter state, 2D/3D tab selection, editor mode, and workspace controls. On supported platforms it restores a saved input mode when `initialMathematicalMode` is omitted; later user changes are saved regardless. The host supplies the page and optional initial values; the workspace does not expose its internal state as an app controller. |
+| Complete workspace | `MathDrawingPage` and optional `MathDrawingController` | The page owns its editor resources and default workspace UI. A controller exposes formulas, parameters, active view/tool, 2D viewport, 3D camera/scene, commands, snapshots, and lifecycle callbacks without replacing the default UI. |
 
-There is no separately exported controller for the complete workspace,
-formula list, or editor state today; apps that build their own UI own and wire
-that state themselves. The canvases expose imperative controls on their public
+The optional `MathDrawingController` lets a host observe and control the
+complete workspace while keeping its built-in UI. Snapshots are immutable,
+versioned package objects intended for host save/restore; version 1 keeps typed
+formula and scene models and does not define a cross-package interchange
+format. The canvases also expose imperative controls on their public
 `State` classes, which a host can access with its own `GlobalKey` while the
 widget is mounted. For 2D, `MathCanvasState` includes `setFormulas`, `setExpression`,
 `setViewport`, `resetView`, `fitToView`, `zoomIn`, and `zoomOut`. For 3D, `MathCanvas3DState` includes scene methods `setObjects`, `setSurface`,
@@ -106,7 +123,8 @@ canvas actions. Its current constructor supports initial values, but does not
 offer switches to hide individual panels or replace those controls.
 
 The public `MathDrawingPage` inputs are `initialExpression` (empty by default),
-`initialShowWebView` (true by default), and optional `initialMathematicalMode`.
+`initialShowWebView` (true by default), optional `initialMathematicalMode`, and
+an optional `MathDrawingController`.
 Setting `initialShowWebView` to false uses the source editor and preview even on
 a platform that supports MathLive; the platform matrix below describes which
 platforms can use the embedded editor when it is enabled.

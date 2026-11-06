@@ -96,7 +96,10 @@ Future<void> _expectPlanarArrowsFollowAxes(
 }
 
 void main() {
-  Future<MathCanvas3DState> setup(WidgetTester tester) async {
+  Future<MathCanvas3DState> setup(
+    WidgetTester tester, {
+    VoidCallback? onSceneChanged,
+  }) async {
     final key = GlobalKey<MathCanvas3DState>();
     await tester.pumpWidget(
       MaterialApp(
@@ -104,6 +107,7 @@ void main() {
           body: MathCanvas3D(
             key: key,
             currentTool: ConstructionTool.point,
+            onSceneChanged: onSceneChanged,
             onObjectCreated: (object) {
               key.currentState!.setObjects([
                 ...key.currentState!.objects,
@@ -379,9 +383,11 @@ void main() {
   testWidgets('cancelling a point drag restores it without creating objects', (
     tester,
   ) async {
-    final state = await setup(tester);
+    var sceneChanges = 0;
+    final state = await setup(tester, onSceneChanged: () => sceneChanges++);
     await tester.tapAt(const Offset(340, 330));
     await tester.pump();
+    final beforeCancel = sceneChanges;
     final initial = state.objects.single;
     final pointer = await tester.startGesture(screen(state, initial.point));
     await pointer.moveBy(const Offset(0, -80));
@@ -389,6 +395,18 @@ void main() {
     await pointer.cancel();
     await tester.pump();
     expect(state.objects, [initial]);
+    expect(sceneChanges, beforeCancel + 1);
+
+    final beforeToolChange = sceneChanges;
+    final interrupted = await tester.startGesture(screen(state, initial.point));
+    await interrupted.moveBy(const Offset(0, -80));
+    await tester.pump();
+    state.setTool(ConstructionTool.move);
+    await tester.pump();
+    expect(state.objects.single.point, initial.point);
+    expect(sceneChanges, beforeToolChange + 1);
+    await interrupted.cancel();
+    await tester.pump();
   });
 
   testWidgets(
