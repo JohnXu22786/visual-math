@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:visual_math/visual_math.dart';
+import 'package:visual_math/visual_math.dart' as vm;
 
 Widget _app(MathWorkspaceOptions options) => MaterialApp(
   home: MathDrawingPage(
@@ -47,6 +48,178 @@ void main() {
     expect(find.byType(TabBar), findsNothing);
     expect(find.byType(MathCanvas), findsOneWidget);
     expect(find.byType(MathCanvas3D), findsNothing);
+  });
+
+  testWidgets('restoring an unavailable view keeps the configured view', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          options: const MathWorkspaceOptions(show3D: false),
+          initialMathematicalMode: false,
+          initialShowWebView: false,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    controller.restore(
+      MathDrawingSnapshot(
+        formulas: const [],
+        parameters: const {},
+        activeView: ViewMode.mode3D,
+        activeTool: ConstructionTool.move,
+        viewport2D: vm.Viewport.defaultViewport(),
+        camera3D: const Camera3D(),
+        projection3D: ProjectionType.parallel,
+        scene3D: const [],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(controller.activeView, ViewMode.mode2D);
+    expect(find.byType(MathCanvas), findsOneWidget);
+    expect(find.byType(MathCanvas3D), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('custom view selection updates the workspace controller', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    final viewChanges = <ViewMode>[];
+    controller.onViewChanged = viewChanges.add;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          options: MathWorkspaceOptions(
+            viewSelectorBuilder: (context, _, actions) => TextButton(
+              onPressed: () async => actions.setActiveView(ViewMode.mode3D),
+              child: const Text('Host select 3D'),
+            ),
+          ),
+          initialMathematicalMode: false,
+          initialShowWebView: false,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('Host select 3D'));
+    await tester.pumpAndSettle();
+
+    expect(controller.activeView, ViewMode.mode3D);
+    expect(viewChanges, [ViewMode.mode3D]);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('custom 3D tool selection updates the workspace controller', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    final toolChanges = <ConstructionTool>[];
+    controller.onToolChanged = toolChanges.add;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          options: MathWorkspaceOptions(
+            threeDToolsBuilder: (context, _, actions) => TextButton(
+              onPressed: () => actions.select3DTool(ConstructionTool.point),
+              child: const Text('Host select point tool'),
+            ),
+          ),
+          initialMathematicalMode: false,
+          initialShowWebView: false,
+        ),
+      ),
+    );
+    await tester.pump();
+    controller.setActiveView(ViewMode.mode3D);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Host select point tool'));
+    await tester.pumpAndSettle();
+
+    expect(controller.activeTool, ConstructionTool.point);
+    expect(toolChanges, [ConstructionTool.point]);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'replacing the formula region retains custom parameter controls',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MathDrawingPage(
+            initialExpression: 'A*x',
+            initialMathematicalMode: false,
+            initialShowWebView: false,
+            options: MathWorkspaceOptions(
+              show3D: false,
+              formulaEditorBuilder: (context, _, actions) => Column(
+                children: [
+                  Text('Host formulas: ${actions.formulaCount}'),
+                  TextButton(
+                    onPressed: actions.plot,
+                    child: const Text('Plot host formula'),
+                  ),
+                ],
+              ),
+              parameterControlsBuilder: (context, _, actions) => Text(
+                'Host parameters: ${actions.parameters.keys.join(', ')}',
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Plot host formula'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Host formulas: 1'), findsOneWidget);
+      expect(find.text('Host parameters: A'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('custom formula edits update the workspace controller', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    final formulaEdits = <String>[];
+    controller.onFormulaEdited = (_, expression) =>
+        formulaEdits.add(expression);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          initialExpression: 'x',
+          initialMathematicalMode: false,
+          initialShowWebView: false,
+          options: MathWorkspaceOptions(
+            show3D: false,
+            formulaEditorBuilder: (context, _, actions) => TextButton(
+              onPressed: () => actions.setFormulaExpression(0, 'y'),
+              child: const Text('Set host formula draft'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Set host formula draft'));
+    await tester.pumpAndSettle();
+
+    expect(controller.formulas.single.rawExpression, 'y');
+    expect(formulaEdits, ['y']);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('custom regions compose in a host-owned body', (tester) async {

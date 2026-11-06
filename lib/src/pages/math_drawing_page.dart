@@ -132,7 +132,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
           _canvas3DKey.currentState?.setProjectionType(projection),
       setScene3D: _setScene3D,
       setTool: _setActiveTool,
-      setView: _setActiveView,
+      setView: _controllerSetActiveView,
       setFormulas: _setFormulas,
       setParameters: _setParameters,
       restore: _restoreSnapshot,
@@ -167,7 +167,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
             _canvas3DKey.currentState?.setProjectionType(projection),
         setScene3D: _setScene3D,
         setTool: _setActiveTool,
-        setView: _setActiveView,
+        setView: _controllerSetActiveView,
         setFormulas: _setFormulas,
         setParameters: _setParameters,
         restore: _restoreSnapshot,
@@ -298,7 +298,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     widget.controller?.onToolChanged?.call(tool);
   }
 
-  void _setActiveView(ViewMode view) {
+  void _controllerSetActiveView(ViewMode view) {
     if (_tabController.index != (view == ViewMode.mode2D ? 0 : 1)) {
       _tabController.animateTo(view == ViewMode.mode2D ? 0 : 1);
     }
@@ -380,6 +380,11 @@ class _MathDrawingPageState extends State<MathDrawingPage>
 
   void _restoreSnapshot(MathDrawingSnapshot snapshot) {
     final controller = widget.controller;
+    final restoredView = switch (snapshot.activeView) {
+      ViewMode.mode2D when widget.options.show2D => ViewMode.mode2D,
+      ViewMode.mode3D when widget.options.show3D => ViewMode.mode3D,
+      _ => widget.options.initialView,
+    };
     setState(() {
       for (final formula in _formulas) {
         formula.controller.dispose();
@@ -408,7 +413,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       _parameters
         ..clear()
         ..addAll(snapshot.parameters);
-      _currentView = snapshot.activeView;
+      _currentView = restoredView;
       _current3DTool = snapshot.activeTool;
       _activeParameterNames = _parameters.keys.toSet();
     });
@@ -425,8 +430,8 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       _canvas3DKey.currentState?.setObjects(snapshot.scene3D);
       _canvas3DKey.currentState?.setTool(snapshot.activeTool);
       _publish3DChange();
-      _tabController.animateTo(snapshot.activeView == ViewMode.mode2D ? 0 : 1);
-      if (snapshot.activeView == ViewMode.mode2D) unawaited(_plotAll());
+      _tabController.animateTo(restoredView == ViewMode.mode2D ? 0 : 1);
+      if (restoredView == ViewMode.mode2D) unawaited(_plotAll());
     });
     _syncController();
     controller?.publish(_makeSnapshot());
@@ -450,6 +455,8 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       _currentView = view;
       _tabController.index = view == ViewMode.mode2D ? 0 : 1;
     });
+    _syncController();
+    widget.controller?.onViewChanged?.call(view);
   }
 
   void _setFormulaExpression(int index, String expression) {
@@ -457,6 +464,8 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     final formula = _formulas[index];
     if (formula.controller.text == expression) return;
     setState(() => formula.controller.text = expression);
+    _syncController();
+    widget.controller?.onFormulaEdited?.call(index, expression);
   }
 
   void _activateFormulaByIndex(int index) {
@@ -474,10 +483,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       _canvas3DKey.currentState?.performToolCommand(tool);
       return;
     }
-    setState(() {
-      _current3DTool = tool;
-      _toolInstruction = '';
-    });
+    _setActiveTool(tool);
   }
 
   void _setPolygonSides(int sides) {
@@ -960,14 +966,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                 widget.options.parameterControlsBuilder != null)
               ConstrainedBox(
                 constraints: BoxConstraints(maxHeight: formulaListBaseHeight),
-                child: _workspaceRegion(
-                  widget.options.formulaEditorBuilder,
-                  widget.options.showFormulaEditor ||
-                          widget.options.showParameterControls ||
-                          widget.options.parameterControlsBuilder != null
-                      ? _buildFormulaList(cs)
-                      : const SizedBox.shrink(),
-                ),
+                child: _buildFormulaPanel(cs),
               ),
             Expanded(child: _buildAvailableCanvases(cs)),
             if (_keyboardVisible &&
@@ -1012,6 +1011,28 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     MathWorkspaceRegionBuilder? builder,
     Widget defaultContent,
   ) => builder?.call(context, defaultContent, _regionActions) ?? defaultContent;
+
+  Widget _buildFormulaPanel(ColorScheme cs) {
+    final formulaBuilder = widget.options.formulaEditorBuilder;
+    if (formulaBuilder == null) return _buildFormulaList(cs);
+
+    final parameterControls = _buildParameterControls(cs);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          fit: FlexFit.loose,
+          child: _workspaceRegion(
+            formulaBuilder,
+            widget.options.showFormulaEditor
+                ? _buildFormulaList(cs, includeParameters: false)
+                : const SizedBox.shrink(),
+          ),
+        ),
+        if (parameterControls != null) parameterControls,
+      ],
+    );
+  }
 
   Widget _buildAvailableCanvases(ColorScheme cs) {
     if (widget.options.show2D && widget.options.show3D) {
@@ -1120,9 +1141,10 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   // Formula list
   // ==================================================================
 
-  Widget _buildFormulaList(ColorScheme cs) {
+  Widget _buildFormulaList(ColorScheme cs, {bool includeParameters = true}) {
     final parameterNames = _activeParameterNames.toList()..sort();
     final showParameters =
+        includeParameters &&
         (widget.options.showParameterControls ||
             widget.options.parameterControlsBuilder != null) &&
         _currentView == ViewMode.mode2D &&
@@ -1151,6 +1173,29 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                     )
                   : const SizedBox.shrink(),
             ),
+    );
+  }
+
+  Widget? _buildParameterControls(ColorScheme cs) {
+    final parameterNames = _activeParameterNames.toList()..sort();
+    final showParameters =
+        (widget.options.showParameterControls ||
+            widget.options.parameterControlsBuilder != null) &&
+        _currentView == ViewMode.mode2D &&
+        parameterNames.isNotEmpty;
+    if (!showParameters) return null;
+
+    return _workspaceRegion(
+      widget.options.parameterControlsBuilder,
+      widget.options.showParameterControls
+          ? MathParameterControls(
+              key: const ValueKey('math-parameter-controls'),
+              parameters: {
+                for (final name in parameterNames) name: _parameters[name]!,
+              },
+              onChanged: _updateParameter,
+            )
+          : const SizedBox.shrink(),
     );
   }
 
@@ -1304,23 +1349,38 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                 _floatingControl(
                   icon: Icons.filter_center_focus,
                   tooltip: '缩放至适合',
-                  onPressed: () =>
-                      widget.controller?.fitToView() ??
-                      _canvasKey.currentState?.fitToView(),
+                  onPressed: () {
+                    final controller = widget.controller;
+                    if (controller != null) {
+                      controller.fitToView();
+                    } else {
+                      _canvasKey.currentState?.fitToView();
+                    }
+                  },
                 ),
                 _floatingControl(
                   icon: Icons.zoom_in,
                   tooltip: '放大',
-                  onPressed: () =>
-                      widget.controller?.zoomIn() ??
-                      _canvasKey.currentState?.zoomIn(),
+                  onPressed: () {
+                    final controller = widget.controller;
+                    if (controller != null) {
+                      controller.zoomIn();
+                    } else {
+                      _canvasKey.currentState?.zoomIn();
+                    }
+                  },
                 ),
                 _floatingControl(
                   icon: Icons.zoom_out,
                   tooltip: '缩小',
-                  onPressed: () =>
-                      widget.controller?.zoomOut() ??
-                      _canvasKey.currentState?.zoomOut(),
+                  onPressed: () {
+                    final controller = widget.controller;
+                    if (controller != null) {
+                      controller.zoomOut();
+                    } else {
+                      _canvasKey.currentState?.zoomOut();
+                    }
+                  },
                 ),
               ],
             )
