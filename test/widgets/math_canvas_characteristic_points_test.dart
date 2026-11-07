@@ -39,6 +39,182 @@ void main() {
     expect(kinds, isNotEmpty);
   });
 
+  testWidgets('small curve values do not underflow marker sign checks', (
+    tester,
+  ) async {
+    final key = GlobalKey<MathCanvasState>();
+    await tester.pumpWidget(app(key));
+    await tester.pumpAndSettle();
+    await key.currentState!.setFormulas([
+      FormulaEntry(
+        rawExpression: '1e-200*((x-0.03337041156840925)^2+1)',
+        parsed: MathExpression.fromInput(
+          '1e-200*((x-0.03337041156840925)^2+1)',
+        ),
+        color: Colors.blue,
+        identity: 'small-positive-curve',
+        domainMin: -30,
+        domainMax: 30,
+      ),
+    ]);
+    await tester.pumpAndSettle();
+
+    final markers = key.currentState!.characteristicPointsForTesting;
+    expect(markers.where((point) => point.$3 == 'X轴交点'), isEmpty);
+    expect(
+      markers.where((point) => point.$3 == '极值点').any(
+        (point) => (point.$1 - 0.03337041156840925).abs() < 1e-6 &&
+            point.$2 > 0,
+      ),
+      isTrue,
+    );
+
+    await key.currentState!.setFormulas([
+      FormulaEntry(
+        rawExpression: '1e-200*(x-0.1234567)',
+        parsed: MathExpression.fromInput('1e-200*(x-0.1234567)'),
+        color: Colors.blue,
+        identity: 'small-crossing',
+      ),
+      FormulaEntry(
+        rawExpression: '0',
+        parsed: MathExpression.fromInput('0'),
+        color: Colors.red,
+        identity: 'small-crossing-zero',
+      ),
+    ]);
+    await tester.pumpAndSettle();
+    expect(
+      key.currentState!.characteristicPointsForTesting
+          .where((point) => point.$3 == '图像交点')
+          .any((point) => (point.$1 - 0.1234567).abs() < 1e-5),
+      isTrue,
+    );
+  });
+
+  testWidgets('tiny coordinate tangency checks keep finite error bounds', (
+    tester,
+  ) async {
+    final key = GlobalKey<MathCanvasState>();
+    await tester.pumpWidget(app(key));
+    await tester.pumpAndSettle();
+    await key.currentState!.setViewport(-1e-200, -1, 1e-200, 1);
+    await key.currentState!.setFormulas([
+      FormulaEntry(
+        rawExpression: '1e300*x*x+1e-100',
+        parsed: MathExpression.fromInput('1e300*x*x+1e-100'),
+        color: Colors.blue,
+        identity: 'tiny-coordinate-near-miss',
+        domainMin: -1e-200,
+        domainMax: 1e-200,
+      ),
+      FormulaEntry(
+        rawExpression: '0',
+        parsed: MathExpression.fromInput('0'),
+        color: Colors.red,
+        identity: 'tiny-coordinate-zero',
+      ),
+    ]);
+    await tester.pumpAndSettle();
+    expect(
+      key.currentState!.characteristicPointsForTesting.where(
+        (point) => point.$3 == 'X轴交点' || point.$3 == '图像交点',
+      ),
+      isEmpty,
+    );
+  });
+
+  testWidgets('tangent x-axis roots are found and near misses are rejected', (
+    tester,
+  ) async {
+    final key = GlobalKey<MathCanvasState>();
+    await tester.pumpWidget(app(key));
+    await tester.pumpAndSettle();
+    await key.currentState!.setFormulas([
+      FormulaEntry(
+        rawExpression: '(x-0.023)^2',
+        parsed: MathExpression.fromInput('(x-0.023)^2'),
+        color: Colors.blue,
+        identity: 'tangent-x-axis',
+        domainMin: -3,
+        domainMax: 3,
+      ),
+    ]);
+    await tester.pumpAndSettle();
+    expect(
+      key.currentState!.characteristicPointsForTesting
+          .where((point) => point.$3 == 'X轴交点')
+          .any((point) => (point.$1 - 0.023).abs() < 1e-6),
+      isTrue,
+    );
+
+    await key.currentState!.setFormulas([
+      FormulaEntry(
+        rawExpression: '(x-0.023)^2+0.000000000001',
+        parsed: MathExpression.fromInput('(x-0.023)^2+0.000000000001'),
+        color: Colors.red,
+        identity: 'tangent-x-axis-near-miss',
+        domainMin: -3,
+        domainMax: 3,
+      ),
+    ]);
+    await tester.pumpAndSettle();
+    expect(
+      key.currentState!.characteristicPointsForTesting.where(
+        (point) => point.$3 == 'X轴交点',
+      ),
+      isEmpty,
+    );
+
+    await key.currentState!.setFormulas([
+      FormulaEntry(
+        rawExpression: '1e20*(x-0.023)^2+1',
+        parsed: MathExpression.fromInput('1e20*(x-0.023)^2+1'),
+        color: Colors.green,
+        identity: 'large-scale-tangent-near-miss',
+        domainMin: -3,
+        domainMax: 3,
+      ),
+    ]);
+    await tester.pumpAndSettle();
+    expect(
+      key.currentState!.characteristicPointsForTesting.where(
+        (point) => point.$3 == 'X轴交点',
+      ),
+      isEmpty,
+    );
+  });
+
+  testWidgets('implicit contour intersections scale with the viewport', (
+    tester,
+  ) async {
+    final key = GlobalKey<MathCanvasState>();
+    await tester.pumpWidget(app(key));
+    await tester.pumpAndSettle();
+    await key.currentState!.setViewport(-1e-9, -1e-9, 1e-9, 1e-9);
+    await key.currentState!.setFormulas([
+      FormulaEntry(
+        rawExpression: 'x+y=0',
+        parsed: MathExpression.fromInput('x+y=0'),
+        color: Colors.blue,
+        identity: 'small-scale-contour-one',
+      ),
+      FormulaEntry(
+        rawExpression: 'x-y=0',
+        parsed: MathExpression.fromInput('x-y=0'),
+        color: Colors.red,
+        identity: 'small-scale-contour-two',
+      ),
+    ]);
+    await tester.pumpAndSettle();
+    expect(
+      key.currentState!.characteristicPointsForTesting
+          .where((point) => point.$3 == '图像交点')
+          .any((point) => point.$1.abs() < 1e-10 && point.$2.abs() < 1e-10),
+      isTrue,
+    );
+  });
+
   testWidgets('per-formula category filters and global tri-state work', (
     tester,
   ) async {
@@ -200,6 +376,92 @@ void main() {
         rawExpression: 'x',
         parsed: MathExpression.fromInput('x'),
         color: Colors.blue,
+        identity: 'first-nearby-root',
+      ),
+      FormulaEntry(
+        rawExpression: '0',
+        parsed: MathExpression.fromInput('0'),
+        color: Colors.red,
+        identity: 'shared-zero-line',
+      ),
+      FormulaEntry(
+        rawExpression: 'x-0.00000000000005',
+        parsed: MathExpression.fromInput('x-0.00000000000005'),
+        color: Colors.green,
+        identity: 'second-nearby-root',
+      ),
+    ]);
+    await tester.pumpAndSettle();
+    final nearbyPairRoots = key.currentState!.characteristicPointsForTesting
+        .where((point) => point.$3 == '图像交点')
+        .where((point) => point.$1.abs() < 1e-12)
+        .toList();
+    expect(nearbyPairRoots, hasLength(2));
+
+    await key.currentState!.setFormulas([
+      FormulaEntry(
+        rawExpression: 'x',
+        parsed: MathExpression.fromInput('x'),
+        color: Colors.blue,
+        identity: 'first-subfemto-root',
+      ),
+      FormulaEntry(
+        rawExpression: '0',
+        parsed: MathExpression.fromInput('0'),
+        color: Colors.red,
+        identity: 'subfemto-zero-line',
+      ),
+      FormulaEntry(
+        rawExpression: 'x-0.0000000000000005',
+        parsed: MathExpression.fromInput('x-0.0000000000000005'),
+        color: Colors.green,
+        identity: 'second-subfemto-root',
+      ),
+    ]);
+    await tester.pumpAndSettle();
+    final subfemtoPairRoots = key.currentState!.characteristicPointsForTesting
+        .where((point) => point.$3 == '图像交点')
+        .where((point) => point.$1.abs() < 1e-12)
+        .toList();
+    expect(subfemtoPairRoots, hasLength(2));
+
+    await key.currentState!.setFormulas([
+      FormulaEntry(
+        rawExpression: 'x^2-2',
+        parsed: MathExpression.fromInput('x^2-2'),
+        color: Colors.blue,
+        identity: 'irrational-roots',
+      ),
+      FormulaEntry(
+        rawExpression: '0',
+        parsed: MathExpression.fromInput('0'),
+        color: Colors.red,
+        identity: 'irrational-roots-zero',
+      ),
+    ]);
+    await tester.pumpAndSettle();
+    final irrationalRoots = key.currentState!.characteristicPointsForTesting
+        .where((point) => point.$3 == '图像交点')
+        .toList();
+    expect(irrationalRoots, hasLength(2));
+    expect(
+      irrationalRoots.any(
+        (point) => (point.$1 - 1.4142135623730951).abs() < 1e-12,
+      ),
+      isTrue,
+    );
+    expect(
+      irrationalRoots.any(
+        (point) => (point.$1 + 1.4142135623730951).abs() < 1e-12,
+      ),
+      isTrue,
+    );
+
+    await key.currentState!.setFormulas([
+      FormulaEntry(
+        rawExpression: 'x',
+        parsed: MathExpression.fromInput('x'),
+        color: Colors.blue,
         identity: 'axis-first',
       ),
       FormulaEntry(
@@ -247,6 +509,55 @@ void main() {
         .toList();
     expect(sharedEndpoint, hasLength(1));
     expect(sharedEndpoint.single.$2, closeTo(1, 1e-3));
+
+    await key.currentState!.setFormulas([
+      FormulaEntry(
+        rawExpression: '(x-0.1234567)^2',
+        parsed: MathExpression.fromInput('(x-0.1234567)^2'),
+        color: Colors.blue,
+        identity: 'tangent-one',
+      ),
+      FormulaEntry(
+        rawExpression: '0',
+        parsed: MathExpression.fromInput('0'),
+        color: Colors.red,
+        identity: 'tangent-zero',
+      ),
+      FormulaEntry(
+        rawExpression: '2*(x-0.1234567)^2',
+        parsed: MathExpression.fromInput('2*(x-0.1234567)^2'),
+        color: Colors.green,
+        identity: 'tangent-two',
+      ),
+    ]);
+    await tester.pumpAndSettle();
+    final sharedTangency = key.currentState!.characteristicPointsForTesting
+        .where((point) => point.$3 == '图像交点')
+        .where((point) => (point.$1 - 0.1234567).abs() < 1e-4)
+        .toList();
+    expect(sharedTangency, hasLength(1));
+
+    await key.currentState!.setFormulas([
+      FormulaEntry(
+        rawExpression: '1e20*(x-0.1234567)^2+1',
+        parsed: MathExpression.fromInput('1e20*(x-0.1234567)^2+1'),
+        color: Colors.blue,
+        identity: 'large-scale-pair-near-miss',
+      ),
+      FormulaEntry(
+        rawExpression: '0',
+        parsed: MathExpression.fromInput('0'),
+        color: Colors.red,
+        identity: 'large-scale-pair-zero',
+      ),
+    ]);
+    await tester.pumpAndSettle();
+    expect(
+      key.currentState!.characteristicPointsForTesting.where(
+        (point) => point.$3 == '图像交点',
+      ),
+      isEmpty,
+    );
 
     await key.currentState!.setViewport(
       1e12 - 10,
@@ -331,6 +642,39 @@ void main() {
       isTrue,
     );
 
+    const narrowOpenMax = 1e12 + 0.00048828125;
+    await key.currentState!.setViewport(
+      1e12 - 0.001,
+      -1,
+      narrowOpenMax + 0.001,
+      1,
+    );
+    await key.currentState!.setFormulas([
+      FormulaEntry(
+        rawExpression: 'x',
+        parsed: MathExpression.fromInput('x'),
+        color: Colors.blue,
+        identity: 'narrow-open-domain',
+        domainMin: 1e12,
+        domainMax: narrowOpenMax,
+        includeDomainMin: false,
+        includeDomainMax: false,
+      ),
+    ]);
+    await tester.pumpAndSettle();
+    final narrowOpenPoints = key.currentState!.curvePoints;
+    expect(narrowOpenPoints, isNotEmpty);
+    expect(
+      narrowOpenPoints.every(
+        (point) => point['x']! > 1e12 && point['x']! < narrowOpenMax,
+      ),
+      isTrue,
+    );
+    expect(
+      narrowOpenPoints.map((point) => point['x']).toSet().length,
+      greaterThanOrEqualTo(2),
+    );
+
     await key.currentState!.setFormulas([
       FormulaEntry(
         rawExpression: 'x',
@@ -344,6 +688,30 @@ void main() {
         parsed: MathExpression.fromInput('2*x'),
         color: Colors.red,
         identity: 'valid-domain',
+      ),
+    ]);
+    await tester.pumpAndSettle();
+    expect(
+      key.currentState!.characteristicPointsForTesting.where(
+        (point) => point.$3 == '图像交点',
+      ),
+      isEmpty,
+    );
+
+    await key.currentState!.setFormulas([
+      FormulaEntry(
+        rawExpression: 'x',
+        parsed: MathExpression.fromInput('x'),
+        color: Colors.blue,
+        identity: 'empty-domain',
+        domainMin: 1,
+        domainMax: 1,
+      ),
+      FormulaEntry(
+        rawExpression: '1',
+        parsed: MathExpression.fromInput('1'),
+        color: Colors.red,
+        identity: 'empty-domain-crossing',
       ),
     ]);
     await tester.pumpAndSettle();
@@ -403,6 +771,206 @@ void main() {
       ),
       isEmpty,
     );
+
+    await key.currentState!.setViewport(-1e13, -1e13, 1e13, 1e13);
+    await key.currentState!.setFormulas([
+      FormulaEntry(
+        rawExpression: '1/(x-0.1234567)',
+        parsed: MathExpression.fromInput('1/(x-0.1234567)'),
+        color: Colors.blue,
+        identity: 'vertical-asymptote',
+      ),
+      FormulaEntry(
+        rawExpression: '0',
+        parsed: MathExpression.fromInput('0'),
+        color: Colors.red,
+        identity: 'asymptote-zero',
+      ),
+    ]);
+    await tester.pumpAndSettle();
+    expect(
+      key.currentState!.characteristicPointsForTesting.where(
+        (point) => point.$3 == '图像交点',
+      ),
+      isEmpty,
+    );
+
+    await key.currentState!.setFormulas([
+      FormulaEntry(
+        rawExpression: 'x',
+        parsed: MathExpression.fromInput('x'),
+        color: Colors.blue,
+        identity: 'wide-root-line',
+      ),
+      FormulaEntry(
+        rawExpression: '0',
+        parsed: MathExpression.fromInput('0'),
+        color: Colors.red,
+        identity: 'wide-root-zero',
+      ),
+    ]);
+    await tester.pumpAndSettle();
+    expect(
+      key.currentState!.characteristicPointsForTesting
+          .where((point) => point.$3 == '图像交点')
+          .any((point) => point.$1.abs() < 1e-6 && point.$2.abs() < 1e-6),
+      isTrue,
+    );
+
+    await key.currentState!.setViewport(-2, -1, 2, 1);
+    await key.currentState!.setFormulas([
+      FormulaEntry(
+        rawExpression: 'x^2+0.00000000001',
+        parsed: MathExpression.fromInput('x^2+0.00000000001'),
+        color: Colors.blue,
+        identity: 'near-miss',
+      ),
+      FormulaEntry(
+        rawExpression: '0',
+        parsed: MathExpression.fromInput('0'),
+        color: Colors.red,
+        identity: 'near-miss-zero',
+      ),
+    ]);
+    await tester.pumpAndSettle();
+    expect(
+      key.currentState!.characteristicPointsForTesting.where(
+        (point) => point.$3 == '图像交点',
+      ),
+      isEmpty,
+    );
+
+    await key.currentState!.setFormulas([
+      FormulaEntry(
+        rawExpression: 'x^2',
+        parsed: MathExpression.fromInput('x^2'),
+        color: Colors.blue,
+        identity: 'tangent',
+      ),
+      FormulaEntry(
+        rawExpression: '0',
+        parsed: MathExpression.fromInput('0'),
+        color: Colors.red,
+        identity: 'tangent-zero',
+      ),
+    ]);
+    await tester.pumpAndSettle();
+    expect(
+      key.currentState!.characteristicPointsForTesting
+          .where((point) => point.$3 == '图像交点')
+          .any((point) => point.$1.abs() < 1e-6 && point.$2.abs() < 1e-6),
+      isTrue,
+    );
+
+    await key.currentState!.setFormulas([
+      FormulaEntry(
+        rawExpression: '0',
+        parsed: MathExpression.fromInput('0'),
+        color: Colors.blue,
+        identity: 'small-tangent-zero',
+      ),
+      FormulaEntry(
+        rawExpression: '1e-14*(x-1.234567)^2',
+        parsed: MathExpression.fromInput('1e-14*(x-1.234567)^2'),
+        color: Colors.red,
+        identity: 'small-tangent',
+      ),
+    ]);
+    await tester.pumpAndSettle();
+    expect(
+      key.currentState!.characteristicPointsForTesting
+          .where((point) => point.$3 == '图像交点')
+          .any((point) => (point.$1 - 1.234567).abs() < 1e-4),
+      isTrue,
+    );
+
+    await key.currentState!.setViewport(-0.001, -0.001, 0.002, 0.001);
+    await key.currentState!.setFormulas([
+      FormulaEntry(
+        rawExpression: '0',
+        parsed: MathExpression.fromInput('0'),
+        color: Colors.blue,
+        identity: 'close-roots-zero',
+        domainMin: 0,
+        domainMax: 0.001,
+      ),
+      FormulaEntry(
+        rawExpression: 'x*(x-0.0005)',
+        parsed: MathExpression.fromInput('x*(x-0.0005)'),
+        color: Colors.red,
+        identity: 'close-roots-quadratic',
+        domainMin: 0,
+        domainMax: 0.001,
+      ),
+    ]);
+    await tester.pumpAndSettle();
+    final closeIntersections = key.currentState!
+        .characteristicPointsForTesting
+        .where((point) => point.$3 == '图像交点')
+        .toList();
+    expect(closeIntersections, hasLength(2));
+    expect((closeIntersections[0].$1 - closeIntersections[1].$1).abs(),
+        greaterThan(0.0004));
+
+    await key.currentState!.setViewport(-1e-9, -1e-9, 2e-9, 1e-9);
+    await key.currentState!.setFormulas([
+      FormulaEntry(
+        rawExpression: '0',
+        parsed: MathExpression.fromInput('0'),
+        color: Colors.blue,
+        identity: 'subnano-zero',
+        domainMin: 0,
+        domainMax: 1e-9,
+      ),
+      FormulaEntry(
+        rawExpression: 'x*(x-0.0000000005)',
+        parsed: MathExpression.fromInput('x*(x-0.0000000005)'),
+        color: Colors.red,
+        identity: 'subnano-quadratic',
+        domainMin: 0,
+        domainMax: 1e-9,
+      ),
+    ]);
+    await tester.pumpAndSettle();
+    final subnanoIntersections = key.currentState!
+        .characteristicPointsForTesting
+        .where((point) => point.$3 == '图像交点')
+        .toList();
+    expect(subnanoIntersections, hasLength(2));
+    expect(
+      (subnanoIntersections[0].$1 - subnanoIntersections[1].$1).abs(),
+      greaterThan(4e-10),
+    );
+
+    await key.currentState!.setViewport(-1e-13, -1e-10, 1e-12, 1e-10);
+    await key.currentState!.setFormulas([
+      FormulaEntry(
+        rawExpression: '0',
+        parsed: MathExpression.fromInput('0'),
+        color: Colors.blue,
+        identity: 'ulps-close-zero',
+        domainMin: 0,
+        domainMax: 1e-12,
+      ),
+      FormulaEntry(
+        rawExpression: '1e15*x*(x-5e-14)',
+        parsed: MathExpression.fromInput('1e15*x*(x-5e-14)'),
+        color: Colors.red,
+        identity: 'ulps-close-roots',
+        domainMin: 0,
+        domainMax: 1e-12,
+      ),
+    ]);
+    await tester.pumpAndSettle();
+    final ulpsCloseIntersections = key.currentState!
+        .characteristicPointsForTesting
+        .where((point) => point.$3 == '图像交点')
+        .toList();
+    expect(ulpsCloseIntersections, hasLength(2));
+    expect(
+      (ulpsCloseIntersections[0].$1 - ulpsCloseIntersections[1].$1).abs(),
+      greaterThan(4e-14),
+    );
   });
 
   testWidgets('domain interval delimiters and endpoint math keyboard work', (
@@ -457,6 +1025,18 @@ void main() {
     expect(find.byTooltip('收起数学键盘'), findsOneWidget);
     expect(find.byTooltip('光标左移'), findsOneWidget);
     expect(find.text('绘图'), findsOneWidget);
+    final lastRowKey = find.byTooltip('⌫');
+    await tester.ensureVisible(lastRowKey);
+    await tester.pumpAndSettle();
+    final keyboardRect = tester.getRect(find.byType(MathKeyboard));
+    final keyRect = tester.getRect(lastRowKey);
+    expect(keyRect.top, greaterThanOrEqualTo(keyboardRect.top));
+    expect(keyRect.bottom, lessThanOrEqualTo(keyboardRect.bottom));
+    await tester.tap(lastRowKey);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('应用'));
+    await tester.pumpAndSettle();
+    expect(tester.getRect(find.text('应用')).bottom, lessThanOrEqualTo(640));
     expect(tester.takeException(), isNull);
   });
 }

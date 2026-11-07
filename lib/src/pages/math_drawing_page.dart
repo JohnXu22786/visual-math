@@ -1159,7 +1159,7 @@ class _DomainEditorDialogState extends State<_DomainEditorDialog> {
   @override
   Widget build(BuildContext context) {
     final viewportHeight = MediaQuery.sizeOf(context).height;
-    final keyboardHeight = (viewportHeight - 340).clamp(220.0, 420.0);
+    final keyboardHeight = (viewportHeight - 250).clamp(220.0, 420.0);
     return Dialog(
       child: SizedBox(
         width: 560,

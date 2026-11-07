@@ -1,4 +1,5 @@
 import 'dart:math' as dart_math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
@@ -390,13 +391,75 @@ class MathCanvasState extends State<MathCanvas> {
       _formulaSettingsKey(curve.formula),
   ];
 
-  bool _valuesMatchForIntersection(double firstY, double secondY) {
+  bool _valuesMatchForIntersection(
+    double firstY,
+    double secondY, {
+    double absoluteTolerance = 0,
+  }
+  ) {
     final magnitude = dart_math.max(firstY.abs(), secondY.abs());
     final tolerance = dart_math.max(
-      1e-10,
-      magnitude * 4 * 2.220446049250313e-16,
+      magnitude * 64 * 2.220446049250313e-16,
+      absoluteTolerance,
     );
     return (firstY - secondY).abs() <= tolerance;
+  }
+
+  double? _tangentXAxisRoot(
+    FormulaEntry formula,
+    double low,
+    double high, {
+    required bool minimum,
+  }) {
+    double valueAt(double x) {
+      try {
+        return formula.parsed!.evaluator(x);
+      } catch (_) {
+        return double.nan;
+      }
+    }
+
+    final midpoint = low / 2 + high / 2;
+    final firstValue = valueAt(low);
+    final middleValue = valueAt(midpoint);
+    final lastValue = valueAt(high);
+    final halfWidth = (high - low) / 2;
+    if (!firstValue.isFinite ||
+        !middleValue.isFinite ||
+        !lastValue.isFinite ||
+        halfWidth == 0) {
+      return null;
+    }
+    final curvature =
+        ((firstValue - 2 * middleValue + lastValue).abs() / halfWidth) /
+        halfWidth;
+    if (!curvature.isFinite) return null;
+    var left = low;
+    var right = high;
+    for (var iteration = 0; iteration < 80; iteration++) {
+      final firstThird = (2 * left + right) / 3;
+      final secondThird = (left + 2 * right) / 3;
+      final firstValue = valueAt(firstThird);
+      final secondValue = valueAt(secondThird);
+      if (!firstValue.isFinite || !secondValue.isFinite) return null;
+      if ((minimum && firstValue < secondValue) ||
+          (!minimum && firstValue > secondValue)) {
+        right = secondThird;
+      } else {
+        left = firstThird;
+      }
+    }
+    final rootX = (left + right) / 2;
+    final rootY = valueAt(rootX);
+    final xPrecision = _floatSpacing(rootX);
+    final zeroTolerance =
+        curvature * xPrecision * xPrecision * 256 +
+        rootY.abs() * 64 * 2.220446049250313e-16;
+    return rootY.isFinite &&
+            zeroTolerance.isFinite &&
+            rootY.abs() <= zeroTolerance
+        ? rootX
+        : null;
   }
 
   List<_GraphPoint> _findCharacteristicPoints() {
@@ -415,10 +478,32 @@ class MathCanvasState extends State<MathCanvas> {
         for (var i = 1; i < line.length; i++) {
           final a = line[i - 1], b = line[i];
           final ax = a['x']!, ay = a['y']!, bx = b['x']!, by = b['y']!;
-          if (enabled.contains('X轴交点') && ay * by <= 0 && ay != by) {
+          if (enabled.contains('X轴交点') &&
+              ((ay <= 0 && by >= 0) || (by <= 0 && ay >= 0)) &&
+              ay != by) {
             final rootX = ax + (bx - ax) * (-ay) / (by - ay);
             if (_includesDomainX(formula, rootX)) {
               found.add(_GraphPoint(rootX, 0, formula.color, 'X轴交点'));
+            }
+          }
+          if (enabled.contains('X轴交点') &&
+              i < line.length - 1 &&
+              formula.parsed?.type == MathExpressionType.explicit) {
+            final cy = line[i + 1]['y']!;
+            final isMinimum = (by <= ay && by < cy) || (by < ay && by <= cy);
+            final isMaximum = (by >= ay && by > cy) || (by > ay && by >= cy);
+            if (isMinimum || isMaximum) {
+              final tangentX = _tangentXAxisRoot(
+                formula,
+                ax,
+                line[i + 1]['x']!,
+                minimum: isMinimum,
+              );
+              if (tangentX != null && _includesDomainX(formula, tangentX)) {
+                found.add(
+                  _GraphPoint(tangentX, 0, formula.color, 'X轴交点'),
+                );
+              }
             }
           }
           if (enabled.contains('Y轴交点') &&
@@ -433,7 +518,7 @@ class MathCanvasState extends State<MathCanvas> {
               enabled.contains('极值点') &&
               i < line.length - 1) {
             final cy = line[i + 1]['y']!;
-            if ((by - ay) * (cy - by) < 0 &&
+            if (((by > ay && cy < by) || (by < ay && cy > by)) &&
                 _includesDomainX(formula, bx))
               found.add(_GraphPoint(bx, by, formula.color, '极值点'));
           }
@@ -451,6 +536,10 @@ class MathCanvasState extends State<MathCanvas> {
     bool hasUnresolvedDomain(FormulaEntry formula) =>
         (formula.domainMinExpression.isNotEmpty && formula.domainMin == null) ||
         (formula.domainMaxExpression.isNotEmpty && formula.domainMax == null);
+    bool hasInvalidDomain(FormulaEntry formula) =>
+        formula.domainMin != null &&
+        formula.domainMax != null &&
+        formula.domainMax! <= formula.domainMin!;
     if (pairwiseFormulas.isNotEmpty) {
       final explicit = _formulaCurves;
       for (var a = 0; a < explicit.length; a++) {
@@ -466,7 +555,9 @@ class MathCanvasState extends State<MathCanvas> {
               ? explicit[a].formula.color
               : explicit[b].formula.color;
           if (hasUnresolvedDomain(explicit[a].formula) ||
-              hasUnresolvedDomain(explicit[b].formula)) {
+              hasUnresolvedDomain(explicit[b].formula) ||
+              hasInvalidDomain(explicit[a].formula) ||
+              hasInvalidDomain(explicit[b].formula)) {
             continue;
           }
           if (explicit[a].formula.parsed?.type == MathExpressionType.explicit &&
@@ -533,14 +624,23 @@ class MathCanvasState extends State<MathCanvas> {
               final difference = differenceAt(x);
               if (difference.isFinite &&
                   previousDifference.isFinite &&
-                  difference * previousDifference <= 0 &&
+                  ((previousDifference <= 0 && difference >= 0) ||
+                      (previousDifference >= 0 && difference <= 0)) &&
                   difference != previousDifference) {
                 var left = previousX;
                 var right = x;
                 var leftDifference = previousDifference;
                 var rootValid = true;
-                for (var iteration = 0; iteration < 48; iteration++) {
-                  final middle = (left + right) / 2;
+                if (previousDifference == 0) {
+                  right = left;
+                } else if (difference == 0) {
+                  left = right;
+                  leftDifference = difference;
+                }
+                for (var iteration = 0; iteration < 1024; iteration++) {
+                  if (left == right) break;
+                  final middle = left / 2 + right / 2;
+                  if (middle == left || middle == right) break;
                   final middleDifference = differenceAt(middle);
                   if (!middleDifference.isFinite) {
                     rootValid = false;
@@ -551,7 +651,8 @@ class MathCanvasState extends State<MathCanvas> {
                     right = middle;
                     break;
                   }
-                  if (leftDifference * middleDifference <= 0) {
+                  if ((leftDifference < 0 && middleDifference > 0) ||
+                      (leftDifference > 0 && middleDifference < 0)) {
                     right = middle;
                   } else {
                     left = middle;
@@ -559,13 +660,22 @@ class MathCanvasState extends State<MathCanvas> {
                   }
                 }
                 final rootX = (left + right) / 2;
+                final rootSlope =
+                    (difference - previousDifference).abs() /
+                    (x - previousX).abs();
+                final rootSpacing = _floatSpacing(rootX);
+                final rootTolerance = rootSlope * rootSpacing * 4;
                 try {
                   final firstY = first.parsed!.evaluator(rootX);
                   final secondY = second.parsed!.evaluator(rootX);
                   if (rootValid &&
                       firstY.isFinite &&
                       secondY.isFinite &&
-                      _valuesMatchForIntersection(firstY, secondY) &&
+                      _valuesMatchForIntersection(
+                        firstY,
+                        secondY,
+                        absoluteTolerance: rootTolerance,
+                      ) &&
                       _includesDomainX(first, rootX) &&
                       _includesDomainX(second, rootX)) {
                     found.add(
@@ -584,7 +694,7 @@ class MathCanvasState extends State<MathCanvas> {
               previousX = x;
             }
             if (sampledDifferences.every(
-              (sample) => sample.$2.isFinite && sample.$2.abs() <= 1e-10,
+              (sample) => sample.$2.isFinite && sample.$2 == 0,
             )) {
               continue;
             }
@@ -595,14 +705,19 @@ class MathCanvasState extends State<MathCanvas> {
               if (!before.$2.isFinite ||
                   !middle.$2.isFinite ||
                   !after.$2.isFinite ||
+                  ((before.$2 <= 0 && middle.$2 >= 0) ||
+                      (before.$2 >= 0 && middle.$2 <= 0)) ||
+                  ((middle.$2 <= 0 && after.$2 >= 0) ||
+                      (middle.$2 >= 0 && after.$2 <= 0)) ||
                   middle.$2.abs() > before.$2.abs() ||
                   middle.$2.abs() > after.$2.abs())
                 continue;
               var left = before.$1;
               var right = after.$1;
-              for (var iteration = 0; iteration < 48; iteration++) {
+              for (var iteration = 0; iteration < 96; iteration++) {
                 final firstThird = left + (right - left) / 3;
                 final secondThird = right - (right - left) / 3;
+                if (firstThird == left || secondThird == right) break;
                 final firstValue = differenceAt(firstThird).abs();
                 final secondValue = differenceAt(secondThird).abs();
                 if (!firstValue.isFinite || !secondValue.isFinite) break;
@@ -617,10 +732,27 @@ class MathCanvasState extends State<MathCanvas> {
               try {
                 final firstY = first.parsed!.evaluator(tangentX);
                 final secondY = second.parsed!.evaluator(tangentX);
+                final tangentHalfWidth = (after.$1 - before.$1) / 2;
+                final differenceCurvature = tangentHalfWidth > 0
+                    ? ((before.$2 - 2 * middle.$2 + after.$2).abs() /
+                              tangentHalfWidth) /
+                          tangentHalfWidth
+                    : double.nan;
+                final xPrecision = _floatSpacing(tangentX);
+                final tangentTolerance = differenceCurvature.isFinite
+                    ? differenceCurvature *
+                          xPrecision *
+                          xPrecision *
+                          256 +
+                          dart_math.max(firstY.abs(), secondY.abs()) *
+                              64 *
+                              2.220446049250313e-16
+                    : 0.0;
                 if (difference.isFinite &&
                     firstY.isFinite &&
                     secondY.isFinite &&
-                    _valuesMatchForIntersection(firstY, secondY) &&
+                    tangentTolerance.isFinite &&
+                    difference.abs() <= tangentTolerance &&
                     _includesDomainX(first, tangentX) &&
                     _includesDomainX(second, tangentX)) {
                   found.add(
@@ -644,9 +776,19 @@ class MathCanvasState extends State<MathCanvas> {
                   final r = lineB[j - 1], s = lineB[j];
                   final x1 = p['x']!, y1 = p['y']!, x2 = q['x']!, y2 = q['y']!;
                   final x3 = r['x']!, y3 = r['y']!, x4 = s['x']!, y4 = s['y']!;
+                  final firstCrossTerm = (x1 - x2) * (y3 - y4);
+                  final secondCrossTerm = (y1 - y2) * (x3 - x4);
                   final denominator =
-                      (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
-                  if (denominator.abs() < 1e-12) continue;
+                      firstCrossTerm - secondCrossTerm;
+                  final determinantScale = dart_math.max(
+                    firstCrossTerm.abs(),
+                    secondCrossTerm.abs(),
+                  );
+                  if (determinantScale == 0 ||
+                      denominator.abs() <=
+                          determinantScale * 64 * 2.220446049250313e-16) {
+                    continue;
+                  }
                   final t =
                       ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) /
                       denominator;
@@ -676,6 +818,7 @@ class MathCanvasState extends State<MathCanvas> {
     }
     final bounds = _effectiveYBounds();
     final unique = <_GraphPoint>[];
+    double coordinateTolerance(double value) => _floatSpacing(value);
     for (final point in found) {
       if (point.x < _xMin ||
           point.x > _xMax ||
@@ -683,10 +826,17 @@ class MathCanvasState extends State<MathCanvas> {
           point.y > bounds.$2)
         continue;
       if (unique.any(
-        (other) =>
-            other.kind == point.kind &&
-            (other.x - point.x).abs() < 1e-3 &&
-            (other.y - point.y).abs() < 1e-3,
+        (other) {
+          if (other.kind != point.kind) return false;
+          final xTolerance = coordinateTolerance(
+            dart_math.max(other.x.abs(), point.x.abs()),
+          );
+          final yTolerance = coordinateTolerance(
+            dart_math.max(other.y.abs(), point.y.abs()),
+          );
+          return (other.x - point.x).abs() <= xTolerance &&
+              (other.y - point.y).abs() <= yTolerance;
+        },
       ))
         continue;
       unique.add(point);
@@ -882,6 +1032,28 @@ class MathCanvasState extends State<MathCanvas> {
   /// which comfortably accommodates normal interaction.
   static const double _renderMarginScale = 1.0;
 
+  double _adjacentFloat(double value, {required bool upward}) {
+    if (!value.isFinite) return value;
+    if (value == 0) return upward ? double.minPositive : -double.minPositive;
+    final data = ByteData(8)..setFloat64(0, value, Endian.big);
+    var bits = data.getUint64(0, Endian.big);
+    if ((value > 0) == upward) {
+      bits++;
+    } else {
+      bits--;
+    }
+    data.setUint64(0, bits, Endian.big);
+    return data.getFloat64(0, Endian.big);
+  }
+
+  double _floatSpacing(double value) {
+    final absolute = value.abs();
+    final next = _adjacentFloat(absolute, upward: true);
+    return next.isFinite
+        ? next - absolute
+        : absolute - _adjacentFloat(absolute, upward: false);
+  }
+
   /// Sample a formula at the current viewport, optionally extending it by
   /// [_renderMarginScale] on each side for smooth drag rendering.
   ///
@@ -904,20 +1076,11 @@ class MathCanvasState extends State<MathCanvas> {
     if (domainMax <= domainMin) return [];
     var sampleMin = dart_math.max(_xMin - marginX, domainMin).toDouble();
     var sampleMax = dart_math.min(_xMax + marginX, domainMax).toDouble();
-    final rangeNudge = (sampleMax - sampleMin).abs() * 1e-10;
     if (!formula.includeDomainMin && sampleMin == domainMin) {
-      final endpointNudge = dart_math.max(
-        rangeNudge,
-        domainMin.abs() * 2.220446049250313e-16,
-      );
-      sampleMin += endpointNudge;
+      sampleMin = _adjacentFloat(domainMin, upward: true);
     }
     if (!formula.includeDomainMax && sampleMax == domainMax) {
-      final endpointNudge = dart_math.max(
-        rangeNudge,
-        domainMax.abs() * 2.220446049250313e-16,
-      );
-      sampleMax -= endpointNudge;
+      sampleMax = _adjacentFloat(domainMax, upward: false);
     }
     if (sampleMax <= sampleMin) return [];
     if (parsed.type == MathExpressionType.implicit) {
