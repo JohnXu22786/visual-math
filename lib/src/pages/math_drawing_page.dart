@@ -249,6 +249,17 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         _showError('定义域端点必须计算为有限数值。');
         return;
       }
+      final hasAdjustableEndpoint = [lower, upper]
+          .where((input) => input.isNotEmpty)
+          .expand((input) => MathExpression.fromInput(input).parameters)
+          .any((name) => name != 'x' && name != 'y');
+      if (lowerValue != null &&
+          upperValue != null &&
+          lowerValue >= upperValue &&
+          !hasAdjustableEndpoint) {
+        _showError('定义域左端点必须小于右端点。');
+        return;
+      }
       entries.add(
         FormulaEntry(
           rawExpression: text,
@@ -257,7 +268,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
           autoColor: f.autoColor,
           domainMinExpression: lower,
           domainMaxExpression: upper,
-          identity: identityHashCode(f).toString(),
+          identity: f.identity,
           includeDomainMin: f.includeDomainMin,
           includeDomainMax: f.includeDomainMax,
           domainMin: lowerValue,
@@ -288,6 +299,9 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     });
 
     _refreshParameterCurves();
+    if (_hasInvalidDomainOrder()) {
+      _showError('参数当前值使定义域无效，请调整参数范围。');
+    }
   }
 
   double? _resolveDomainEndpoint(String input) {
@@ -332,8 +346,21 @@ class _MathDrawingPageState extends State<MathDrawingPage>
 
   void _updateParameter(String name, MathParameter parameter) {
     if (!mounted || !_activeParameterNames.contains(name)) return;
+    final wasInvalid = _hasInvalidDomainOrder();
     setState(() => _parameters[name] = parameter);
     _refreshParameterCurves();
+    if (!wasInvalid && _hasInvalidDomainOrder()) {
+      _showError('参数变化后，定义域左端点必须小于右端点。');
+    }
+  }
+
+  bool _hasInvalidDomainOrder() {
+    for (final entry in _plottedFormulas) {
+      final lower = _resolveDomainEndpoint(entry.domainMinExpression);
+      final upper = _resolveDomainEndpoint(entry.domainMaxExpression);
+      if (lower != null && upper != null && lower >= upper) return true;
+    }
+    return false;
   }
 
   void _plotAll3D() {
@@ -1120,46 +1147,99 @@ class _DomainEditorDialogState extends State<_DomainEditorDialog> {
             setState(() => _mathematical = selection.first),
       ),
       const SizedBox(height: 12),
-      MathFormulaField(
-        controller: _lower,
-        mathematical: _mathematical,
-        allowModeSwitch: false,
-        showWebView: widget.showWebView,
-        label: '左端点（留空表示 −∞）',
-        onModeChanged: (_) {},
-        onActivate: () {},
-        onChanged: () => setState(() {}),
-        onSubmitted: () {},
-      ),
-      CheckboxListTile(
-        dense: true,
-        contentPadding: EdgeInsets.zero,
-        title: const Text('包含左端点'),
-        value: _includeLower,
-        onChanged: (value) => setState(() => _includeLower = value ?? true),
-      ),
-      MathFormulaField(
-        controller: _upper,
-        mathematical: _mathematical,
-        allowModeSwitch: false,
-        showWebView: widget.showWebView,
-        label: '右端点（留空表示 +∞）',
-        onModeChanged: (_) {},
-        onActivate: () {},
-        onChanged: () => setState(() {}),
-        onSubmitted: () {},
-      ),
-      CheckboxListTile(
-        dense: true,
-        contentPadding: EdgeInsets.zero,
-        title: const Text('包含右端点'),
-        value: _includeUpper,
-        onChanged: (value) => setState(() => _includeUpper = value ?? true),
-      ),
-      const Align(
-        alignment: Alignment.centerLeft,
-        child: Text('端点支持公式参数与数学表达式。'),
-      ),
+      Row(children: [
+        Tooltip(
+          message: _includeLower ? '包含左端点；点击改为开区间' : '不包含左端点；点击改为闭区间',
+          child: TextButton(
+            onPressed: () => setState(() => _includeLower = !_includeLower),
+            style: TextButton.styleFrom(minimumSize: const Size(36, 48), padding: EdgeInsets.zero),
+            child: Text(_includeLower ? '[' : '(', style: const TextStyle(fontSize: 28)),
+          ),
+        ),
+        Expanded(
+          child: Stack(
+            alignment: Alignment.centerLeft,
+            children: [
+              MathFormulaField(
+                controller: _lower,
+                mathematical: _mathematical,
+                allowModeSwitch: false,
+                showWebView: widget.showWebView,
+                label: _lower.text.isEmpty ? '−∞' : '左端点',
+                onModeChanged: (_) {},
+                onActivate: () {},
+                onChanged: () => setState(() {}),
+                onSubmitted: () {},
+              ),
+              if (_mathematical && _lower.text.isEmpty)
+                Positioned(
+                  left: 8,
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surfaceContainerLow,
+                      ),
+                      child: Text(
+                        '−∞',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 8),
+          child: Text(',', style: TextStyle(fontSize: 22)),
+        ),
+        Expanded(
+          child: Stack(
+            alignment: Alignment.centerLeft,
+            children: [
+              MathFormulaField(
+                controller: _upper,
+                mathematical: _mathematical,
+                allowModeSwitch: false,
+                showWebView: widget.showWebView,
+                label: _upper.text.isEmpty ? '+∞' : '右端点',
+                onModeChanged: (_) {},
+                onActivate: () {},
+                onChanged: () => setState(() {}),
+                onSubmitted: () {},
+              ),
+              if (_mathematical && _upper.text.isEmpty)
+                Positioned(
+                  left: 8,
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surfaceContainerLow,
+                      ),
+                      child: Text(
+                        '+∞',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        Tooltip(
+          message: _includeUpper ? '包含右端点；点击改为开区间' : '不包含右端点；点击改为闭区间',
+          child: TextButton(
+            onPressed: () => setState(() => _includeUpper = !_includeUpper),
+            style: TextButton.styleFrom(minimumSize: const Size(36, 48), padding: EdgeInsets.zero),
+            child: Text(_includeUpper ? ']' : ')', style: const TextStyle(fontSize: 28)),
+          ),
+        ),
+      ]),
+      const Align(alignment: Alignment.centerLeft, child: Text('空端点表示无界区间；端点支持公式参数。')),
     ]),
     actions: [
       TextButton(
@@ -1179,6 +1259,9 @@ class _DomainEditorDialogState extends State<_DomainEditorDialog> {
 
 /// State for a single formula row.
 class _FormulaState {
+  static int _nextIdentity = 0;
+
+  final String identity;
   final TextEditingController controller;
   final TextEditingController domainMinController = TextEditingController();
   final TextEditingController domainMaxController = TextEditingController();
@@ -1196,5 +1279,6 @@ class _FormulaState {
     required this.color,
     this.autoColor = true,
     this.visible = true,
-  }) : committedText = '';
+  }) : identity = 'formula-${_nextIdentity++}',
+       committedText = '';
 }

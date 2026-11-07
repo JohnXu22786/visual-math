@@ -88,8 +88,8 @@ class MathCanvasState extends State<MathCanvas> {
 
   // Formula state (multi-formula support)
   final List<_FormulaCurve> _formulaCurves = [];
-  final Set<String> _enabledKinds = {};
   final Set<String> _enabledFormulas = {};
+  final Set<String> _initializedFormulaKeys = {};
   List<_GraphPoint> _characteristicPoints = [];
 
   // Gesture state
@@ -116,7 +116,9 @@ class MathCanvasState extends State<MathCanvas> {
             parsed: expr,
             color: formulaPalette[0],
             autoColor: true,
+            identity: 'initial:${widget.initialExpression}',
           );
+          _initializeNewFormulaSettings([formula]);
           _formulaCurves.add(
             _FormulaCurve(formula: formula, polylines: _sampleCurve(formula)),
           );
@@ -136,6 +138,7 @@ class MathCanvasState extends State<MathCanvas> {
   /// Set all formulas to plot (replaces any existing formulas).
   Future<void> setFormulas(List<FormulaEntry> newFormulas) async {
     setState(() {
+      _initializeNewFormulaSettings(newFormulas);
       _formulaCurves
         ..clear()
         ..addAll(
@@ -149,6 +152,18 @@ class MathCanvasState extends State<MathCanvas> {
         .expand((fc) => fc.polylines.expand((pl) => pl))
         .toList();
     widget.onCoordinateUpdate?.call(allPoints);
+  }
+
+  void _initializeNewFormulaSettings(Iterable<FormulaEntry> formulas) {
+    const categories = ['极值点', 'X轴交点', 'Y轴交点', '图像交点'];
+    for (final formula in formulas) {
+      final key = _formulaSettingsKey(formula);
+      if (_initializedFormulaKeys.add(key)) {
+        for (final category in categories) {
+          _enabledFormulas.add('$key:$category');
+        }
+      }
+    }
   }
 
   /// Backward-compat: set a single expression.
@@ -340,7 +355,6 @@ class MathCanvasState extends State<MathCanvas> {
     for (final curve in _formulaCurves) {
       final formula = curve.formula;
       final enabled = <String>{
-        ..._enabledKinds,
         for (final kind in kinds)
           if (_enabledFormulas.contains('${_formulaSettingsKey(formula)}:$kind')) kind,
       };
@@ -367,12 +381,11 @@ class MathCanvasState extends State<MathCanvas> {
         .where((curve) => _enabledFormulas.contains('${_formulaSettingsKey(curve.formula)}:图像交点'))
         .map((curve) => _formulaSettingsKey(curve.formula))
         .toSet();
-    if (_enabledKinds.contains('图像交点') || pairwiseFormulas.isNotEmpty) {
+    if (pairwiseFormulas.isNotEmpty) {
       final explicit = _formulaCurves;
       for (var a = 0; a < explicit.length; a++) {
         for (var b = a + 1; b < explicit.length; b++) {
-          if (!_enabledKinds.contains('图像交点') &&
-              !pairwiseFormulas.contains(_formulaSettingsKey(explicit[a].formula)) &&
+          if (!pairwiseFormulas.contains(_formulaSettingsKey(explicit[a].formula)) ||
               !pairwiseFormulas.contains(_formulaSettingsKey(explicit[b].formula))) continue;
           if (explicit[a].formula.parsed?.type == MathExpressionType.explicit &&
               explicit[b].formula.parsed?.type == MathExpressionType.explicit) {
@@ -522,19 +535,101 @@ class MathCanvasState extends State<MathCanvas> {
 
   Future<void> _openCharacteristicSettings() async {
     const categories = ['极值点', 'X轴交点', 'Y轴交点', '图像交点'];
-    await showDialog<void>(context: context, builder: (dialogContext) => StatefulBuilder(builder: (context, refresh) => AlertDialog(
-      title: const Text('特征点显示'),
-      content: SizedBox(width: 420, child: ListView(shrinkWrap: true, children: [
-        const Text('全局显示'),
-        for (final category in categories) CheckboxListTile(dense: true, title: Text(category), value: _enabledKinds.contains(category), onChanged: (value) => refresh(() { if (value == true) { _enabledKinds.add(category); } else { _enabledKinds.remove(category); } setState(() => _characteristicPoints = _findCharacteristicPoints()); })),
-        const Divider(),
-        for (final curve in _formulaCurves) ...[
-          Text(curve.formula.rawExpression, style: TextStyle(color: curve.formula.color, fontWeight: FontWeight.w600)),
-          for (final category in categories) CheckboxListTile(dense: true, title: Text(category), value: _enabledFormulas.contains('${_formulaSettingsKey(curve.formula)}:$category'), onChanged: (value) => refresh(() { final key = '${_formulaSettingsKey(curve.formula)}:$category'; if (value == true) { _enabledFormulas.add(key); } else { _enabledFormulas.remove(key); } setState(() => _characteristicPoints = _findCharacteristicPoints()); })),
-        ],
-      ])),
-      actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('完成'))],
-    )));
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, refresh) => AlertDialog(
+          title: const Text('特征点显示'),
+          content: SizedBox(
+            width: 420,
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
+                  child: Text('全部显示'),
+                ),
+                for (final category in categories)
+                  CheckboxListTile(
+                    dense: true,
+                    tristate: true,
+                    title: Text(category),
+                    value: _categoryAggregate(category),
+                    onChanged: (_) => refresh(() {
+                      _setCategoryForAll(
+                        category,
+                        _categoryAggregate(category) != true,
+                      );
+                      setState(() => _characteristicPoints = _findCharacteristicPoints());
+                    }),
+                  ),
+                const Divider(),
+                for (final curve in _formulaCurves)
+                  ExpansionTile(
+                    key: PageStorageKey(_formulaSettingsKey(curve.formula)),
+                    initiallyExpanded: true,
+                    leading: CircleAvatar(
+                      radius: 8,
+                      backgroundColor: curve.formula.color,
+                    ),
+                    title: Text(curve.formula.rawExpression),
+                    children: [
+                      for (final category in categories)
+                        CheckboxListTile(
+                          dense: true,
+                          title: Text(category),
+                          value: _isCategoryEnabled(curve.formula, category),
+                          onChanged: (value) => refresh(() {
+                            _setFormulaCategory(
+                              curve.formula,
+                              category,
+                              value ?? false,
+                            );
+                            setState(() => _characteristicPoints = _findCharacteristicPoints());
+                          }),
+                        ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('完成'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  bool _isCategoryEnabled(FormulaEntry formula, String category) =>
+      _enabledFormulas.contains('${_formulaSettingsKey(formula)}:$category');
+
+  bool? _categoryAggregate(String category) {
+    if (_formulaCurves.isEmpty) return false;
+    final enabledCount = _formulaCurves
+        .where((curve) => _isCategoryEnabled(curve.formula, category))
+        .length;
+    if (enabledCount == 0) return false;
+    if (enabledCount == _formulaCurves.length) return true;
+    return null;
+  }
+
+  void _setFormulaCategory(FormulaEntry formula, String category, bool enabled) {
+    final key = '${_formulaSettingsKey(formula)}:$category';
+    if (enabled) {
+      _enabledFormulas.add(key);
+    } else {
+      _enabledFormulas.remove(key);
+    }
+  }
+
+  void _setCategoryForAll(String category, bool enabled) {
+    for (final curve in _formulaCurves) {
+      _setFormulaCategory(curve.formula, category, enabled);
+    }
   }
 
   void _inspectCharacteristicPoint(Offset position) {
@@ -819,7 +914,15 @@ class MathCanvasState extends State<MathCanvas> {
               ),
             ),
           ),
-        ), Positioned(right: 8, top: 8, child: Material(color: cs.surface, elevation: 2, shape: const CircleBorder(), child: IconButton(tooltip: '特征点显示设置', onPressed: _openCharacteristicSettings, icon: const Icon(Icons.auto_graph))))]);
+        ), Positioned(
+          right: 8,
+          top: 8,
+          child: FilledButton.tonalIcon(
+            onPressed: _openCharacteristicSettings,
+            icon: const Icon(Icons.auto_graph, size: 18),
+            label: const Text('特征点'),
+          ),
+        )]);
       },
     );
   }
