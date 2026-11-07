@@ -14,7 +14,58 @@ class VisualMathExampleApp extends StatelessWidget {
       colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
       useMaterial3: true,
     ),
-    home: const ExampleMenu(),
+    home: const _StartupGate(),
+  );
+}
+
+class _StartupGate extends StatefulWidget {
+  const _StartupGate();
+
+  @override
+  State<_StartupGate> createState() => _StartupGateState();
+}
+
+class _StartupGateState extends State<_StartupGate> {
+  static const _startupDuration = Duration(milliseconds: 700);
+  bool _showMenu = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Future<void>.delayed(_startupDuration, () {
+      if (mounted) setState(() => _showMenu = true);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      _showMenu ? const ExampleMenu() : const _StartupScreen();
+}
+
+class _StartupScreen extends StatelessWidget {
+  const _StartupScreen();
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.functions,
+            size: 48,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          const SizedBox(height: 16),
+          Text('Visual Math', style: Theme.of(context).textTheme.headlineSmall),
+          const SizedBox(height: 24),
+          const SizedBox.square(
+            dimension: 24,
+            child: CircularProgressIndicator(strokeWidth: 2.5),
+          ),
+        ],
+      ),
+    ),
   );
 }
 
