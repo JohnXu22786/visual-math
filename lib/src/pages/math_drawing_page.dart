@@ -1139,12 +1139,17 @@ class _DomainEditorDialogState extends State<_DomainEditorDialog> {
     super.dispose();
   }
 
-  void _apply() => Navigator.pop(context, (
-    _lower.text,
-    _upper.text,
-    _includeLower,
-    _includeUpper,
-  ));
+  Future<void> _apply() async {
+    await _lowerEditorKey.currentState?.flush();
+    await _upperEditorKey.currentState?.flush();
+    if (!mounted) return;
+    Navigator.pop(context, (
+      _lower.text,
+      _upper.text,
+      _includeLower,
+      _includeUpper,
+    ));
+  }
 
   void _openEndpointKeyboard() => setState(() {
     _editingLower = true;
@@ -1152,234 +1157,250 @@ class _DomainEditorDialogState extends State<_DomainEditorDialog> {
   });
 
   @override
-  Widget build(BuildContext context) => Dialog(
-    child: SizedBox(
-      width: 560,
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  widget.title,
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-              ),
-              const SizedBox(height: 16),
-              SegmentedButton<bool>(
-                segments: const [
-                  ButtonSegment(value: false, label: Text('源码输入')),
-                  ButtonSegment(value: true, label: Text('数学键盘输入')),
-                ],
-                selected: {_mathematical},
-                onSelectionChanged: (selection) => setState(() {
-                  _mathematical = selection.first;
-                  if (!_mathematical) _keyboardVisible = false;
-                }),
-              ),
-              const SizedBox(height: 12),
-              Row(
+  Widget build(BuildContext context) {
+    final viewportHeight = MediaQuery.sizeOf(context).height;
+    final keyboardHeight = (viewportHeight - 340).clamp(220.0, 420.0);
+    return Dialog(
+      child: SizedBox(
+        width: 560,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: viewportHeight * 0.9),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Tooltip(
-                    message: _includeLower ? '包含左端点；点击改为开区间' : '不包含左端点；点击改为闭区间',
-                    child: TextButton(
-                      onPressed: () =>
-                          setState(() => _includeLower = !_includeLower),
-                      style: TextButton.styleFrom(
-                        minimumSize: const Size(36, 48),
-                        padding: EdgeInsets.zero,
-                      ),
-                      child: Text(
-                        _includeLower ? '[' : '(',
-                        style: const TextStyle(fontSize: 28),
-                      ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      widget.title,
+                      style: Theme.of(context).textTheme.titleLarge,
                     ),
                   ),
-                  Expanded(
-                    child: Stack(
-                      alignment: Alignment.centerLeft,
-                      children: [
-                        MathFormulaField(
-                          key: _lowerEditorKey,
-                          controller: _lower,
-                          mathematical: _mathematical,
-                          allowModeSwitch: false,
-                          showWebView: widget.showWebView,
-                          onReadyChanged: () {
-                            if (mounted) setState(() {});
-                          },
-                          label: _lower.text.isEmpty ? '−∞' : '左端点',
-                          onModeChanged: (_) {},
-                          onActivate: () => setState(() {
-                            _editingLower = true;
-                            _keyboardVisible = _mathematical;
-                          }),
-                          onChanged: () => setState(() {}),
-                          onSubmitted: () {},
+                  const SizedBox(height: 16),
+                  SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment(value: false, label: Text('源码输入')),
+                      ButtonSegment(value: true, label: Text('数学键盘输入')),
+                    ],
+                    selected: {_mathematical},
+                    onSelectionChanged: (selection) => setState(() {
+                      _mathematical = selection.first;
+                      if (!_mathematical) _keyboardVisible = false;
+                    }),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Tooltip(
+                        message: _includeLower
+                            ? '包含左端点；点击改为开区间'
+                            : '不包含左端点；点击改为闭区间',
+                        child: TextButton(
+                          onPressed: () =>
+                              setState(() => _includeLower = !_includeLower),
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(36, 48),
+                            padding: EdgeInsets.zero,
+                          ),
+                          child: Text(
+                            _includeLower ? '[' : '(',
+                            style: const TextStyle(fontSize: 28),
+                          ),
                         ),
-                        if (_mathematical && _lower.text.isEmpty)
-                          Positioned(
-                            left: 8,
-                            child: IgnorePointer(
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .surfaceContainerLow,
-                                ),
-                                child: Text(
-                                  '−∞',
-                                  style: TextStyle(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
+                      ),
+                      Expanded(
+                        child: Stack(
+                          alignment: Alignment.centerLeft,
+                          children: [
+                            MathFormulaField(
+                              key: _lowerEditorKey,
+                              controller: _lower,
+                              mathematical: _mathematical,
+                              allowModeSwitch: false,
+                              showWebView: widget.showWebView,
+                              onReadyChanged: () {
+                                if (mounted) setState(() {});
+                              },
+                              label: _lower.text.isEmpty ? '−∞' : '左端点',
+                              onModeChanged: (_) {},
+                              onActivate: () => setState(() {
+                                _editingLower = true;
+                                _keyboardVisible = _mathematical;
+                              }),
+                              onChanged: () => setState(() {}),
+                              onSubmitted: () {},
+                            ),
+                            if (_mathematical && _lower.text.isEmpty)
+                              Positioned(
+                                left: 8,
+                                child: IgnorePointer(
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .surfaceContainerLow,
+                                    ),
+                                    child: Text(
+                                      '−∞',
+                                      style: TextStyle(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant,
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 8),
-                    child: Text(',', style: TextStyle(fontSize: 22)),
-                  ),
-                  Expanded(
-                    child: Stack(
-                      alignment: Alignment.centerLeft,
-                      children: [
-                        MathFormulaField(
-                          key: _upperEditorKey,
-                          controller: _upper,
-                          mathematical: _mathematical,
-                          allowModeSwitch: false,
-                          showWebView: widget.showWebView,
-                          onReadyChanged: () {
-                            if (mounted) setState(() {});
-                          },
-                          label: _upper.text.isEmpty ? '+∞' : '右端点',
-                          onModeChanged: (_) {},
-                          onActivate: () => setState(() {
-                            _editingLower = false;
-                            _keyboardVisible = _mathematical;
-                          }),
-                          onChanged: () => setState(() {}),
-                          onSubmitted: () {},
+                          ],
                         ),
-                        if (_mathematical && _upper.text.isEmpty)
-                          Positioned(
-                            left: 8,
-                            child: IgnorePointer(
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .surfaceContainerLow,
-                                ),
-                                child: Text(
-                                  '+∞',
-                                  style: TextStyle(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8),
+                        child: Text(',', style: TextStyle(fontSize: 22)),
+                      ),
+                      Expanded(
+                        child: Stack(
+                          alignment: Alignment.centerLeft,
+                          children: [
+                            MathFormulaField(
+                              key: _upperEditorKey,
+                              controller: _upper,
+                              mathematical: _mathematical,
+                              allowModeSwitch: false,
+                              showWebView: widget.showWebView,
+                              onReadyChanged: () {
+                                if (mounted) setState(() {});
+                              },
+                              label: _upper.text.isEmpty ? '+∞' : '右端点',
+                              onModeChanged: (_) {},
+                              onActivate: () => setState(() {
+                                _editingLower = false;
+                                _keyboardVisible = _mathematical;
+                              }),
+                              onChanged: () => setState(() {}),
+                              onSubmitted: () {},
+                            ),
+                            if (_mathematical && _upper.text.isEmpty)
+                              Positioned(
+                                left: 8,
+                                child: IgnorePointer(
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .surfaceContainerLow,
+                                    ),
+                                    child: Text(
+                                      '+∞',
+                                      style: TextStyle(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant,
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
+                          ],
+                        ),
+                      ),
+                      Tooltip(
+                        message: _includeUpper
+                            ? '包含右端点；点击改为开区间'
+                            : '不包含右端点；点击改为闭区间',
+                        child: TextButton(
+                          onPressed: () =>
+                              setState(() => _includeUpper = !_includeUpper),
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(36, 48),
+                            padding: EdgeInsets.zero,
                           ),
-                      ],
-                    ),
+                          child: Text(
+                            _includeUpper ? ']' : ')',
+                            style: const TextStyle(fontSize: 28),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  Tooltip(
-                    message: _includeUpper ? '包含右端点；点击改为开区间' : '不包含右端点；点击改为闭区间',
-                    child: TextButton(
-                      onPressed: () =>
-                          setState(() => _includeUpper = !_includeUpper),
-                      style: TextButton.styleFrom(
-                        minimumSize: const Size(36, 48),
-                        padding: EdgeInsets.zero,
-                      ),
-                      child: Text(
-                        _includeUpper ? ']' : ')',
-                        style: const TextStyle(fontSize: 28),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('空端点表示无界区间；端点支持公式参数。'),
+                  ),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('点击括号切换开闭区间。'),
+                  ),
+                  if (_mathematical)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: _openEndpointKeyboard,
+                        icon: const Icon(Icons.keyboard),
+                        label: const Text('打开端点数学键盘'),
                       ),
                     ),
+                  if (_mathematical && _keyboardVisible)
+                    SizedBox(
+                      height: keyboardHeight,
+                      child: MathKeyboard(
+                        enabled:
+                            (_editingLower
+                                    ? _lowerEditorKey.currentState
+                                    : _upperEditorKey.currentState)
+                                ?.ready ??
+                            false,
+                        supportsStructuralNavigation:
+                            (_editingLower
+                                    ? _lowerEditorKey.currentState
+                                    : _upperEditorKey.currentState)
+                                ?.supportsStructuralNavigation ??
+                            false,
+                        supportsStructuredEditing:
+                            (_editingLower
+                                    ? _lowerEditorKey.currentState
+                                    : _upperEditorKey.currentState)
+                                ?.supportsStructuredEditing ??
+                            false,
+                        activeLabel: _editingLower ? '左端点' : '右端点',
+                        location:
+                            (_editingLower
+                                    ? _lowerEditorKey.currentState
+                                    : _upperEditorKey.currentState)
+                                ?.location ??
+                            '定义域端点',
+                        onCommand: (kind, value) async {
+                          final editor = (_editingLower
+                              ? _lowerEditorKey.currentState
+                              : _upperEditorKey.currentState);
+                          await editor?.command(kind, value);
+                        },
+                        onDismiss: () =>
+                            setState(() => _keyboardVisible = false),
+                        onPlot: _apply,
+                      ),
+                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('取消'),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(onPressed: _apply, child: const Text('应用')),
+                    ],
                   ),
                 ],
               ),
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text('空端点表示无界区间；端点支持公式参数。'),
-              ),
-              if (_mathematical)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: _openEndpointKeyboard,
-                    icon: const Icon(Icons.keyboard),
-                    label: const Text('打开端点数学键盘'),
-                  ),
-                ),
-              if (_mathematical && _keyboardVisible)
-                SizedBox(
-                  height: 240,
-                  child: MathKeyboard(
-                    enabled:
-                        (_editingLower
-                                ? _lowerEditorKey.currentState
-                                : _upperEditorKey.currentState)
-                            ?.ready ??
-                        false,
-                    supportsStructuralNavigation:
-                        (_editingLower
-                                ? _lowerEditorKey.currentState
-                                : _upperEditorKey.currentState)
-                            ?.supportsStructuralNavigation ??
-                        false,
-                    supportsStructuredEditing:
-                        (_editingLower
-                                ? _lowerEditorKey.currentState
-                                : _upperEditorKey.currentState)
-                            ?.supportsStructuredEditing ??
-                        false,
-                    activeLabel: _editingLower ? '左端点' : '右端点',
-                    location:
-                        (_editingLower
-                                ? _lowerEditorKey.currentState
-                                : _upperEditorKey.currentState)
-                            ?.location ??
-                        '定义域端点',
-                    onCommand: (kind, value) async {
-                      final editor = (_editingLower
-                          ? _lowerEditorKey.currentState
-                          : _upperEditorKey.currentState);
-                      await editor?.command(kind, value);
-                    },
-                    onDismiss: () => setState(() => _keyboardVisible = false),
-                    onPlot: _apply,
-                  ),
-                ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('取消'),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton(onPressed: _apply, child: const Text('应用')),
-                ],
-              ),
-            ],
+            ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 /// State for a single formula row.

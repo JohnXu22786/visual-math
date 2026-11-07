@@ -125,7 +125,10 @@ class MathCanvasState extends State<MathCanvas> {
         }
       }
       if (!_isReady) {
-        setState(() => _isReady = true);
+        setState(() {
+          _characteristicPoints = _findCharacteristicPoints();
+          _isReady = true;
+        });
         widget.onReady?.call();
       }
     });
@@ -387,6 +390,15 @@ class MathCanvasState extends State<MathCanvas> {
       _formulaSettingsKey(curve.formula),
   ];
 
+  bool _valuesMatchForIntersection(double firstY, double secondY) {
+    final magnitude = dart_math.max(firstY.abs(), secondY.abs());
+    final tolerance = dart_math.max(
+      1e-10,
+      magnitude * 4 * 2.220446049250313e-16,
+    );
+    return (firstY - secondY).abs() <= tolerance;
+  }
+
   List<_GraphPoint> _findCharacteristicPoints() {
     final found = <_GraphPoint>[];
     const kinds = ['极值点', 'X轴交点', 'Y轴交点', '图像交点'];
@@ -404,32 +416,25 @@ class MathCanvasState extends State<MathCanvas> {
           final a = line[i - 1], b = line[i];
           final ax = a['x']!, ay = a['y']!, bx = b['x']!, by = b['y']!;
           if (enabled.contains('X轴交点') && ay * by <= 0 && ay != by) {
-            found.add(
-              _GraphPoint(
-                ax + (bx - ax) * (-ay) / (by - ay),
-                0,
-                formula.color,
-                'X轴交点',
-              ),
-            );
+            final rootX = ax + (bx - ax) * (-ay) / (by - ay);
+            if (_includesDomainX(formula, rootX)) {
+              found.add(_GraphPoint(rootX, 0, formula.color, 'X轴交点'));
+            }
           }
           if (enabled.contains('Y轴交点') &&
               ((ax <= 0 && bx >= 0) || (bx <= 0 && ax >= 0)) &&
               ax != bx) {
-            found.add(
-              _GraphPoint(
-                0,
-                ay + (by - ay) * (-ax) / (bx - ax),
-                formula.color,
-                'Y轴交点',
-              ),
-            );
+            final rootY = ay + (by - ay) * (-ax) / (bx - ax);
+            if (_includesDomainX(formula, 0)) {
+              found.add(_GraphPoint(0, rootY, formula.color, 'Y轴交点'));
+            }
           }
           if (formula.parsed?.type == MathExpressionType.explicit &&
               enabled.contains('极值点') &&
               i < line.length - 1) {
             final cy = line[i + 1]['y']!;
-            if ((by - ay) * (cy - by) < 0)
+            if ((by - ay) * (cy - by) < 0 &&
+                _includesDomainX(formula, bx))
               found.add(_GraphPoint(bx, by, formula.color, '极值点'));
           }
         }
@@ -443,6 +448,9 @@ class MathCanvasState extends State<MathCanvas> {
         )
         .map((curve) => _formulaSettingsKey(curve.formula))
         .toSet();
+    bool hasUnresolvedDomain(FormulaEntry formula) =>
+        (formula.domainMinExpression.isNotEmpty && formula.domainMin == null) ||
+        (formula.domainMaxExpression.isNotEmpty && formula.domainMax == null);
     if (pairwiseFormulas.isNotEmpty) {
       final explicit = _formulaCurves;
       for (var a = 0; a < explicit.length; a++) {
@@ -457,6 +465,10 @@ class MathCanvasState extends State<MathCanvas> {
           final intersectionColor = firstEnabled
               ? explicit[a].formula.color
               : explicit[b].formula.color;
+          if (hasUnresolvedDomain(explicit[a].formula) ||
+              hasUnresolvedDomain(explicit[b].formula)) {
+            continue;
+          }
           if (explicit[a].formula.parsed?.type == MathExpressionType.explicit &&
               explicit[b].formula.parsed?.type == MathExpressionType.explicit) {
             final first = explicit[a].formula;
@@ -479,7 +491,29 @@ class MathCanvasState extends State<MathCanvas> {
                   ),
                 )
                 .toDouble();
-            if (high <= low) continue;
+            if (high < low) continue;
+            if (high == low) {
+              if (_includesDomainX(first, low) &&
+                  _includesDomainX(second, low)) {
+                try {
+                  final firstY = first.parsed!.evaluator(low);
+                  final secondY = second.parsed!.evaluator(low);
+                  if (firstY.isFinite &&
+                      secondY.isFinite &&
+                      _valuesMatchForIntersection(firstY, secondY)) {
+                    found.add(
+                      _GraphPoint(
+                        low,
+                        (firstY + secondY) / 2,
+                        intersectionColor,
+                        '图像交点',
+                      ),
+                    );
+                  }
+                } catch (_) {}
+              }
+              continue;
+            }
             double differenceAt(double x) {
               try {
                 return first.parsed!.evaluator(x) - second.parsed!.evaluator(x);
@@ -528,14 +562,10 @@ class MathCanvasState extends State<MathCanvas> {
                 try {
                   final firstY = first.parsed!.evaluator(rootX);
                   final secondY = second.parsed!.evaluator(rootX);
-                  final scale = dart_math.max(
-                    1,
-                    dart_math.max(firstY.abs(), secondY.abs()),
-                  );
                   if (rootValid &&
                       firstY.isFinite &&
                       secondY.isFinite &&
-                      (firstY - secondY).abs() <= 1e-8 * scale &&
+                      _valuesMatchForIntersection(firstY, secondY) &&
                       _includesDomainX(first, rootX) &&
                       _includesDomainX(second, rootX)) {
                     found.add(
@@ -552,6 +582,11 @@ class MathCanvasState extends State<MathCanvas> {
               previousDifference = difference;
               sampledDifferences.add((x, difference));
               previousX = x;
+            }
+            if (sampledDifferences.every(
+              (sample) => sample.$2.isFinite && sample.$2.abs() <= 1e-10,
+            )) {
+              continue;
             }
             for (var i = 1; i < sampledDifferences.length - 1; i++) {
               final before = sampledDifferences[i - 1];
@@ -582,14 +617,10 @@ class MathCanvasState extends State<MathCanvas> {
               try {
                 final firstY = first.parsed!.evaluator(tangentX);
                 final secondY = second.parsed!.evaluator(tangentX);
-                final scale = dart_math.max(
-                  1,
-                  dart_math.max(firstY.abs(), secondY.abs()),
-                );
                 if (difference.isFinite &&
                     firstY.isFinite &&
                     secondY.isFinite &&
-                    difference.abs() <= 1e-8 * scale &&
+                    _valuesMatchForIntersection(firstY, secondY) &&
                     _includesDomainX(first, tangentX) &&
                     _includesDomainX(second, tangentX)) {
                   found.add(
@@ -667,11 +698,14 @@ class MathCanvasState extends State<MathCanvas> {
       formula.identity ?? '${formula.rawExpression}:${formula.color.toARGB32()}';
 
   bool _includesDomainX(FormulaEntry formula, double x) {
-    final tolerance = 1e-8 * dart_math.max(1, x.abs());
-    if (!formula.includeDomainMin && formula.domainMin != null &&
-        (x - formula.domainMin!).abs() <= tolerance) return false;
-    if (!formula.includeDomainMax && formula.domainMax != null &&
-        (x - formula.domainMax!).abs() <= tolerance) return false;
+    if (!formula.includeDomainMin &&
+        formula.domainMin != null &&
+        x <= formula.domainMin!)
+      return false;
+    if (!formula.includeDomainMax &&
+        formula.domainMax != null &&
+        x >= formula.domainMax!)
+      return false;
     return true;
   }
 
@@ -870,9 +904,21 @@ class MathCanvasState extends State<MathCanvas> {
     if (domainMax <= domainMin) return [];
     var sampleMin = dart_math.max(_xMin - marginX, domainMin).toDouble();
     var sampleMax = dart_math.min(_xMax + marginX, domainMax).toDouble();
-    final endpointNudge = (sampleMax - sampleMin).abs() * 1e-10;
-    if (!formula.includeDomainMin && sampleMin == domainMin) sampleMin += endpointNudge;
-    if (!formula.includeDomainMax && sampleMax == domainMax) sampleMax -= endpointNudge;
+    final rangeNudge = (sampleMax - sampleMin).abs() * 1e-10;
+    if (!formula.includeDomainMin && sampleMin == domainMin) {
+      final endpointNudge = dart_math.max(
+        rangeNudge,
+        domainMin.abs() * 2.220446049250313e-16,
+      );
+      sampleMin += endpointNudge;
+    }
+    if (!formula.includeDomainMax && sampleMax == domainMax) {
+      final endpointNudge = dart_math.max(
+        rangeNudge,
+        domainMax.abs() * 2.220446049250313e-16,
+      );
+      sampleMax -= endpointNudge;
+    }
     if (sampleMax <= sampleMin) return [];
     if (parsed.type == MathExpressionType.implicit) {
       final (effectiveYMin, effectiveYMax) = _effectiveYBounds();
@@ -1044,42 +1090,65 @@ class MathCanvasState extends State<MathCanvas> {
           _resampleAll();
         }
 
-        return Stack(children: [GestureDetector(
-          onTapUp: (details) => _inspectCharacteristicPoint(details.localPosition),
-          onScaleStart: _onScaleStart,
-          onScaleUpdate: _onScaleUpdate,
-          onScaleEnd: _onScaleEnd,
-          child: Listener(
-            onPointerSignal: _onPointerSignal,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(MathUiTokens.cornerRadius),
-              child: CustomPaint(
-                painter: GraphPainter(
-                  xMin: _xMin,
-                  yMin: _yMin,
-                  xMax: _xMax,
-                  yMax: _yMax,
-                  curves: _buildCurvesList(),
-                  curveColors: _buildColorsList(),
-                  characteristicPoints: _characteristicPoints,
-                  backgroundColor: cs.surface,
-                  gridColor: cs.outlineVariant.withValues(alpha: 0.5),
-                  axisColor: cs.onSurface,
-                  labelColor: cs.onSurfaceVariant,
+        return Stack(
+          children: [
+            GestureDetector(
+              onTapUp: (details) =>
+                  _inspectCharacteristicPoint(details.localPosition),
+              onScaleStart: _onScaleStart,
+              onScaleUpdate: _onScaleUpdate,
+              onScaleEnd: _onScaleEnd,
+              child: Listener(
+                onPointerSignal: _onPointerSignal,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(
+                    MathUiTokens.cornerRadius,
+                  ),
+                  child: CustomPaint(
+                    painter: GraphPainter(
+                      xMin: _xMin,
+                      yMin: _yMin,
+                      xMax: _xMax,
+                      yMax: _yMax,
+                      curves: _buildCurvesList(),
+                      curveColors: _buildColorsList(),
+                      characteristicPoints: _characteristicPoints,
+                      backgroundColor: cs.surface,
+                      gridColor: cs.outlineVariant.withValues(alpha: 0.5),
+                      axisColor: cs.onSurface,
+                      labelColor: cs.onSurfaceVariant,
+                    ),
+                    size: Size(constraints.maxWidth, constraints.maxHeight),
+                  ),
                 ),
-                size: Size(constraints.maxWidth, constraints.maxHeight),
               ),
             ),
-          ),
-        ), Positioned(
-          right: 8,
-          top: 8,
-          child: FilledButton.tonalIcon(
-            onPressed: _openCharacteristicSettings,
-            icon: const Icon(Icons.auto_graph, size: 18),
-            label: const Text('特征点'),
-          ),
-        )]);
+            Positioned(
+              right: 8,
+              top: 8,
+              child: Material(
+                color: cs.surface,
+                elevation: 2,
+                shape: const CircleBorder(),
+                child: PopupMenuButton<String>(
+                  tooltip: '视图设置',
+                  icon: const Icon(Icons.settings, size: 21),
+                  onSelected: (_) => _openCharacteristicSettings(),
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: 'characteristicPoints',
+                      child: Text('特征点显示'),
+                    ),
+                  ],
+                  style: IconButton.styleFrom(
+                    fixedSize: const Size(40, 40),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
       },
     );
   }
