@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:visual_math/visual_math.dart';
@@ -14,6 +16,141 @@ Widget _app(MathWorkspaceOptions options) => MaterialApp(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets('default options preserve the turnkey standalone page', (
+    tester,
+  ) async {
+    final previousPlatform = debugDefaultTargetPlatformOverride;
+    final previousWebViewPlatform = InAppWebViewPlatform.instance;
+    final webViewPlatform = _CompatibilityWebViewPlatform();
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    InAppWebViewPlatform.instance = webViewPlatform;
+    try {
+      await tester.pumpWidget(
+        const MaterialApp(home: MathDrawingPage(initialExpression: 'x + 1')),
+      );
+      await tester.pump();
+
+      expect(MathFormulaField.supported, isTrue);
+      expect(find.byType(Scaffold), findsOneWidget);
+      expect(find.byType(AppBar), findsOneWidget);
+      expect(find.text('数学绘图'), findsOneWidget);
+      expect(find.byType(TabBar), findsOneWidget);
+      expect(find.text('2D'), findsOneWidget);
+      expect(find.text('3D'), findsOneWidget);
+      expect(find.byType(MathCanvas), findsOneWidget);
+      expect(find.byType(MathCanvas3D, skipOffstage: false), findsOneWidget);
+      expect(find.byType(MathFormulaField), findsOneWidget);
+      expect(find.byType(InAppWebView), findsOneWidget);
+      expect(webViewPlatform.created, isTrue);
+      expect(find.byTooltip('添加公式'), findsOneWidget);
+      expect(find.byTooltip('放大'), findsOneWidget);
+      expect(find.byTooltip('缩小'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      debugDefaultTargetPlatformOverride = previousPlatform;
+      InAppWebViewPlatform.instance =
+          previousWebViewPlatform ?? _CompatibilityWebViewPlatform();
+    }
+  });
+
+  testWidgets('composed host switches between both package canvases', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    final viewChanges = <ViewMode>[];
+    controller.onViewChanged = viewChanges.add;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          initialMathematicalMode: false,
+          initialShowWebView: false,
+          options: MathWorkspaceOptions(
+            showScaffold: false,
+            showAppBar: false,
+            showFormulaEditor: false,
+            showParameterControls: false,
+            show3DTools: false,
+            show2DCanvasActions: false,
+            viewSelectorBuilder: (context, _, actions) => TextButton(
+              onPressed: () => actions.setActiveView(ViewMode.mode3D),
+              child: const Text('Host switch to 3D'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(Scaffold), findsNothing);
+    expect(find.byType(TabBar), findsNothing);
+    expect(find.byType(MathCanvas, skipOffstage: false), findsOneWidget);
+    expect(find.byType(MathCanvas3D, skipOffstage: false), findsOneWidget);
+
+    await tester.tap(find.text('Host switch to 3D'));
+    await tester.pumpAndSettle();
+
+    expect(controller.activeView, ViewMode.mode3D);
+    expect(viewChanges, [ViewMode.mode3D]);
+    expect(find.byType(MathCanvas3D), findsOneWidget);
+    expect(find.byType(MathCanvas), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('namespaced editor preference does not overwrite legacy key', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({
+      'math_drawing_mathematical_input': false,
+    });
+    await tester.pumpWidget(
+      _app(
+        const MathWorkspaceOptions(
+          show3D: false,
+          persistence: MathWorkspacePersistence(namespace: 'host-a'),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('切换到数学键盘（内置公式预览）'));
+    await tester.pumpAndSettle();
+    final preferences = await SharedPreferences.getInstance();
+
+    expect(
+      preferences.getBool('visual_math.host-a.math_drawing_mathematical_input'),
+      isTrue,
+    );
+    expect(preferences.getBool('math_drawing_mathematical_input'), isFalse);
+  });
+
+  testWidgets('unsupported platform uses source editor without WebView', (
+    tester,
+  ) async {
+    final previousPlatform = debugDefaultTargetPlatformOverride;
+    debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+    try {
+      expect(MathFormulaField.supported, isFalse);
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: MathDrawingPage(
+            initialExpression: 'x',
+            initialShowWebView: true,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byType(TextField), findsOneWidget);
+      expect(find.byType(InAppWebView, skipOffstage: false), findsNothing);
+      expect(tester.takeException(), isNull);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      debugDefaultTargetPlatformOverride = previousPlatform;
+    }
+  });
 
   testWidgets('disabled persistence skips saving the editor mode', (
     tester,
@@ -675,4 +812,30 @@ void main() {
     expect(find.byKey(const ValueKey('host-validation-error')), findsOneWidget);
     expect(find.textContaining('Host validation error:'), findsOneWidget);
   });
+}
+
+class _CompatibilityWebViewPlatform extends InAppWebViewPlatform {
+  bool created = false;
+
+  @override
+  PlatformInAppWebViewWidget createPlatformInAppWebViewWidget(
+    PlatformInAppWebViewWidgetCreationParams params,
+  ) {
+    created = true;
+    return _CompatibilityWebView(params);
+  }
+}
+
+class _CompatibilityWebView extends PlatformInAppWebViewWidget {
+  _CompatibilityWebView(super.params) : super.implementation();
+
+  @override
+  Widget build(BuildContext context) => const SizedBox();
+
+  @override
+  T controllerFromPlatform<T>(PlatformInAppWebViewController controller) =>
+      params.controllerFromPlatform!(controller) as T;
+
+  @override
+  void dispose() {}
 }
