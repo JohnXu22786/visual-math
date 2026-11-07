@@ -54,7 +54,7 @@ When a `v<MAJOR>.<MINOR>` development line is ready to take over `main`:
 
 ## 5. Post-Merge Branch Cleanup
 
-After a pull request is merged, clean up its short-lived source branch according to Visual Math's GitHub settings. This guide does not assume that automatic deletion of merged pull request branches is enabled; if enabled, it does not delete branches in contributors' forks, which fork owners can clean up themselves. Do not use a long-lived branch as the source of a one-off pull request when it must be kept. Create a separate maintenance branch during a version handoff when needed. Branch protection rules still apply.
+Visual Math currently has GitHub's automatic deletion of merged pull request branches enabled (`delete_branch_on_merge=true`). After a pull request is merged, GitHub deletes its source branch in the Visual Math repository. This setting does not delete branches in contributors' forks; fork owners can clean those up themselves. Do not use a long-lived branch as the source of a one-off pull request when it must be kept. Create a separate maintenance branch during a version handoff when needed. Branch protection rules still apply.
 
 ## 6. Release Tags
 
