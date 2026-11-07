@@ -137,12 +137,13 @@ class MathCanvasState extends State<MathCanvas> {
 
   /// Set all formulas to plot (replaces any existing formulas).
   Future<void> setFormulas(List<FormulaEntry> newFormulas) async {
+    final formulas = _withStableFormulaIdentities(newFormulas);
     setState(() {
-      _initializeNewFormulaSettings(newFormulas);
+      _initializeNewFormulaSettings(formulas);
       _formulaCurves
         ..clear()
         ..addAll(
-          newFormulas.map(
+          formulas.map(
             (f) => _FormulaCurve(formula: f, polylines: _sampleCurve(f)),
           ),
         );
@@ -152,6 +153,31 @@ class MathCanvasState extends State<MathCanvas> {
         .expand((fc) => fc.polylines.expand((pl) => pl))
         .toList();
     widget.onCoordinateUpdate?.call(allPoints);
+  }
+
+  List<FormulaEntry> _withStableFormulaIdentities(
+    List<FormulaEntry> formulas,
+  ) {
+    final occurrences = <String, int>{};
+    final identified = <FormulaEntry>[];
+    for (final formula in formulas) {
+      if (formula.identity != null) {
+        identified.add(formula);
+        continue;
+      }
+      final signature = '${formula.rawExpression}:${formula.color.toARGB32()}';
+      final occurrence = occurrences.update(
+        signature,
+        (count) => count + 1,
+        ifAbsent: () => 0,
+      );
+      identified.add(
+        formula.copyWith(
+          identity: 'anonymous-formula:$signature:$occurrence',
+        ),
+      );
+    }
+    return identified;
   }
 
   void _initializeNewFormulaSettings(Iterable<FormulaEntry> formulas) {
@@ -349,6 +375,18 @@ class MathCanvasState extends State<MathCanvas> {
   List<Map<String, double>> get curvePoints =>
       _formulaCurves.expand((fc) => fc.polylines.expand((pl) => pl)).toList();
 
+  /// Numeric markers currently displayed, exposed for focused widget tests.
+  List<(double x, double y, String kind, Color color)>
+  get characteristicPointsForTesting => [
+    for (final point in _characteristicPoints)
+      (point.x, point.y, point.kind, point.color),
+  ];
+
+  List<String> get formulaIdentitiesForTesting => [
+    for (final curve in _formulaCurves)
+      _formulaSettingsKey(curve.formula),
+  ];
+
   List<_GraphPoint> _findCharacteristicPoints() {
     final found = <_GraphPoint>[];
     const kinds = ['极值点', 'X轴交点', 'Y轴交点', '图像交点'];
@@ -356,43 +394,91 @@ class MathCanvasState extends State<MathCanvas> {
       final formula = curve.formula;
       final enabled = <String>{
         for (final kind in kinds)
-          if (_enabledFormulas.contains('${_formulaSettingsKey(formula)}:$kind')) kind,
+          if (_enabledFormulas.contains(
+            '${_formulaSettingsKey(formula)}:$kind',
+          ))
+            kind,
       };
       for (final line in curve.polylines) {
         for (var i = 1; i < line.length; i++) {
           final a = line[i - 1], b = line[i];
           final ax = a['x']!, ay = a['y']!, bx = b['x']!, by = b['y']!;
           if (enabled.contains('X轴交点') && ay * by <= 0 && ay != by) {
-            found.add(_GraphPoint(ax + (bx - ax) * (-ay) / (by - ay), 0, formula.color, 'X轴交点'));
+            found.add(
+              _GraphPoint(
+                ax + (bx - ax) * (-ay) / (by - ay),
+                0,
+                formula.color,
+                'X轴交点',
+              ),
+            );
           }
           if (enabled.contains('Y轴交点') &&
               ((ax <= 0 && bx >= 0) || (bx <= 0 && ax >= 0)) &&
               ax != bx) {
-            found.add(_GraphPoint(0, ay + (by - ay) * (-ax) / (bx - ax), formula.color, 'Y轴交点'));
+            found.add(
+              _GraphPoint(
+                0,
+                ay + (by - ay) * (-ax) / (bx - ax),
+                formula.color,
+                'Y轴交点',
+              ),
+            );
           }
-          if (formula.parsed?.type == MathExpressionType.explicit && enabled.contains('极值点') && i < line.length - 1) {
+          if (formula.parsed?.type == MathExpressionType.explicit &&
+              enabled.contains('极值点') &&
+              i < line.length - 1) {
             final cy = line[i + 1]['y']!;
-            if ((by - ay) * (cy - by) < 0) found.add(_GraphPoint(bx, by, formula.color, '极值点'));
+            if ((by - ay) * (cy - by) < 0)
+              found.add(_GraphPoint(bx, by, formula.color, '极值点'));
           }
         }
       }
     }
     final pairwiseFormulas = _formulaCurves
-        .where((curve) => _enabledFormulas.contains('${_formulaSettingsKey(curve.formula)}:图像交点'))
+        .where(
+          (curve) => _enabledFormulas.contains(
+            '${_formulaSettingsKey(curve.formula)}:图像交点',
+          ),
+        )
         .map((curve) => _formulaSettingsKey(curve.formula))
         .toSet();
     if (pairwiseFormulas.isNotEmpty) {
       final explicit = _formulaCurves;
       for (var a = 0; a < explicit.length; a++) {
         for (var b = a + 1; b < explicit.length; b++) {
-          if (!pairwiseFormulas.contains(_formulaSettingsKey(explicit[a].formula)) ||
-              !pairwiseFormulas.contains(_formulaSettingsKey(explicit[b].formula))) continue;
+          final firstEnabled = pairwiseFormulas.contains(
+            _formulaSettingsKey(explicit[a].formula),
+          );
+          final secondEnabled = pairwiseFormulas.contains(
+            _formulaSettingsKey(explicit[b].formula),
+          );
+          if (!firstEnabled && !secondEnabled) continue;
+          final intersectionColor = firstEnabled
+              ? explicit[a].formula.color
+              : explicit[b].formula.color;
           if (explicit[a].formula.parsed?.type == MathExpressionType.explicit &&
               explicit[b].formula.parsed?.type == MathExpressionType.explicit) {
             final first = explicit[a].formula;
             final second = explicit[b].formula;
-            final low = dart_math.max(_xMin, dart_math.max(first.domainMin ?? _xMin, second.domainMin ?? _xMin)).toDouble();
-            final high = dart_math.min(_xMax, dart_math.min(first.domainMax ?? _xMax, second.domainMax ?? _xMax)).toDouble();
+            final low = dart_math
+                .max(
+                  _xMin,
+                  dart_math.max(
+                    first.domainMin ?? _xMin,
+                    second.domainMin ?? _xMin,
+                  ),
+                )
+                .toDouble();
+            final high = dart_math
+                .min(
+                  _xMax,
+                  dart_math.min(
+                    first.domainMax ?? _xMax,
+                    second.domainMax ?? _xMax,
+                  ),
+                )
+                .toDouble();
             if (high <= low) continue;
             double differenceAt(double x) {
               try {
@@ -401,14 +487,20 @@ class MathCanvasState extends State<MathCanvas> {
                 return double.nan;
               }
             }
+
             const samples = 500;
             var previousX = low;
             var previousDifference = differenceAt(low);
-            final sampledDifferences = <(double, double)>[(low, previousDifference)];
+            final sampledDifferences = <(double, double)>[
+              (low, previousDifference),
+            ];
             for (var sample = 1; sample <= samples; sample++) {
               final x = low + (high - low) * sample / samples;
               final difference = differenceAt(x);
-              if (difference.isFinite && previousDifference.isFinite && difference * previousDifference <= 0 && difference != previousDifference) {
+              if (difference.isFinite &&
+                  previousDifference.isFinite &&
+                  difference * previousDifference <= 0 &&
+                  difference != previousDifference) {
                 var left = previousX;
                 var right = x;
                 var leftDifference = previousDifference;
@@ -436,12 +528,24 @@ class MathCanvasState extends State<MathCanvas> {
                 try {
                   final firstY = first.parsed!.evaluator(rootX);
                   final secondY = second.parsed!.evaluator(rootX);
-                  final scale = dart_math.max(1, dart_math.max(firstY.abs(), secondY.abs()));
-                  if (rootValid && firstY.isFinite && secondY.isFinite &&
+                  final scale = dart_math.max(
+                    1,
+                    dart_math.max(firstY.abs(), secondY.abs()),
+                  );
+                  if (rootValid &&
+                      firstY.isFinite &&
+                      secondY.isFinite &&
                       (firstY - secondY).abs() <= 1e-8 * scale &&
                       _includesDomainX(first, rootX) &&
                       _includesDomainX(second, rootX)) {
-                    found.add(_GraphPoint(rootX, (firstY + secondY) / 2, first.color, '图像交点'));
+                    found.add(
+                      _GraphPoint(
+                        rootX,
+                        (firstY + secondY) / 2,
+                        intersectionColor,
+                        '图像交点',
+                      ),
+                    );
                   }
                 } catch (_) {}
               }
@@ -453,9 +557,12 @@ class MathCanvasState extends State<MathCanvas> {
               final before = sampledDifferences[i - 1];
               final middle = sampledDifferences[i];
               final after = sampledDifferences[i + 1];
-              if (!before.$2.isFinite || !middle.$2.isFinite || !after.$2.isFinite ||
+              if (!before.$2.isFinite ||
+                  !middle.$2.isFinite ||
+                  !after.$2.isFinite ||
                   middle.$2.abs() > before.$2.abs() ||
-                  middle.$2.abs() > after.$2.abs()) continue;
+                  middle.$2.abs() > after.$2.abs())
+                continue;
               var left = before.$1;
               var right = after.$1;
               for (var iteration = 0; iteration < 48; iteration++) {
@@ -475,12 +582,24 @@ class MathCanvasState extends State<MathCanvas> {
               try {
                 final firstY = first.parsed!.evaluator(tangentX);
                 final secondY = second.parsed!.evaluator(tangentX);
-                final scale = dart_math.max(1, dart_math.max(firstY.abs(), secondY.abs()));
-                if (difference.isFinite && firstY.isFinite && secondY.isFinite &&
+                final scale = dart_math.max(
+                  1,
+                  dart_math.max(firstY.abs(), secondY.abs()),
+                );
+                if (difference.isFinite &&
+                    firstY.isFinite &&
+                    secondY.isFinite &&
                     difference.abs() <= 1e-8 * scale &&
                     _includesDomainX(first, tangentX) &&
                     _includesDomainX(second, tangentX)) {
-                  found.add(_GraphPoint(tangentX, (firstY + secondY) / 2, first.color, '图像交点'));
+                  found.add(
+                    _GraphPoint(
+                      tangentX,
+                      (firstY + secondY) / 2,
+                      intersectionColor,
+                      '图像交点',
+                    ),
+                  );
                 }
               } catch (_) {}
             }
@@ -494,14 +613,27 @@ class MathCanvasState extends State<MathCanvas> {
                   final r = lineB[j - 1], s = lineB[j];
                   final x1 = p['x']!, y1 = p['y']!, x2 = q['x']!, y2 = q['y']!;
                   final x3 = r['x']!, y3 = r['y']!, x4 = s['x']!, y4 = s['y']!;
-                  final denominator = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+                  final denominator =
+                      (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
                   if (denominator.abs() < 1e-12) continue;
-                  final t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denominator;
-                  final u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denominator;
+                  final t =
+                      ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) /
+                      denominator;
+                  final u =
+                      -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) /
+                      denominator;
                   if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
                     final x = x1 + t * (x2 - x1);
-                    if (_includesDomainX(explicit[a].formula, x) && _includesDomainX(explicit[b].formula, x)) {
-                      found.add(_GraphPoint(x, y1 + t * (y2 - y1), explicit[a].formula.color, '图像交点'));
+                    if (_includesDomainX(explicit[a].formula, x) &&
+                        _includesDomainX(explicit[b].formula, x)) {
+                      found.add(
+                        _GraphPoint(
+                          x,
+                          y1 + t * (y2 - y1),
+                          intersectionColor,
+                          '图像交点',
+                        ),
+                      );
                     }
                   }
                 }
@@ -514,8 +646,18 @@ class MathCanvasState extends State<MathCanvas> {
     final bounds = _effectiveYBounds();
     final unique = <_GraphPoint>[];
     for (final point in found) {
-      if (point.x < _xMin || point.x > _xMax || point.y < bounds.$1 || point.y > bounds.$2) continue;
-      if (unique.any((other) => (other.x - point.x).abs() < 1e-3 && (other.y - point.y).abs() < 1e-3)) continue;
+      if (point.x < _xMin ||
+          point.x > _xMax ||
+          point.y < bounds.$1 ||
+          point.y > bounds.$2)
+        continue;
+      if (unique.any(
+        (other) =>
+            other.kind == point.kind &&
+            (other.x - point.x).abs() < 1e-3 &&
+            (other.y - point.y).abs() < 1e-3,
+      ))
+        continue;
       unique.add(point);
     }
     return unique;
@@ -606,6 +748,21 @@ class MathCanvasState extends State<MathCanvas> {
 
   bool _isCategoryEnabled(FormulaEntry formula, String category) =>
       _enabledFormulas.contains('${_formulaSettingsKey(formula)}:$category');
+
+  /// Toggle one plotted formula category in focused state-level widget tests.
+  void setFormulaCharacteristicForTesting(
+    String formulaIdentity,
+    String category,
+    bool enabled,
+  ) {
+    final curve = _formulaCurves.firstWhere(
+      (item) => _formulaSettingsKey(item.formula) == formulaIdentity,
+    );
+    setState(() {
+      _setFormulaCategory(curve.formula, category, enabled);
+      _characteristicPoints = _findCharacteristicPoints();
+    });
+  }
 
   bool? _categoryAggregate(String category) {
     if (_formulaCurves.isEmpty) return false;
