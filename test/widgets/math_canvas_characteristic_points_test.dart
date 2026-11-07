@@ -39,6 +39,28 @@ void main() {
     expect(kinds, isNotEmpty);
   });
 
+  testWidgets('explicit extrema are refined between curve samples', (
+    tester,
+  ) async {
+    final key = GlobalKey<MathCanvasState>();
+    await tester.pumpWidget(app(key));
+    await tester.pumpAndSettle();
+    await key.currentState!.setFormulas([
+      FormulaEntry(
+        rawExpression: '(x-2)^2-3',
+        parsed: MathExpression.fromInput('(x-2)^2-3'),
+        color: Colors.blue,
+        identity: 'precision-minimum',
+      ),
+    ]);
+    await tester.pumpAndSettle();
+    final minimum = key.currentState!.characteristicPointsForTesting
+        .where((point) => point.$3 == '极值点')
+        .single;
+    expect(minimum.$1, closeTo(2, 1e-5));
+    expect(minimum.$2, closeTo(-3, 1e-5));
+  });
+
   testWidgets('small curve values do not underflow marker sign checks', (
     tester,
   ) async {

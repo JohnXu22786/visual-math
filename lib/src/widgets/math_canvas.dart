@@ -462,6 +462,45 @@ class MathCanvasState extends State<MathCanvas> {
         : null;
   }
 
+  (double, double) _refineLocalExtremum(
+    FormulaEntry formula,
+    double low,
+    double high, {
+    required bool minimum,
+    required double fallbackX,
+    required double fallbackY,
+  }) {
+    double valueAt(double x) {
+      try {
+        return formula.parsed!.evaluator(x);
+      } catch (_) {
+        return double.nan;
+      }
+    }
+
+    var left = low;
+    var right = high;
+    for (var iteration = 0; iteration < 96; iteration++) {
+      final firstThird = left + (right - left) / 3;
+      final secondThird = right - (right - left) / 3;
+      if (firstThird == left || secondThird == right) break;
+      final firstValue = valueAt(firstThird);
+      final secondValue = valueAt(secondThird);
+      if (!firstValue.isFinite || !secondValue.isFinite) {
+        return (fallbackX, fallbackY);
+      }
+      if ((minimum && firstValue < secondValue) ||
+          (!minimum && firstValue > secondValue)) {
+        right = secondThird;
+      } else {
+        left = firstThird;
+      }
+    }
+    final x = left / 2 + right / 2;
+    final y = valueAt(x);
+    return x.isFinite && y.isFinite ? (x, y) : (fallbackX, fallbackY);
+  }
+
   List<_GraphPoint> _findCharacteristicPoints() {
     final found = <_GraphPoint>[];
     const kinds = ['极值点', 'X轴交点', 'Y轴交点', '图像交点'];
@@ -518,9 +557,23 @@ class MathCanvasState extends State<MathCanvas> {
               enabled.contains('极值点') &&
               i < line.length - 1) {
             final cy = line[i + 1]['y']!;
-            if (((by > ay && cy < by) || (by < ay && cy > by)) &&
-                _includesDomainX(formula, bx))
-              found.add(_GraphPoint(bx, by, formula.color, '极值点'));
+            final isMinimum = (by <= ay && by < cy) || (by < ay && by <= cy);
+            final isMaximum = (by >= ay && by > cy) || (by > ay && by >= cy);
+            if ((isMinimum || isMaximum) && _includesDomainX(formula, bx)) {
+              final refined = _refineLocalExtremum(
+                formula,
+                ax,
+                line[i + 1]['x']!,
+                minimum: isMinimum,
+                fallbackX: bx,
+                fallbackY: by,
+              );
+              if (_includesDomainX(formula, refined.$1)) {
+                found.add(
+                  _GraphPoint(refined.$1, refined.$2, formula.color, '极值点'),
+                );
+              }
+            }
           }
         }
       }
