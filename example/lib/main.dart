@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:visual_math/visual_math.dart';
 
+import 'orbiting_math_splash.dart';
+
 void main() => runApp(const VisualMathExampleApp());
 
 class VisualMathExampleApp extends StatelessWidget {
@@ -14,7 +16,43 @@ class VisualMathExampleApp extends StatelessWidget {
       colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
       useMaterial3: true,
     ),
-    home: const ExampleMenu(),
+    home: const _ExampleStartupHost(),
+  );
+}
+
+class _ExampleStartupHost extends StatefulWidget {
+  const _ExampleStartupHost();
+
+  @override
+  State<_ExampleStartupHost> createState() => _ExampleStartupHostState();
+}
+
+class _ExampleStartupHostState extends State<_ExampleStartupHost> {
+  double _progress = 0;
+  bool _splashVisible = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() => _progress = 1);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => Stack(
+    fit: StackFit.expand,
+    children: [
+      const ExampleMenu(),
+      if (_splashVisible)
+        OrbitingMathSplash(
+          progress: _progress,
+          onTransitionComplete: () {
+            if (mounted) setState(() => _splashVisible = false);
+          },
+        ),
+    ],
   );
 }
 
