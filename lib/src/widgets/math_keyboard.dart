@@ -21,6 +21,7 @@ class MathKeyboard extends StatefulWidget {
   final String location;
   final bool persistenceEnabled;
   final String preferenceNamespace;
+
   /// Scales key height from the default 44 logical pixels, within the space
   /// provided by the parent. The default matches a typical phone keyboard.
   final double keyScale;

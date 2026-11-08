@@ -824,5 +824,4 @@ void main() {
     expect(shortKeyHeight, greaterThanOrEqualTo(24));
     expect(tester.takeException(), isNull);
   });
-
 }
