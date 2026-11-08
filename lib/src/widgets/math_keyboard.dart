@@ -21,6 +21,9 @@ class MathKeyboard extends StatefulWidget {
   final String location;
   final bool persistenceEnabled;
   final String preferenceNamespace;
+  /// Scales key height from the default 44 logical pixels, within the space
+  /// provided by the parent. The default matches a typical phone keyboard.
+  final double keyScale;
   final String Function(String sourceText)? labelResolver;
   final Widget Function(BuildContext context, Widget dialog)? dialogBuilder;
   const MathKeyboard({
@@ -35,6 +38,7 @@ class MathKeyboard extends StatefulWidget {
     this.location = '公式',
     this.persistenceEnabled = true,
     this.preferenceNamespace = '',
+    this.keyScale = 1,
     this.labelResolver,
     this.dialogBuilder,
   });
@@ -44,6 +48,7 @@ class MathKeyboard extends StatefulWidget {
 }
 
 class _MathKeyboardState extends State<MathKeyboard> {
+  double _keyHeight = 44;
   String _category = '常用';
   List<String> _categoryOrder = _defaultCategoryOrder;
   late final Future<void> _categoryOrderLoad;
@@ -290,6 +295,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
         top: false,
         child: LayoutBuilder(
           builder: (context, constraints) {
+            _keyHeight = _resolveKeyHeight(constraints, widget.keyScale);
             final heading = <Widget>[
               SizedBox(
                 height: 44,
@@ -433,6 +439,31 @@ class _MathKeyboardState extends State<MathKeyboard> {
         ),
       ),
     );
+  }
+
+  double _resolveKeyHeight(BoxConstraints constraints, double scale) {
+    final preferredHeight = (44 * (scale.isFinite && scale > 0 ? scale : 1))
+        .clamp(24.0, 72.0)
+        .toDouble();
+    var height = preferredHeight;
+    if (constraints.hasBoundedHeight) {
+      // Reserve room for the heading, footer, page controls, and grid padding.
+      const fixedHeight = 44.0 * 4 + 20;
+      final rowCount = _category == '希腊字母' ? 5 : 4;
+      final rowHeight = (constraints.maxHeight - fixedHeight) / rowCount;
+      height = height < rowHeight
+          ? height
+          : rowHeight.clamp(24.0, 72.0).toDouble();
+    }
+    if (constraints.hasBoundedWidth) {
+      // Keep keys close to square in narrow portrait and stretched regions.
+      final columnCount = _category == '字母' ? 10 : 6;
+      final columnWidth = (constraints.maxWidth - 12) / columnCount - 4;
+      height = height < columnWidth
+          ? height
+          : columnWidth.clamp(24.0, 72.0).toDouble();
+    }
+    return height;
   }
 
   Widget _keyArea(List<_MathKey> keys, int pageCount, int keysPerPage) {
@@ -669,7 +700,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
       excludeFromSemantics: true,
       message: _label(_shifted ? 'Shift：大写已开启，切换小写' : 'Shift：小写，切换大写'),
       child: SizedBox(
-        height: 44,
+        height: _keyHeight,
         child: FilledButton.tonal(
           style: FilledButton.styleFrom(
             backgroundColor: _shifted
@@ -709,7 +740,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
   );
 
   Widget _key(_MathKey? key) => SizedBox(
-    height: 44,
+    height: _keyHeight,
     child: key == null
         ? const SizedBox.shrink()
         : Tooltip(
