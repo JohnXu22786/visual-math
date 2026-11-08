@@ -205,4 +205,126 @@ void main() {
 
     expect(restoredController.formulas.single.visible, isFalse);
   });
+
+  testWidgets('controller formula updates and snapshots preserve domains', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          initialShowWebView: false,
+          initialMathematicalMode: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    controller.setFormulas(const [
+      FormulaEntry(
+        rawExpression: 'x',
+        domainMin: -2,
+        domainMax: 3,
+        domainMinExpression: '-2',
+        domainMaxExpression: '3',
+        includeDomainMin: false,
+        includeDomainMax: true,
+        identity: 'controller-domain-row',
+      ),
+    ]);
+    await tester.pumpAndSettle();
+
+    final formula = controller.formulas.single;
+    expect(formula.domainMin, -2);
+    expect(formula.domainMax, 3);
+    expect(formula.domainMinExpression, '-2');
+    expect(formula.domainMaxExpression, '3');
+    expect(formula.includeDomainMin, isFalse);
+    expect(formula.includeDomainMax, isTrue);
+    expect(formula.identity, 'controller-domain-row');
+
+    final savedSnapshot = controller.snapshot!;
+    await tester.pumpWidget(const SizedBox.shrink());
+    final restoredController = MathDrawingController()..restore(savedSnapshot);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: restoredController,
+          initialShowWebView: false,
+          initialMathematicalMode: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final restoredFormula = restoredController.formulas.single;
+    expect(restoredFormula.domainMinExpression, '-2');
+    expect(restoredFormula.domainMaxExpression, '3');
+    expect(restoredFormula.includeDomainMin, isFalse);
+    expect(restoredFormula.includeDomainMax, isTrue);
+    expect(restoredFormula.identity, 'controller-domain-row');
+
+    restoredController.setFormulas(const [
+      FormulaEntry(rawExpression: 'x', domainMin: -4, domainMax: 6),
+    ]);
+    await tester.pumpAndSettle();
+    expect(restoredController.formulas.single.domainMin, -4);
+    expect(restoredController.formulas.single.domainMax, 6);
+  });
+
+  testWidgets('parameter changes report unresolved domain endpoints', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    final errors = <String>[];
+    controller.onError = errors.add;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          initialShowWebView: false,
+          initialMathematicalMode: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    controller.setFormulas(const [
+      FormulaEntry(
+        rawExpression: 'x',
+        domainMinExpression: '1/p',
+        domainMaxExpression: '3',
+      ),
+    ]);
+    await controller.plot();
+    controller.setParameters({'p': MathParameter(value: 0, min: 0, max: 2)});
+    await tester.pumpAndSettle();
+
+    expect(errors, contains('参数变化后，定义域端点或范围无效。'));
+    expect(controller.formulas.single.rawExpression, 'x');
+    expect(controller.formulas.single.domainMinExpression, '1/p');
+    expect(controller.formulas.single.domainMin, isNull);
+  });
+
+  testWidgets('draft domain edits publish to the workspace controller', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          initialShowWebView: false,
+          initialMathematicalMode: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('设置定义域'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('包含左端点；点击改为开区间'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('应用'));
+    await tester.pumpAndSettle();
+
+    expect(controller.formulas.single.includeDomainMin, isFalse);
+  });
 }

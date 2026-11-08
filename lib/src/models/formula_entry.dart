@@ -36,6 +36,15 @@ class FormulaEntry {
   /// Current parameter values (only relevant if [parsed] has parameters).
   final Map<String, double> parameterValues;
 
+  /// Optional numeric x interval resolved from the formula's endpoint inputs.
+  final double? domainMin;
+  final double? domainMax;
+  final bool includeDomainMin;
+  final bool includeDomainMax;
+  final String domainMinExpression;
+  final String domainMaxExpression;
+  final String? identity;
+
   const FormulaEntry({
     required this.rawExpression,
     this.parsed,
@@ -43,6 +52,13 @@ class FormulaEntry {
     this.autoColor = true,
     this.visible = true,
     this.parameterValues = const {},
+    this.domainMin,
+    this.domainMax,
+    this.includeDomainMin = true,
+    this.includeDomainMax = true,
+    this.domainMinExpression = '',
+    this.domainMaxExpression = '',
+    this.identity,
   });
 
   /// Create a copy with optionally overridden fields.
@@ -58,6 +74,15 @@ class FormulaEntry {
     bool? autoColor,
     bool? visible,
     Map<String, double>? parameterValues,
+    double? domainMin,
+    double? domainMax,
+    bool clearDomainMin = false,
+    bool clearDomainMax = false,
+    bool? includeDomainMin,
+    bool? includeDomainMax,
+    String? domainMinExpression,
+    String? domainMaxExpression,
+    String? identity,
   }) {
     return FormulaEntry(
       rawExpression: rawExpression ?? this.rawExpression,
@@ -71,6 +96,13 @@ class FormulaEntry {
       autoColor: autoColor ?? this.autoColor,
       visible: visible ?? this.visible,
       parameterValues: parameterValues ?? this.parameterValues,
+      domainMin: clearDomainMin ? null : domainMin ?? this.domainMin,
+      domainMax: clearDomainMax ? null : domainMax ?? this.domainMax,
+      includeDomainMin: includeDomainMin ?? this.includeDomainMin,
+      includeDomainMax: includeDomainMax ?? this.includeDomainMax,
+      domainMinExpression: domainMinExpression ?? this.domainMinExpression,
+      domainMaxExpression: domainMaxExpression ?? this.domainMaxExpression,
+      identity: identity ?? this.identity,
     );
   }
 

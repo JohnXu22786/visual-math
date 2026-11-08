@@ -1,4 +1,5 @@
 import 'dart:math' as dart_math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
@@ -78,6 +79,13 @@ class _FormulaCurve {
   const _FormulaCurve({required this.formula, this.polylines = const []});
 }
 
+class _GraphPoint {
+  final double x, y;
+  final Color color;
+  final String kind;
+  const _GraphPoint(this.x, this.y, this.color, this.kind);
+}
+
 /// The state class for [MathCanvas], exposing methods that can be
 /// called from the parent widget to control the canvas.
 class MathCanvasState extends State<MathCanvas> {
@@ -89,6 +97,9 @@ class MathCanvasState extends State<MathCanvas> {
 
   // Formula state (multi-formula support)
   final List<_FormulaCurve> _formulaCurves = [];
+  final Set<String> _enabledFormulas = {};
+  final Set<String> _initializedFormulaKeys = {};
+  List<_GraphPoint> _characteristicPoints = [];
 
   // Gesture state
   Offset? _lastFocalPoint;
@@ -114,14 +125,19 @@ class MathCanvasState extends State<MathCanvas> {
             parsed: expr,
             color: formulaPalette[0],
             autoColor: true,
+            identity: 'initial:${widget.initialExpression}',
           );
+          _initializeNewFormulaSettings([formula]);
           _formulaCurves.add(
             _FormulaCurve(formula: formula, polylines: _sampleCurve(formula)),
           );
         }
       }
       if (!_isReady) {
-        setState(() => _isReady = true);
+        setState(() {
+          _characteristicPoints = _findCharacteristicPoints();
+          _isReady = true;
+        });
         widget.onReady?.call();
       }
     });
@@ -133,19 +149,55 @@ class MathCanvasState extends State<MathCanvas> {
 
   /// Set all formulas to plot (replaces any existing formulas).
   Future<void> setFormulas(List<FormulaEntry> newFormulas) async {
+    final formulas = _withStableFormulaIdentities(newFormulas);
     setState(() {
+      _initializeNewFormulaSettings(formulas);
       _formulaCurves
         ..clear()
         ..addAll(
-          newFormulas.map(
+          formulas.map(
             (f) => _FormulaCurve(formula: f, polylines: _sampleCurve(f)),
           ),
         );
+      _characteristicPoints = _findCharacteristicPoints();
     });
     final allPoints = _formulaCurves
         .expand((fc) => fc.polylines.expand((pl) => pl))
         .toList();
     widget.onCoordinateUpdate?.call(allPoints);
+  }
+
+  List<FormulaEntry> _withStableFormulaIdentities(List<FormulaEntry> formulas) {
+    final occurrences = <String, int>{};
+    final identified = <FormulaEntry>[];
+    for (final formula in formulas) {
+      if (formula.identity != null) {
+        identified.add(formula);
+        continue;
+      }
+      final signature = '${formula.rawExpression}:${formula.color.toARGB32()}';
+      final occurrence = occurrences.update(
+        signature,
+        (count) => count + 1,
+        ifAbsent: () => 0,
+      );
+      identified.add(
+        formula.copyWith(identity: 'anonymous-formula:$signature:$occurrence'),
+      );
+    }
+    return identified;
+  }
+
+  void _initializeNewFormulaSettings(Iterable<FormulaEntry> formulas) {
+    const categories = ['极值点', 'X轴交点', 'Y轴交点', '图像交点'];
+    for (final formula in formulas) {
+      final key = _formulaSettingsKey(formula);
+      if (_initializedFormulaKeys.add(key)) {
+        for (final category in categories) {
+          _enabledFormulas.add('$key:$category');
+        }
+      }
+    }
   }
 
   /// Backward-compat: set a single expression.
@@ -188,6 +240,7 @@ class MathCanvasState extends State<MathCanvas> {
           polylines: _sampleCurve(_formulaCurves[i].formula),
         );
       }
+      _characteristicPoints = _findCharacteristicPoints();
     });
     widget.onCoordinateUpdate?.call(curvePoints);
     widget.onViewportChange?.call(_xMin, _yMin, _xMax, _yMax);
@@ -316,6 +369,7 @@ class MathCanvasState extends State<MathCanvas> {
           polylines: _sampleCurve(_formulaCurves[i].formula),
         );
       }
+      _characteristicPoints = _findCharacteristicPoints();
     });
     widget.onCoordinateUpdate?.call(curvePoints);
     widget.onViewportChange?.call(_xMin, _yMin, _xMax, _yMax);
@@ -328,6 +382,681 @@ class MathCanvasState extends State<MathCanvas> {
   /// Get all current curve points (from all formulas).
   List<Map<String, double>> get curvePoints =>
       _formulaCurves.expand((fc) => fc.polylines.expand((pl) => pl)).toList();
+
+  /// Numeric markers currently displayed, exposed for focused widget tests.
+  List<(double x, double y, String kind, Color color)>
+  get characteristicPointsForTesting => [
+    for (final point in _characteristicPoints)
+      (point.x, point.y, point.kind, point.color),
+  ];
+
+  List<String> get formulaIdentitiesForTesting => [
+    for (final curve in _formulaCurves) _formulaSettingsKey(curve.formula),
+  ];
+
+  bool _valuesMatchForIntersection(
+    double firstY,
+    double secondY, {
+    double absoluteTolerance = 0,
+  }) {
+    final magnitude = dart_math.max(firstY.abs(), secondY.abs());
+    final tolerance = dart_math.max(
+      magnitude * 64 * 2.220446049250313e-16,
+      absoluteTolerance,
+    );
+    return (firstY - secondY).abs() <= tolerance;
+  }
+
+  double? _tangentXAxisRoot(
+    FormulaEntry formula,
+    double low,
+    double high, {
+    required bool minimum,
+  }) {
+    double valueAt(double x) {
+      try {
+        return formula.parsed!.evaluator(x);
+      } catch (_) {
+        return double.nan;
+      }
+    }
+
+    final midpoint = low / 2 + high / 2;
+    final firstValue = valueAt(low);
+    final middleValue = valueAt(midpoint);
+    final lastValue = valueAt(high);
+    final halfWidth = (high - low) / 2;
+    if (!firstValue.isFinite ||
+        !middleValue.isFinite ||
+        !lastValue.isFinite ||
+        halfWidth == 0) {
+      return null;
+    }
+    final curvature =
+        ((firstValue - 2 * middleValue + lastValue).abs() / halfWidth) /
+        halfWidth;
+    if (!curvature.isFinite) return null;
+    var left = low;
+    var right = high;
+    for (var iteration = 0; iteration < 80; iteration++) {
+      final firstThird = (2 * left + right) / 3;
+      final secondThird = (left + 2 * right) / 3;
+      final firstValue = valueAt(firstThird);
+      final secondValue = valueAt(secondThird);
+      if (!firstValue.isFinite || !secondValue.isFinite) return null;
+      if ((minimum && firstValue < secondValue) ||
+          (!minimum && firstValue > secondValue)) {
+        right = secondThird;
+      } else {
+        left = firstThird;
+      }
+    }
+    final rootX = (left + right) / 2;
+    final rootY = valueAt(rootX);
+    final xPrecision = _floatSpacing(rootX);
+    final zeroTolerance =
+        curvature * xPrecision * xPrecision * 256 +
+        rootY.abs() * 64 * 2.220446049250313e-16;
+    return rootY.isFinite &&
+            zeroTolerance.isFinite &&
+            rootY.abs() <= zeroTolerance
+        ? rootX
+        : null;
+  }
+
+  (double, double) _refineLocalExtremum(
+    FormulaEntry formula,
+    double low,
+    double high, {
+    required bool minimum,
+    required double fallbackX,
+    required double fallbackY,
+  }) {
+    double valueAt(double x) {
+      try {
+        return formula.parsed!.evaluator(x);
+      } catch (_) {
+        return double.nan;
+      }
+    }
+
+    var left = low;
+    var right = high;
+    for (var iteration = 0; iteration < 96; iteration++) {
+      final firstThird = left + (right - left) / 3;
+      final secondThird = right - (right - left) / 3;
+      if (firstThird == left || secondThird == right) break;
+      final firstValue = valueAt(firstThird);
+      final secondValue = valueAt(secondThird);
+      if (!firstValue.isFinite || !secondValue.isFinite) {
+        return (fallbackX, fallbackY);
+      }
+      if ((minimum && firstValue < secondValue) ||
+          (!minimum && firstValue > secondValue)) {
+        right = secondThird;
+      } else {
+        left = firstThird;
+      }
+    }
+    final x = left / 2 + right / 2;
+    final y = valueAt(x);
+    return x.isFinite && y.isFinite ? (x, y) : (fallbackX, fallbackY);
+  }
+
+  List<_GraphPoint> _findCharacteristicPoints() {
+    final found = <_GraphPoint>[];
+    const kinds = ['极值点', 'X轴交点', 'Y轴交点', '图像交点'];
+    for (final curve in _formulaCurves) {
+      final formula = curve.formula;
+      final enabled = <String>{
+        for (final kind in kinds)
+          if (_enabledFormulas.contains(
+            '${_formulaSettingsKey(formula)}:$kind',
+          ))
+            kind,
+      };
+      for (final line in curve.polylines) {
+        for (var i = 1; i < line.length; i++) {
+          final a = line[i - 1], b = line[i];
+          final ax = a['x']!, ay = a['y']!, bx = b['x']!, by = b['y']!;
+          if (enabled.contains('X轴交点') &&
+              ((ay <= 0 && by >= 0) || (by <= 0 && ay >= 0)) &&
+              ay != by) {
+            final rootX = ax + (bx - ax) * (-ay) / (by - ay);
+            if (_includesDomainX(formula, rootX)) {
+              found.add(_GraphPoint(rootX, 0, formula.color, 'X轴交点'));
+            }
+          }
+          if (enabled.contains('X轴交点') &&
+              i < line.length - 1 &&
+              formula.parsed?.type == MathExpressionType.explicit) {
+            final cy = line[i + 1]['y']!;
+            final isMinimum = (by <= ay && by < cy) || (by < ay && by <= cy);
+            final isMaximum = (by >= ay && by > cy) || (by > ay && by >= cy);
+            if (isMinimum || isMaximum) {
+              final tangentX = _tangentXAxisRoot(
+                formula,
+                ax,
+                line[i + 1]['x']!,
+                minimum: isMinimum,
+              );
+              if (tangentX != null && _includesDomainX(formula, tangentX)) {
+                found.add(_GraphPoint(tangentX, 0, formula.color, 'X轴交点'));
+              }
+            }
+          }
+          if (enabled.contains('Y轴交点') &&
+              ((ax <= 0 && bx >= 0) || (bx <= 0 && ax >= 0)) &&
+              ax != bx) {
+            final rootY = ay + (by - ay) * (-ax) / (bx - ax);
+            if (_includesDomainX(formula, 0)) {
+              found.add(_GraphPoint(0, rootY, formula.color, 'Y轴交点'));
+            }
+          }
+          if (formula.parsed?.type == MathExpressionType.explicit &&
+              enabled.contains('极值点') &&
+              i < line.length - 1) {
+            final cy = line[i + 1]['y']!;
+            final isMinimum = (by <= ay && by < cy) || (by < ay && by <= cy);
+            final isMaximum = (by >= ay && by > cy) || (by > ay && by >= cy);
+            if ((isMinimum || isMaximum) && _includesDomainX(formula, bx)) {
+              final refined = _refineLocalExtremum(
+                formula,
+                ax,
+                line[i + 1]['x']!,
+                minimum: isMinimum,
+                fallbackX: bx,
+                fallbackY: by,
+              );
+              if (_includesDomainX(formula, refined.$1)) {
+                found.add(
+                  _GraphPoint(refined.$1, refined.$2, formula.color, '极值点'),
+                );
+              }
+            }
+          }
+        }
+      }
+    }
+    final pairwiseFormulas = _formulaCurves
+        .where(
+          (curve) => _enabledFormulas.contains(
+            '${_formulaSettingsKey(curve.formula)}:图像交点',
+          ),
+        )
+        .map((curve) => _formulaSettingsKey(curve.formula))
+        .toSet();
+    bool hasUnresolvedDomain(FormulaEntry formula) =>
+        (formula.domainMinExpression.isNotEmpty && formula.domainMin == null) ||
+        (formula.domainMaxExpression.isNotEmpty && formula.domainMax == null);
+    bool hasInvalidDomain(FormulaEntry formula) =>
+        formula.domainMin != null &&
+        formula.domainMax != null &&
+        formula.domainMax! <= formula.domainMin!;
+    if (pairwiseFormulas.isNotEmpty) {
+      final explicit = _formulaCurves;
+      for (var a = 0; a < explicit.length; a++) {
+        for (var b = a + 1; b < explicit.length; b++) {
+          final firstEnabled = pairwiseFormulas.contains(
+            _formulaSettingsKey(explicit[a].formula),
+          );
+          final secondEnabled = pairwiseFormulas.contains(
+            _formulaSettingsKey(explicit[b].formula),
+          );
+          if (!firstEnabled && !secondEnabled) continue;
+          final intersectionColor = firstEnabled
+              ? explicit[a].formula.color
+              : explicit[b].formula.color;
+          if (hasUnresolvedDomain(explicit[a].formula) ||
+              hasUnresolvedDomain(explicit[b].formula) ||
+              hasInvalidDomain(explicit[a].formula) ||
+              hasInvalidDomain(explicit[b].formula)) {
+            continue;
+          }
+          if (explicit[a].formula.parsed?.type == MathExpressionType.explicit &&
+              explicit[b].formula.parsed?.type == MathExpressionType.explicit) {
+            final first = explicit[a].formula;
+            final second = explicit[b].formula;
+            final low = dart_math
+                .max(
+                  _xMin,
+                  dart_math.max(
+                    first.domainMin ?? _xMin,
+                    second.domainMin ?? _xMin,
+                  ),
+                )
+                .toDouble();
+            final high = dart_math
+                .min(
+                  _xMax,
+                  dart_math.min(
+                    first.domainMax ?? _xMax,
+                    second.domainMax ?? _xMax,
+                  ),
+                )
+                .toDouble();
+            if (high < low) continue;
+            if (high == low) {
+              if (_includesDomainX(first, low) &&
+                  _includesDomainX(second, low)) {
+                try {
+                  final firstY = first.parsed!.evaluator(low);
+                  final secondY = second.parsed!.evaluator(low);
+                  if (firstY.isFinite &&
+                      secondY.isFinite &&
+                      _valuesMatchForIntersection(firstY, secondY)) {
+                    found.add(
+                      _GraphPoint(
+                        low,
+                        (firstY + secondY) / 2,
+                        intersectionColor,
+                        '图像交点',
+                      ),
+                    );
+                  }
+                } catch (_) {}
+              }
+              continue;
+            }
+            double differenceAt(double x) {
+              try {
+                return first.parsed!.evaluator(x) - second.parsed!.evaluator(x);
+              } catch (_) {
+                return double.nan;
+              }
+            }
+
+            const samples = 500;
+            var previousX = low;
+            var previousDifference = differenceAt(low);
+            final sampledDifferences = <(double, double)>[
+              (low, previousDifference),
+            ];
+            for (var sample = 1; sample <= samples; sample++) {
+              final x = low + (high - low) * sample / samples;
+              final difference = differenceAt(x);
+              if (difference.isFinite &&
+                  previousDifference.isFinite &&
+                  ((previousDifference <= 0 && difference >= 0) ||
+                      (previousDifference >= 0 && difference <= 0)) &&
+                  difference != previousDifference) {
+                var left = previousX;
+                var right = x;
+                var leftDifference = previousDifference;
+                var rootValid = true;
+                if (previousDifference == 0) {
+                  right = left;
+                } else if (difference == 0) {
+                  left = right;
+                  leftDifference = difference;
+                }
+                for (var iteration = 0; iteration < 1024; iteration++) {
+                  if (left == right) break;
+                  final middle = left / 2 + right / 2;
+                  if (middle == left || middle == right) break;
+                  final middleDifference = differenceAt(middle);
+                  if (!middleDifference.isFinite) {
+                    rootValid = false;
+                    break;
+                  }
+                  if (middleDifference == 0) {
+                    left = middle;
+                    right = middle;
+                    break;
+                  }
+                  if ((leftDifference < 0 && middleDifference > 0) ||
+                      (leftDifference > 0 && middleDifference < 0)) {
+                    right = middle;
+                  } else {
+                    left = middle;
+                    leftDifference = middleDifference;
+                  }
+                }
+                final rootX = (left + right) / 2;
+                final rootSlope =
+                    (difference - previousDifference).abs() /
+                    (x - previousX).abs();
+                final rootSpacing = _floatSpacing(rootX);
+                final rootTolerance = rootSlope * rootSpacing * 4;
+                try {
+                  final firstY = first.parsed!.evaluator(rootX);
+                  final secondY = second.parsed!.evaluator(rootX);
+                  if (rootValid &&
+                      firstY.isFinite &&
+                      secondY.isFinite &&
+                      _valuesMatchForIntersection(
+                        firstY,
+                        secondY,
+                        absoluteTolerance: rootTolerance,
+                      ) &&
+                      _includesDomainX(first, rootX) &&
+                      _includesDomainX(second, rootX)) {
+                    found.add(
+                      _GraphPoint(
+                        rootX,
+                        (firstY + secondY) / 2,
+                        intersectionColor,
+                        '图像交点',
+                      ),
+                    );
+                  }
+                } catch (_) {}
+              }
+              previousDifference = difference;
+              sampledDifferences.add((x, difference));
+              previousX = x;
+            }
+            if (sampledDifferences.every(
+              (sample) => sample.$2.isFinite && sample.$2 == 0,
+            )) {
+              continue;
+            }
+            for (var i = 1; i < sampledDifferences.length - 1; i++) {
+              final before = sampledDifferences[i - 1];
+              final middle = sampledDifferences[i];
+              final after = sampledDifferences[i + 1];
+              if (!before.$2.isFinite ||
+                  !middle.$2.isFinite ||
+                  !after.$2.isFinite ||
+                  ((before.$2 <= 0 && middle.$2 >= 0) ||
+                      (before.$2 >= 0 && middle.$2 <= 0)) ||
+                  ((middle.$2 <= 0 && after.$2 >= 0) ||
+                      (middle.$2 >= 0 && after.$2 <= 0)) ||
+                  middle.$2.abs() > before.$2.abs() ||
+                  middle.$2.abs() > after.$2.abs())
+                continue;
+              var left = before.$1;
+              var right = after.$1;
+              for (var iteration = 0; iteration < 96; iteration++) {
+                final firstThird = left + (right - left) / 3;
+                final secondThird = right - (right - left) / 3;
+                if (firstThird == left || secondThird == right) break;
+                final firstValue = differenceAt(firstThird).abs();
+                final secondValue = differenceAt(secondThird).abs();
+                if (!firstValue.isFinite || !secondValue.isFinite) break;
+                if (firstValue < secondValue) {
+                  right = secondThird;
+                } else {
+                  left = firstThird;
+                }
+              }
+              final tangentX = (left + right) / 2;
+              final difference = differenceAt(tangentX);
+              try {
+                final firstY = first.parsed!.evaluator(tangentX);
+                final secondY = second.parsed!.evaluator(tangentX);
+                final tangentHalfWidth = (after.$1 - before.$1) / 2;
+                final differenceCurvature = tangentHalfWidth > 0
+                    ? ((before.$2 - 2 * middle.$2 + after.$2).abs() /
+                              tangentHalfWidth) /
+                          tangentHalfWidth
+                    : double.nan;
+                final xPrecision = _floatSpacing(tangentX);
+                final tangentTolerance = differenceCurvature.isFinite
+                    ? differenceCurvature * xPrecision * xPrecision * 256 +
+                          dart_math.max(firstY.abs(), secondY.abs()) *
+                              64 *
+                              2.220446049250313e-16
+                    : 0.0;
+                if (difference.isFinite &&
+                    firstY.isFinite &&
+                    secondY.isFinite &&
+                    tangentTolerance.isFinite &&
+                    difference.abs() <= tangentTolerance &&
+                    _includesDomainX(first, tangentX) &&
+                    _includesDomainX(second, tangentX)) {
+                  found.add(
+                    _GraphPoint(
+                      tangentX,
+                      (firstY + secondY) / 2,
+                      intersectionColor,
+                      '图像交点',
+                    ),
+                  );
+                }
+              } catch (_) {}
+            }
+            continue;
+          }
+          for (final lineA in explicit[a].polylines) {
+            for (final lineB in explicit[b].polylines) {
+              for (var i = 1; i < lineA.length; i++) {
+                final p = lineA[i - 1], q = lineA[i];
+                for (var j = 1; j < lineB.length; j++) {
+                  final r = lineB[j - 1], s = lineB[j];
+                  final x1 = p['x']!, y1 = p['y']!, x2 = q['x']!, y2 = q['y']!;
+                  final x3 = r['x']!, y3 = r['y']!, x4 = s['x']!, y4 = s['y']!;
+                  final firstCrossTerm = (x1 - x2) * (y3 - y4);
+                  final secondCrossTerm = (y1 - y2) * (x3 - x4);
+                  final denominator = firstCrossTerm - secondCrossTerm;
+                  final determinantScale = dart_math.max(
+                    firstCrossTerm.abs(),
+                    secondCrossTerm.abs(),
+                  );
+                  if (determinantScale == 0 ||
+                      denominator.abs() <=
+                          determinantScale * 64 * 2.220446049250313e-16) {
+                    continue;
+                  }
+                  final t =
+                      ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) /
+                      denominator;
+                  final u =
+                      -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) /
+                      denominator;
+                  if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+                    final x = x1 + t * (x2 - x1);
+                    if (_includesDomainX(explicit[a].formula, x) &&
+                        _includesDomainX(explicit[b].formula, x)) {
+                      found.add(
+                        _GraphPoint(
+                          x,
+                          y1 + t * (y2 - y1),
+                          intersectionColor,
+                          '图像交点',
+                        ),
+                      );
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    final bounds = _effectiveYBounds();
+    final unique = <_GraphPoint>[];
+    double coordinateTolerance(double value) => _floatSpacing(value);
+    for (final point in found) {
+      if (point.x < _xMin ||
+          point.x > _xMax ||
+          point.y < bounds.$1 ||
+          point.y > bounds.$2)
+        continue;
+      if (unique.any((other) {
+        if (other.kind != point.kind) return false;
+        final xTolerance = coordinateTolerance(
+          dart_math.max(other.x.abs(), point.x.abs()),
+        );
+        final yTolerance = coordinateTolerance(
+          dart_math.max(other.y.abs(), point.y.abs()),
+        );
+        return (other.x - point.x).abs() <= xTolerance &&
+            (other.y - point.y).abs() <= yTolerance;
+      }))
+        continue;
+      unique.add(point);
+    }
+    return unique;
+  }
+
+  String _formulaSettingsKey(FormulaEntry formula) =>
+      formula.identity ??
+      '${formula.rawExpression}:${formula.color.toARGB32()}';
+
+  bool _includesDomainX(FormulaEntry formula, double x) {
+    if (!formula.includeDomainMin &&
+        formula.domainMin != null &&
+        x <= formula.domainMin!)
+      return false;
+    if (!formula.includeDomainMax &&
+        formula.domainMax != null &&
+        x >= formula.domainMax!)
+      return false;
+    return true;
+  }
+
+  Future<void> _openCharacteristicSettings() async {
+    const categories = ['极值点', 'X轴交点', 'Y轴交点', '图像交点'];
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, refresh) => AlertDialog(
+          title: const Text('特征点显示'),
+          content: SizedBox(
+            width: 420,
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
+                  child: Text('全部显示'),
+                ),
+                for (final category in categories)
+                  CheckboxListTile(
+                    dense: true,
+                    tristate: true,
+                    title: Text(category),
+                    value: _categoryAggregate(category),
+                    onChanged: (_) => refresh(() {
+                      _setCategoryForAll(
+                        category,
+                        _categoryAggregate(category) != true,
+                      );
+                      setState(
+                        () =>
+                            _characteristicPoints = _findCharacteristicPoints(),
+                      );
+                    }),
+                  ),
+                const Divider(),
+                for (final curve in _formulaCurves)
+                  ExpansionTile(
+                    key: PageStorageKey(_formulaSettingsKey(curve.formula)),
+                    initiallyExpanded: true,
+                    leading: CircleAvatar(
+                      radius: 8,
+                      backgroundColor: curve.formula.color,
+                    ),
+                    title: Text(curve.formula.rawExpression),
+                    children: [
+                      for (final category in categories)
+                        CheckboxListTile(
+                          dense: true,
+                          title: Text(category),
+                          value: _isCategoryEnabled(curve.formula, category),
+                          onChanged: (value) => refresh(() {
+                            _setFormulaCategory(
+                              curve.formula,
+                              category,
+                              value ?? false,
+                            );
+                            setState(
+                              () => _characteristicPoints =
+                                  _findCharacteristicPoints(),
+                            );
+                          }),
+                        ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('完成'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  bool _isCategoryEnabled(FormulaEntry formula, String category) =>
+      _enabledFormulas.contains('${_formulaSettingsKey(formula)}:$category');
+
+  /// Toggle one plotted formula category in focused state-level widget tests.
+  void setFormulaCharacteristicForTesting(
+    String formulaIdentity,
+    String category,
+    bool enabled,
+  ) {
+    final curve = _formulaCurves.firstWhere(
+      (item) => _formulaSettingsKey(item.formula) == formulaIdentity,
+    );
+    setState(() {
+      _setFormulaCategory(curve.formula, category, enabled);
+      _characteristicPoints = _findCharacteristicPoints();
+    });
+  }
+
+  bool? _categoryAggregate(String category) {
+    if (_formulaCurves.isEmpty) return false;
+    final enabledCount = _formulaCurves
+        .where((curve) => _isCategoryEnabled(curve.formula, category))
+        .length;
+    if (enabledCount == 0) return false;
+    if (enabledCount == _formulaCurves.length) return true;
+    return null;
+  }
+
+  void _setFormulaCategory(
+    FormulaEntry formula,
+    String category,
+    bool enabled,
+  ) {
+    final key = '${_formulaSettingsKey(formula)}:$category';
+    if (enabled) {
+      _enabledFormulas.add(key);
+    } else {
+      _enabledFormulas.remove(key);
+    }
+  }
+
+  void _setCategoryForAll(String category, bool enabled) {
+    for (final curve in _formulaCurves) {
+      _setFormulaCategory(curve.formula, category, enabled);
+    }
+  }
+
+  void _inspectCharacteristicPoint(Offset position) {
+    final bounds = _effectiveYBounds();
+    for (final point in _characteristicPoints) {
+      final sx = (point.x - _xMin) / (_xMax - _xMin) * _canvasWidth;
+      final sy =
+          (bounds.$2 - point.y) / (bounds.$2 - bounds.$1) * _canvasHeight;
+      if ((Offset(sx, sy) - position).distance < 16) {
+        showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(point.kind),
+            content: Text(
+              'x = ${point.x.toStringAsFixed(8)}\ny = ${point.y.toStringAsFixed(8)}',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('关闭'),
+              ),
+            ],
+          ),
+        );
+        break;
+      }
+    }
+  }
 
   // ==================================================================
   // Build helpers for painter
@@ -372,6 +1101,28 @@ class MathCanvasState extends State<MathCanvas> {
   /// which comfortably accommodates normal interaction.
   static const double _renderMarginScale = 1.0;
 
+  double _adjacentFloat(double value, {required bool upward}) {
+    if (!value.isFinite) return value;
+    if (value == 0) return upward ? double.minPositive : -double.minPositive;
+    final data = ByteData(8)..setFloat64(0, value, Endian.big);
+    var bits = data.getUint64(0, Endian.big);
+    if ((value > 0) == upward) {
+      bits++;
+    } else {
+      bits--;
+    }
+    data.setUint64(0, bits, Endian.big);
+    return data.getFloat64(0, Endian.big);
+  }
+
+  double _floatSpacing(double value) {
+    final absolute = value.abs();
+    final next = _adjacentFloat(absolute, upward: true);
+    return next.isFinite
+        ? next - absolute
+        : absolute - _adjacentFloat(absolute, upward: false);
+  }
+
   /// Sample a formula at the current viewport, optionally extending it by
   /// [_renderMarginScale] on each side for smooth drag rendering.
   ///
@@ -382,9 +1133,25 @@ class MathCanvasState extends State<MathCanvas> {
     bool includePanMargin = true,
   }) {
     if (!formula.isValid) return [];
+    if ((formula.domainMinExpression.isNotEmpty && formula.domainMin == null) ||
+        (formula.domainMaxExpression.isNotEmpty && formula.domainMax == null)) {
+      return [];
+    }
     final parsed = formula.parsed!;
     final marginScale = includePanMargin ? _renderMarginScale : 0.0;
     final marginX = (_xMax - _xMin) * marginScale;
+    final domainMin = formula.domainMin ?? double.negativeInfinity;
+    final domainMax = formula.domainMax ?? double.infinity;
+    if (domainMax <= domainMin) return [];
+    var sampleMin = dart_math.max(_xMin - marginX, domainMin).toDouble();
+    var sampleMax = dart_math.min(_xMax + marginX, domainMax).toDouble();
+    if (!formula.includeDomainMin && sampleMin == domainMin) {
+      sampleMin = _adjacentFloat(domainMin, upward: true);
+    }
+    if (!formula.includeDomainMax && sampleMax == domainMax) {
+      sampleMax = _adjacentFloat(domainMax, upward: false);
+    }
+    if (sampleMax <= sampleMin) return [];
     if (parsed.type == MathExpressionType.implicit) {
       final (effectiveYMin, effectiveYMax) = _effectiveYBounds();
       final marginY = (effectiveYMax - effectiveYMin) * marginScale;
@@ -393,8 +1160,8 @@ class MathCanvasState extends State<MathCanvas> {
       // contour detail remains consistent across the visible area.
       final scale = 1.0 + 2.0 * marginScale;
       return parsed.sampleContourSegments(
-        xMin: _xMin - marginX,
-        xMax: _xMax + marginX,
+        xMin: sampleMin,
+        xMax: sampleMax,
         yMin: effectiveYMin - marginY,
         yMax: effectiveYMax + marginY,
         gridX: (80 * scale).round().clamp(80, 200),
@@ -406,8 +1173,8 @@ class MathCanvasState extends State<MathCanvas> {
     // With _renderMarginScale=1.0, this yields scalePoints=3.0 (3× points).
     final scalePoints = 1.0 + 2.0 * marginScale;
     return parsed.samplePointSegments(
-      xMin: _xMin - marginX,
-      xMax: _xMax + marginX,
+      xMin: sampleMin,
+      xMax: sampleMax,
       numPoints: (300 * scalePoints).round().clamp(300, 1200),
     );
   }
@@ -492,6 +1259,7 @@ class MathCanvasState extends State<MathCanvas> {
         polylines: _sampleCurve(_formulaCurves[i].formula),
       );
     }
+    _characteristicPoints = _findCharacteristicPoints();
   }
 
   // Mouse wheel zoom
@@ -564,34 +1332,67 @@ class MathCanvasState extends State<MathCanvas> {
                 if (widget.allowMouseGestures) PointerDeviceKind.mouse,
                 if (widget.allowMouseGestures) PointerDeviceKind.trackpad,
               };
-        return GestureDetector(
-          supportedDevices: supportedDevices,
-          onScaleStart: _onScaleStart,
-          onScaleUpdate: _onScaleUpdate,
-          onScaleEnd: _onScaleEnd,
-          child: Listener(
-            onPointerSignal: widget.allowMouseGestures
-                ? _onPointerSignal
-                : null,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(MathUiTokens.cornerRadius),
-              child: CustomPaint(
-                painter: GraphPainter(
-                  xMin: _xMin,
-                  yMin: _yMin,
-                  xMax: _xMax,
-                  yMax: _yMax,
-                  curves: _buildCurvesList(),
-                  curveColors: _buildColorsList(),
-                  backgroundColor: cs.surface,
-                  gridColor: cs.outlineVariant.withValues(alpha: 0.5),
-                  axisColor: cs.onSurface,
-                  labelColor: cs.onSurfaceVariant,
+        return Stack(
+          children: [
+            GestureDetector(
+              supportedDevices: supportedDevices,
+              onTapUp: (details) =>
+                  _inspectCharacteristicPoint(details.localPosition),
+              onScaleStart: _onScaleStart,
+              onScaleUpdate: _onScaleUpdate,
+              onScaleEnd: _onScaleEnd,
+              child: Listener(
+                onPointerSignal: widget.allowMouseGestures
+                    ? _onPointerSignal
+                    : null,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(
+                    MathUiTokens.cornerRadius,
+                  ),
+                  child: CustomPaint(
+                    painter: GraphPainter(
+                      xMin: _xMin,
+                      yMin: _yMin,
+                      xMax: _xMax,
+                      yMax: _yMax,
+                      curves: _buildCurvesList(),
+                      curveColors: _buildColorsList(),
+                      characteristicPoints: _characteristicPoints,
+                      backgroundColor: cs.surface,
+                      gridColor: cs.outlineVariant.withValues(alpha: 0.5),
+                      axisColor: cs.onSurface,
+                      labelColor: cs.onSurfaceVariant,
+                    ),
+                    size: Size(constraints.maxWidth, constraints.maxHeight),
+                  ),
                 ),
-                size: Size(constraints.maxWidth, constraints.maxHeight),
               ),
             ),
-          ),
+            Positioned(
+              right: 8,
+              top: 8,
+              child: Material(
+                color: cs.surface,
+                elevation: 2,
+                shape: const CircleBorder(),
+                child: PopupMenuButton<String>(
+                  tooltip: '视图设置',
+                  icon: const Icon(Icons.settings, size: 21),
+                  onSelected: (_) => _openCharacteristicSettings(),
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: 'characteristicPoints',
+                      child: Text('特征点显示'),
+                    ),
+                  ],
+                  style: IconButton.styleFrom(
+                    fixedSize: const Size(40, 40),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+              ),
+            ),
+          ],
         );
       },
     );
@@ -619,6 +1420,7 @@ class GraphPainter extends CustomPainter {
 
   /// Colors for each curve.
   final List<Color> curveColors;
+  final List<_GraphPoint> characteristicPoints;
 
   final Color backgroundColor;
   final Color gridColor;
@@ -632,6 +1434,7 @@ class GraphPainter extends CustomPainter {
     required this.yMax,
     this.curves = const [],
     this.curveColors = const [],
+    this.characteristicPoints = const [],
     this.backgroundColor = Colors.white,
     this.gridColor = const Color(0x80CCCCCC),
     this.axisColor = Colors.black87,
@@ -669,6 +1472,19 @@ class GraphPainter extends CustomPainter {
     _drawGrid(canvas, size, eYMin, eYMax);
     _drawAxes(canvas, size, eYMin, eYMax);
     _drawCurves(canvas, size, eYMin, eYMax);
+    for (final point in characteristicPoints) {
+      final center = _mathToScreen(point.x, point.y, size, eYMin, eYMax);
+      canvas.drawCircle(center, 7, Paint()..color = backgroundColor);
+      canvas.drawCircle(center, 5, Paint()..color = point.color);
+      canvas.drawCircle(
+        center,
+        5,
+        Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5,
+      );
+    }
   }
 
   @override
@@ -682,7 +1498,8 @@ class GraphPainter extends CustomPainter {
         oldDelegate.gridColor != gridColor ||
         oldDelegate.axisColor != axisColor ||
         oldDelegate.labelColor != labelColor ||
-        oldDelegate.curveColors != curveColors;
+        oldDelegate.curveColors != curveColors ||
+        oldDelegate.characteristicPoints != characteristicPoints;
   }
 
   // ==================================================================

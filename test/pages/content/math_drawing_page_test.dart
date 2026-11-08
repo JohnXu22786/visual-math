@@ -285,17 +285,18 @@ void main() {
             matching: find.byType(Row),
           )
           .first;
+      bool isMeasuredActionButton(Widget widget) {
+        if (widget is! IconButton || widget.icon is! Icon) return false;
+        return ![
+          Icons.undo,
+          Icons.calculate_outlined,
+          Icons.keyboard,
+        ].contains((widget.icon as Icon).icon);
+      }
+
       final buttons = find.descendant(
         of: row,
-        matching: find.byWidgetPredicate(
-          (w) =>
-              w is IconButton &&
-              ![
-                Icons.undo,
-                Icons.calculate_outlined,
-                Icons.keyboard,
-              ].contains((w.icon as Icon?)?.icon),
-        ),
+        matching: find.byWidgetPredicate(isMeasuredActionButton),
       );
       return [
         for (var i = 0; i < buttons.evaluate().length; i++)
