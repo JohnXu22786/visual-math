@@ -803,7 +803,7 @@ void main() {
     expect(tallKeyHeight, closeTo((400 - 12) / 6 - 4, 1));
     await _selectCategory(tester, '字母');
     final alphabetKeyHeight = tester.getSize(find.byTooltip('7')).height;
-    expect(alphabetKeyHeight, lessThanOrEqualTo((400 - 12) / 10));
+    expect(alphabetKeyHeight, closeTo(44, 1));
     await _selectCategory(tester, '希腊字母');
     final tallGreekKeyHeight = tester.getSize(find.byTooltip('alpha')).height;
     expect(tallGreekKeyHeight, closeTo((500 - 196) / 5, 1));

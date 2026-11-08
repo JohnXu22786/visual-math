@@ -428,6 +428,10 @@ class _MathKeyboardState extends State<MathKeyboard> {
                       _navigate(Icons.north_east, '退出当前结构', 'out'),
                       const Spacer(),
                       TextButton(
+                        style: TextButton.styleFrom(
+                          minimumSize: const Size(60, 44),
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                        ),
                         onPressed: widget.onPlot,
                         child: Text(_label('绘图')),
                       ),
@@ -457,12 +461,15 @@ class _MathKeyboardState extends State<MathKeyboard> {
           : rowHeight.clamp(24.0, 72.0).toDouble();
     }
     if (constraints.hasBoundedWidth) {
-      // Keep keys close to square in narrow portrait and stretched regions.
+      // Limit enlarged keys to their cell width without shrinking the default.
       final columnCount = _category == '字母' ? 10 : 6;
       final columnWidth = (constraints.maxWidth - 12) / columnCount - 4;
-      height = height < columnWidth
+      final widthLimit = columnWidth < 44 && preferredHeight >= 44
+          ? 44.0
+          : columnWidth;
+      height = height < widthLimit
           ? height
-          : columnWidth.clamp(24.0, 72.0).toDouble();
+          : widthLimit.clamp(24.0, 72.0).toDouble();
     }
     return height;
   }
