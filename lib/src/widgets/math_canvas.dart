@@ -167,9 +167,7 @@ class MathCanvasState extends State<MathCanvas> {
     widget.onCoordinateUpdate?.call(allPoints);
   }
 
-  List<FormulaEntry> _withStableFormulaIdentities(
-    List<FormulaEntry> formulas,
-  ) {
+  List<FormulaEntry> _withStableFormulaIdentities(List<FormulaEntry> formulas) {
     final occurrences = <String, int>{};
     final identified = <FormulaEntry>[];
     for (final formula in formulas) {
@@ -184,9 +182,7 @@ class MathCanvasState extends State<MathCanvas> {
         ifAbsent: () => 0,
       );
       identified.add(
-        formula.copyWith(
-          identity: 'anonymous-formula:$signature:$occurrence',
-        ),
+        formula.copyWith(identity: 'anonymous-formula:$signature:$occurrence'),
       );
     }
     return identified;
@@ -395,16 +391,14 @@ class MathCanvasState extends State<MathCanvas> {
   ];
 
   List<String> get formulaIdentitiesForTesting => [
-    for (final curve in _formulaCurves)
-      _formulaSettingsKey(curve.formula),
+    for (final curve in _formulaCurves) _formulaSettingsKey(curve.formula),
   ];
 
   bool _valuesMatchForIntersection(
     double firstY,
     double secondY, {
     double absoluteTolerance = 0,
-  }
-  ) {
+  }) {
     final magnitude = dart_math.max(firstY.abs(), secondY.abs());
     final tolerance = dart_math.max(
       magnitude * 64 * 2.220446049250313e-16,
@@ -547,9 +541,7 @@ class MathCanvasState extends State<MathCanvas> {
                 minimum: isMinimum,
               );
               if (tangentX != null && _includesDomainX(formula, tangentX)) {
-                found.add(
-                  _GraphPoint(tangentX, 0, formula.color, 'X轴交点'),
-                );
+                found.add(_GraphPoint(tangentX, 0, formula.color, 'X轴交点'));
               }
             }
           }
@@ -801,10 +793,7 @@ class MathCanvasState extends State<MathCanvas> {
                     : double.nan;
                 final xPrecision = _floatSpacing(tangentX);
                 final tangentTolerance = differenceCurvature.isFinite
-                    ? differenceCurvature *
-                          xPrecision *
-                          xPrecision *
-                          256 +
+                    ? differenceCurvature * xPrecision * xPrecision * 256 +
                           dart_math.max(firstY.abs(), secondY.abs()) *
                               64 *
                               2.220446049250313e-16
@@ -839,8 +828,7 @@ class MathCanvasState extends State<MathCanvas> {
                   final x3 = r['x']!, y3 = r['y']!, x4 = s['x']!, y4 = s['y']!;
                   final firstCrossTerm = (x1 - x2) * (y3 - y4);
                   final secondCrossTerm = (y1 - y2) * (x3 - x4);
-                  final denominator =
-                      firstCrossTerm - secondCrossTerm;
+                  final denominator = firstCrossTerm - secondCrossTerm;
                   final determinantScale = dart_math.max(
                     firstCrossTerm.abs(),
                     secondCrossTerm.abs(),
@@ -886,19 +874,17 @@ class MathCanvasState extends State<MathCanvas> {
           point.y < bounds.$1 ||
           point.y > bounds.$2)
         continue;
-      if (unique.any(
-        (other) {
-          if (other.kind != point.kind) return false;
-          final xTolerance = coordinateTolerance(
-            dart_math.max(other.x.abs(), point.x.abs()),
-          );
-          final yTolerance = coordinateTolerance(
-            dart_math.max(other.y.abs(), point.y.abs()),
-          );
-          return (other.x - point.x).abs() <= xTolerance &&
-              (other.y - point.y).abs() <= yTolerance;
-        },
-      ))
+      if (unique.any((other) {
+        if (other.kind != point.kind) return false;
+        final xTolerance = coordinateTolerance(
+          dart_math.max(other.x.abs(), point.x.abs()),
+        );
+        final yTolerance = coordinateTolerance(
+          dart_math.max(other.y.abs(), point.y.abs()),
+        );
+        return (other.x - point.x).abs() <= xTolerance &&
+            (other.y - point.y).abs() <= yTolerance;
+      }))
         continue;
       unique.add(point);
     }
@@ -906,7 +892,8 @@ class MathCanvasState extends State<MathCanvas> {
   }
 
   String _formulaSettingsKey(FormulaEntry formula) =>
-      formula.identity ?? '${formula.rawExpression}:${formula.color.toARGB32()}';
+      formula.identity ??
+      '${formula.rawExpression}:${formula.color.toARGB32()}';
 
   bool _includesDomainX(FormulaEntry formula, double x) {
     if (!formula.includeDomainMin &&
@@ -947,7 +934,10 @@ class MathCanvasState extends State<MathCanvas> {
                         category,
                         _categoryAggregate(category) != true,
                       );
-                      setState(() => _characteristicPoints = _findCharacteristicPoints());
+                      setState(
+                        () =>
+                            _characteristicPoints = _findCharacteristicPoints(),
+                      );
                     }),
                   ),
                 const Divider(),
@@ -972,7 +962,10 @@ class MathCanvasState extends State<MathCanvas> {
                               category,
                               value ?? false,
                             );
-                            setState(() => _characteristicPoints = _findCharacteristicPoints());
+                            setState(
+                              () => _characteristicPoints =
+                                  _findCharacteristicPoints(),
+                            );
                           }),
                         ),
                     ],
@@ -1019,7 +1012,11 @@ class MathCanvasState extends State<MathCanvas> {
     return null;
   }
 
-  void _setFormulaCategory(FormulaEntry formula, String category, bool enabled) {
+  void _setFormulaCategory(
+    FormulaEntry formula,
+    String category,
+    bool enabled,
+  ) {
     final key = '${_formulaSettingsKey(formula)}:$category';
     if (enabled) {
       _enabledFormulas.add(key);
@@ -1038,13 +1035,24 @@ class MathCanvasState extends State<MathCanvas> {
     final bounds = _effectiveYBounds();
     for (final point in _characteristicPoints) {
       final sx = (point.x - _xMin) / (_xMax - _xMin) * _canvasWidth;
-      final sy = (bounds.$2 - point.y) / (bounds.$2 - bounds.$1) * _canvasHeight;
+      final sy =
+          (bounds.$2 - point.y) / (bounds.$2 - bounds.$1) * _canvasHeight;
       if ((Offset(sx, sy) - position).distance < 16) {
-        showDialog<void>(context: context, builder: (context) => AlertDialog(
-          title: Text(point.kind),
-          content: Text('x = ${point.x.toStringAsFixed(8)}\ny = ${point.y.toStringAsFixed(8)}'),
-          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭'))],
-        ));
+        showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(point.kind),
+            content: Text(
+              'x = ${point.x.toStringAsFixed(8)}\ny = ${point.y.toStringAsFixed(8)}',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('关闭'),
+              ),
+            ],
+          ),
+        );
         break;
       }
     }
@@ -1468,7 +1476,14 @@ class GraphPainter extends CustomPainter {
       final center = _mathToScreen(point.x, point.y, size, eYMin, eYMax);
       canvas.drawCircle(center, 7, Paint()..color = backgroundColor);
       canvas.drawCircle(center, 5, Paint()..color = point.color);
-      canvas.drawCircle(center, 5, Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = 1.5);
+      canvas.drawCircle(
+        center,
+        5,
+        Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5,
+      );
     }
   }
 

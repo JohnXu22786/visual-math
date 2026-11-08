@@ -84,10 +84,12 @@ void main() {
     final markers = key.currentState!.characteristicPointsForTesting;
     expect(markers.where((point) => point.$3 == 'X轴交点'), isEmpty);
     expect(
-      markers.where((point) => point.$3 == '极值点').any(
-        (point) => (point.$1 - 0.03337041156840925).abs() < 1e-6 &&
-            point.$2 > 0,
-      ),
+      markers
+          .where((point) => point.$3 == '极值点')
+          .any(
+            (point) =>
+                (point.$1 - 0.03337041156840925).abs() < 1e-6 && point.$2 > 0,
+          ),
       isTrue,
     );
 
@@ -581,12 +583,7 @@ void main() {
       isEmpty,
     );
 
-    await key.currentState!.setViewport(
-      1e12 - 10,
-      -60,
-      1e12 + 110,
-      60,
-    );
+    await key.currentState!.setViewport(1e12 - 10, -60, 1e12 + 110, 60);
     await key.currentState!.setFormulas([
       FormulaEntry(
         rawExpression: '0',
@@ -607,7 +604,8 @@ void main() {
       ),
     ]);
     await tester.pumpAndSettle();
-    final interiorLargeIntersection = key.currentState!
+    final interiorLargeIntersection = key
+        .currentState!
         .characteristicPointsForTesting
         .where((point) => point.$3 == '图像交点')
         .where((point) => (point.$1 - (1e12 + 50)).abs() < 1e-3)
@@ -634,7 +632,9 @@ void main() {
       ),
     ]);
     await tester.pumpAndSettle();
-    final nearOpenIntersection = key.currentState!.characteristicPointsForTesting
+    final nearOpenIntersection = key
+        .currentState!
+        .characteristicPointsForTesting
         .where((point) => point.$3 == '图像交点')
         .where((point) => (point.$1 - (1e12 + 0.0005)).abs() < 1e-3)
         .toList();
@@ -766,12 +766,7 @@ void main() {
       isEmpty,
     );
 
-    await key.currentState!.setViewport(
-      -500,
-      1e12 - 500,
-      500,
-      1e12 + 500,
-    );
+    await key.currentState!.setViewport(-500, 1e12 - 500, 500, 1e12 + 500);
     await key.currentState!.setFormulas([
       FormulaEntry(
         rawExpression: '1000000000000',
@@ -926,13 +921,14 @@ void main() {
       ),
     ]);
     await tester.pumpAndSettle();
-    final closeIntersections = key.currentState!
-        .characteristicPointsForTesting
+    final closeIntersections = key.currentState!.characteristicPointsForTesting
         .where((point) => point.$3 == '图像交点')
         .toList();
     expect(closeIntersections, hasLength(2));
-    expect((closeIntersections[0].$1 - closeIntersections[1].$1).abs(),
-        greaterThan(0.0004));
+    expect(
+      (closeIntersections[0].$1 - closeIntersections[1].$1).abs(),
+      greaterThan(0.0004),
+    );
 
     await key.currentState!.setViewport(-1e-9, -1e-9, 2e-9, 1e-9);
     await key.currentState!.setFormulas([
@@ -954,7 +950,8 @@ void main() {
       ),
     ]);
     await tester.pumpAndSettle();
-    final subnanoIntersections = key.currentState!
+    final subnanoIntersections = key
+        .currentState!
         .characteristicPointsForTesting
         .where((point) => point.$3 == '图像交点')
         .toList();
@@ -984,7 +981,8 @@ void main() {
       ),
     ]);
     await tester.pumpAndSettle();
-    final ulpsCloseIntersections = key.currentState!
+    final ulpsCloseIntersections = key
+        .currentState!
         .characteristicPointsForTesting
         .where((point) => point.$3 == '图像交点')
         .toList();

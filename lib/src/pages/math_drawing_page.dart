@@ -368,9 +368,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       }
       _formulas
         ..clear()
-        ..addAll([
-          for (final entry in formulas) _formulaStateFromEntry(entry),
-        ]);
+        ..addAll([for (final entry in formulas) _formulaStateFromEntry(entry)]);
       _activeFormula = null;
       _keyboardVisible = false;
       if (_formulas.isEmpty) {
@@ -653,13 +651,17 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       }
       final lower = f.domainMinController.text.trim();
       final upper = f.domainMaxController.text.trim();
-      for (final endpoint in [lower, upper].where((value) => value.isNotEmpty)) {
+      for (final endpoint in [
+        lower,
+        upper,
+      ].where((value) => value.isNotEmpty)) {
         final endpointExpression = MathExpression.fromInput(endpoint);
         if (!endpointExpression.isValid) {
           _showError('定义域端点无法解析，请检查表达式。');
           return;
         }
-        if (RegExp(r'\b[xy]\b').hasMatch(endpointExpression.normalizedExpression)) {
+        if (RegExp(r'\b[xy]\b')
+            .hasMatch(endpointExpression.normalizedExpression)) {
           _showError('定义域端点不能依赖坐标变量 x 或 y。');
           return;
         }
@@ -706,7 +708,9 @@ class _MathDrawingPageState extends State<MathDrawingPage>
             (name) => name != 'x' && name != 'y',
           ),
         ...entries
-            .expand((entry) => [entry.domainMinExpression, entry.domainMaxExpression])
+            .expand(
+              (entry) => [entry.domainMinExpression, entry.domainMaxExpression],
+            )
             .where((input) => input.isNotEmpty)
             .expand((input) => MathExpression.fromInput(input).parameters)
             .where((name) => name != 'x' && name != 'y'),
@@ -757,9 +761,11 @@ class _MathDrawingPageState extends State<MathDrawingPage>
           }),
           domainMin: _resolveDomainEndpoint(entry.domainMinExpression),
           domainMax: _resolveDomainEndpoint(entry.domainMaxExpression),
-          clearDomainMin: entry.domainMinExpression.isNotEmpty &&
+          clearDomainMin:
+              entry.domainMinExpression.isNotEmpty &&
               _resolveDomainEndpoint(entry.domainMinExpression) == null,
-          clearDomainMax: entry.domainMaxExpression.isNotEmpty &&
+          clearDomainMax:
+              entry.domainMaxExpression.isNotEmpty &&
               _resolveDomainEndpoint(entry.domainMaxExpression) == null,
         ),
     ];
