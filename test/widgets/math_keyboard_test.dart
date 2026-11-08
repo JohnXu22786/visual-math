@@ -766,4 +766,62 @@ void main() {
     expect(commands, ['insert:7', 'next:', 'command:deleteBackward']);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('key height adapts to the available region and caller scale', (
+    tester,
+  ) async {
+    final commands = <String>[];
+
+    Future<void> pump({required double width, required double height}) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: width,
+              height: height,
+              child: MathKeyboard(
+                activeLabel: '公式 1',
+                keyScale: 1.5,
+                persistenceEnabled: false,
+                onDismiss: () {},
+                onPlot: () {},
+                onCommand: (kind, value) async => commands.add('$kind:$value'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await pump(width: 400, height: 400);
+    final fittedKeyHeight = tester.getSize(find.byTooltip('7')).height;
+    expect(fittedKeyHeight, closeTo(51, 1));
+
+    await pump(width: 400, height: 500);
+    final tallKeyHeight = tester.getSize(find.byTooltip('7')).height;
+    expect(tallKeyHeight, closeTo((400 - 12) / 6 - 4, 1));
+    await _selectCategory(tester, '字母');
+    final alphabetKeyHeight = tester.getSize(find.byTooltip('7')).height;
+    expect(alphabetKeyHeight, closeTo(44, 1));
+    await _selectCategory(tester, '希腊字母');
+    final tallGreekKeyHeight = tester.getSize(find.byTooltip('alpha')).height;
+    expect(tallGreekKeyHeight, closeTo((500 - 196) / 5, 1));
+    await pump(width: 400, height: 400);
+    expect(
+      tester.getSize(find.byTooltip('alpha')).height,
+      closeTo((400 - 196) / 5, 1),
+    );
+    await pump(width: 300, height: 500);
+    expect(
+      tester.getSize(find.byTooltip('7')).height,
+      closeTo((300 - 12) / 6 - 4, 1),
+    );
+
+    await pump(width: 400, height: 260);
+    final shortKeyHeight = tester.getSize(find.byTooltip('7')).height;
+    expect(shortKeyHeight, lessThan(tallKeyHeight));
+    expect(shortKeyHeight, greaterThanOrEqualTo(24));
+    expect(tester.takeException(), isNull);
+  });
 }
