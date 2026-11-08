@@ -94,6 +94,8 @@ class MathCanvasState extends State<MathCanvas> {
   double _yMin = -10;
   double _xMax = 10;
   double _yMax = 10;
+  bool _showAxes = true;
+  bool _showGrid = true;
 
   // Formula state (multi-formula support)
   final List<_FormulaCurve> _formulaCurves = [];
@@ -1262,6 +1264,23 @@ class MathCanvasState extends State<MathCanvas> {
     _characteristicPoints = _findCharacteristicPoints();
   }
 
+  Future<void> _handleViewSetting(String value) async {
+    switch (value) {
+      case 'axes':
+        setState(() => _showAxes = !_showAxes);
+        return;
+      case 'grid':
+        setState(() => _showGrid = !_showGrid);
+        return;
+      case 'standardView':
+        await resetView();
+        return;
+      case 'characteristicPoints':
+        await _openCharacteristicSettings();
+        return;
+    }
+  }
+
   // Mouse wheel zoom
   void _onPointerSignal(PointerSignalEvent event) {
     if (event is! PointerScrollEvent) return;
@@ -1358,6 +1377,8 @@ class MathCanvasState extends State<MathCanvas> {
                       curves: _buildCurvesList(),
                       curveColors: _buildColorsList(),
                       characteristicPoints: _characteristicPoints,
+                      showAxes: _showAxes,
+                      showGrid: _showGrid,
                       backgroundColor: cs.surface,
                       gridColor: cs.outlineVariant.withValues(alpha: 0.5),
                       axisColor: cs.onSurface,
@@ -1378,11 +1399,48 @@ class MathCanvasState extends State<MathCanvas> {
                 child: PopupMenuButton<String>(
                   tooltip: '视图设置',
                   icon: const Icon(Icons.settings, size: 21),
-                  onSelected: (_) => _openCharacteristicSettings(),
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(
+                  onSelected: _handleViewSetting,
+                  constraints: const BoxConstraints(minWidth: 232),
+                  color: cs.surfaceContainerHigh,
+                  surfaceTintColor: Colors.transparent,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(
+                      color: cs.outlineVariant.withValues(alpha: 0.35),
+                      width: 0.5,
+                    ),
+                  ),
+                  itemBuilder: (_) => [
+                    _viewToggle(
+                      value: 'axes',
+                      icon: Icons.straighten,
+                      label: '坐标轴',
+                      selected: _showAxes,
+                    ),
+                    _viewToggle(
+                      value: 'grid',
+                      icon: Icons.grid_on,
+                      label: '网格',
+                      selected: _showGrid,
+                    ),
+                    const PopupMenuItem(
                       value: 'characteristicPoints',
-                      child: Text('特征点显示'),
+                      child: ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.tune, size: 20),
+                        title: Text('特征点显示'),
+                      ),
+                    ),
+                    const PopupMenuDivider(),
+                    const PopupMenuItem(
+                      value: 'standardView',
+                      child: ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.home_outlined, size: 20),
+                        title: Text('标准视图'),
+                      ),
                     ),
                   ],
                   style: IconButton.styleFrom(
@@ -1397,6 +1455,23 @@ class MathCanvasState extends State<MathCanvas> {
       },
     );
   }
+
+  PopupMenuItem<String> _viewToggle({
+    required String value,
+    required IconData icon,
+    required String label,
+    required bool selected,
+  }) => PopupMenuItem(
+    value: value,
+    child: Row(
+      children: [
+        Icon(icon, size: 20),
+        const SizedBox(width: 12),
+        Expanded(child: Text(label)),
+        if (selected) const Icon(Icons.check, size: 18),
+      ],
+    ),
+  );
 }
 
 /// Arrow direction for axis tips.
@@ -1421,6 +1496,8 @@ class GraphPainter extends CustomPainter {
   /// Colors for each curve.
   final List<Color> curveColors;
   final List<_GraphPoint> characteristicPoints;
+  final bool showAxes;
+  final bool showGrid;
 
   final Color backgroundColor;
   final Color gridColor;
@@ -1435,6 +1512,8 @@ class GraphPainter extends CustomPainter {
     this.curves = const [],
     this.curveColors = const [],
     this.characteristicPoints = const [],
+    this.showAxes = true,
+    this.showGrid = true,
     this.backgroundColor = Colors.white,
     this.gridColor = const Color(0x80CCCCCC),
     this.axisColor = Colors.black87,
@@ -1469,8 +1548,8 @@ class GraphPainter extends CustomPainter {
     _drawBackground(canvas, size);
     final eYMin = _effectiveYMin(size.width, size.height);
     final eYMax = _effectiveYMax(size.width, size.height);
-    _drawGrid(canvas, size, eYMin, eYMax);
-    _drawAxes(canvas, size, eYMin, eYMax);
+    if (showGrid) _drawGrid(canvas, size, eYMin, eYMax, showAxes: showAxes);
+    if (showAxes) _drawAxes(canvas, size, eYMin, eYMax);
     _drawCurves(canvas, size, eYMin, eYMax);
     for (final point in characteristicPoints) {
       final center = _mathToScreen(point.x, point.y, size, eYMin, eYMax);
@@ -1499,7 +1578,9 @@ class GraphPainter extends CustomPainter {
         oldDelegate.axisColor != axisColor ||
         oldDelegate.labelColor != labelColor ||
         oldDelegate.curveColors != curveColors ||
-        oldDelegate.characteristicPoints != characteristicPoints;
+        oldDelegate.characteristicPoints != characteristicPoints ||
+        oldDelegate.showAxes != showAxes ||
+        oldDelegate.showGrid != showGrid;
   }
 
   // ==================================================================
@@ -1577,7 +1658,13 @@ class GraphPainter extends CustomPainter {
     return tick.isFinite ? tick : minimum;
   }
 
-  void _drawGrid(Canvas canvas, Size size, double eYMin, double eYMax) {
+  void _drawGrid(
+    Canvas canvas,
+    Size size,
+    double eYMin,
+    double eYMax, {
+    required bool showAxes,
+  }) {
     final gridPaint = Paint()
       ..color = gridColor
       ..strokeWidth = 0.5;
@@ -1588,7 +1675,7 @@ class GraphPainter extends CustomPainter {
     // Vertical grid lines
     double gx = _firstGridTick(xMin, step);
     while (gx <= xMax) {
-      if (gx.abs() > 1e-10) {
+      if (!showAxes || gx.abs() > 1e-10) {
         // Skip axis line (drawn separately)
         final screenX = _mathToScreenX(gx, size.width);
         canvas.drawLine(
@@ -1605,7 +1692,7 @@ class GraphPainter extends CustomPainter {
     // Horizontal grid lines (using effective y bounds for 1:1 aspect ratio)
     double gy = _firstGridTick(eYMin, step);
     while (gy <= eYMax) {
-      if (gy.abs() > 1e-10) {
+      if (!showAxes || gy.abs() > 1e-10) {
         // Skip axis line
         final screenY = _mathToScreenY(gy, size.height, eYMin, eYMax);
         canvas.drawLine(
