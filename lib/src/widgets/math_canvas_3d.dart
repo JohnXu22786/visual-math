@@ -20,6 +20,8 @@ export '../models/math_3d_tool.dart' show ConstructionTool;
 typedef On3DReady = void Function();
 typedef On3DViewportChange = void Function();
 typedef On3DObjectCreated = void Function(Object3D object);
+typedef On3DSceneChange = void Function();
+typedef On3DSelectionChange = void Function(Object3D? object);
 typedef On3DToolInstruction = void Function(String instruction);
 
 const double _planeGridRange = 5.0;
@@ -280,18 +282,32 @@ class MathCanvas3D extends StatefulWidget {
   final On3DReady? onReady;
   final On3DViewportChange? onViewportChange;
   final On3DObjectCreated? onObjectCreated;
+  final On3DSceneChange? onSceneChanged;
+  final On3DSelectionChange? onSelectionChanged;
   final On3DToolInstruction? onToolInstruction;
   final ConstructionTool currentTool;
   final int polygonSides;
+  final bool allowTouchGestures;
+  final bool allowMouseGestures;
+  final String Function(String sourceText)? labelResolver;
+  final Widget Function(BuildContext context, Widget dialog)? dialogBuilder;
+  final Widget Function(BuildContext context, String message)? errorBuilder;
 
   const MathCanvas3D({
     super.key,
     this.onReady,
     this.onViewportChange,
     this.onObjectCreated,
+    this.onSceneChanged,
+    this.onSelectionChanged,
     this.onToolInstruction,
     this.currentTool = ConstructionTool.move,
     this.polygonSides = 6,
+    this.allowTouchGestures = true,
+    this.allowMouseGestures = true,
+    this.labelResolver,
+    this.dialogBuilder,
+    this.errorBuilder,
   });
 
   @override
@@ -301,6 +317,15 @@ class MathCanvas3D extends StatefulWidget {
 /// The state class for [MathCanvas3D], exposing methods for parent control.
 class MathCanvas3DState extends State<MathCanvas3D> {
   static const double _defaultDistance = 10;
+
+  String _label(String source) => widget.labelResolver?.call(source) ?? source;
+
+  Widget _dialog(BuildContext context, Widget child) =>
+      widget.dialogBuilder?.call(context, child) ?? child;
+
+  Widget _error(String message) =>
+      widget.errorBuilder?.call(context, _label(message)) ??
+      Text(_label(message));
   static const double _defaultTheta = dart_math.pi * 0.75;
   static const double _defaultPhi = dart_math.pi / 6;
   static const double _orthographicDistanceScale = 0.6;
@@ -383,6 +408,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       );
       _objectsVersion++;
     });
+    widget.onSceneChanged?.call();
   }
 
   void deleteSelectedObject() {
@@ -417,6 +443,26 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     theta: _cameraTheta,
     phi: _cameraPhi,
   );
+
+  /// Replace the current camera state.
+  void setCamera(Camera3D camera) {
+    if (!camera.distance.isFinite ||
+        camera.distance <= 0 ||
+        !camera.theta.isFinite ||
+        !camera.phi.isFinite ||
+        !camera.target.x.isFinite ||
+        !camera.target.y.isFinite ||
+        !camera.target.z.isFinite) {
+      return;
+    }
+    setState(() {
+      _cameraTarget = camera.target;
+      _cameraDistance = camera.distance.clamp(0.1, 1000).toDouble();
+      _cameraTheta = camera.theta;
+      _cameraPhi = camera.phi.clamp(-dart_math.pi * 0.49, dart_math.pi * 0.49);
+    });
+    widget.onViewportChange?.call();
+  }
 
   /// Get the current projection type.
   ProjectionType get projectionType => _projectionType;
@@ -474,19 +520,31 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       default:
         break;
     }
+    widget.onSceneChanged?.call();
   }
 
   Future<void> _chooseViewDirection() async {
     final action = await showDialog<_ViewAction>(
       context: context,
-      builder: (dialogContext) => SimpleDialog(
-        title: const Text('视图方向'),
-        children: [
-          _viewDirectionOption(dialogContext, _ViewAction.standardView, '标准视图'),
-          _viewDirectionOption(dialogContext, _ViewAction.topView, '俯视 xOy'),
-          _viewDirectionOption(dialogContext, _ViewAction.frontView, '正视 xOz'),
-          _viewDirectionOption(dialogContext, _ViewAction.sideView, '侧视 yOz'),
-        ],
+      builder: (dialogContext) => _dialog(
+        dialogContext,
+        SimpleDialog(
+          title: Text(_label('视图方向')),
+          children: [
+            _viewDirectionOption(
+              dialogContext,
+              _ViewAction.standardView,
+              '标准视图',
+            ),
+            _viewDirectionOption(dialogContext, _ViewAction.topView, '俯视 xOy'),
+            _viewDirectionOption(
+              dialogContext,
+              _ViewAction.frontView,
+              '正视 xOz',
+            ),
+            _viewDirectionOption(dialogContext, _ViewAction.sideView, '侧视 yOz'),
+          ],
+        ),
       ),
     );
     if (action != null && mounted) _handleViewAction(action);
@@ -499,7 +557,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   ) {
     return SimpleDialogOption(
       onPressed: () => Navigator.of(dialogContext).pop(action),
-      child: Text(label),
+      child: Text(_label(label)),
     );
   }
 
@@ -688,6 +746,8 @@ class MathCanvas3DState extends State<MathCanvas3D> {
 
   /// Set the objects to render.
   void setObjects(List<Object3D> objects) {
+    final hadSelection =
+        _selectedObjectIndex != null || _selectedPointIndex != null;
     final preservesExistingObjects =
         objects.length >= _objects.length &&
         List.generate(
@@ -716,10 +776,18 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         ..addAll(objects);
       _objectsVersion++;
     });
+    widget.onSceneChanged?.call();
+    if (hadSelection &&
+        _selectedObjectIndex == null &&
+        _selectedPointIndex == null) {
+      widget.onSelectionChanged?.call(null);
+    }
   }
 
   /// Clear all objects.
   void clearObjects() {
+    final hadSelection =
+        _selectedObjectIndex != null || _selectedPointIndex != null;
     setState(() {
       _selectedPointIndex = null;
       _selectedObjectIndex = null;
@@ -734,6 +802,8 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       _objects.clear();
       _objectsVersion++;
     });
+    widget.onSceneChanged?.call();
+    if (hadSelection) widget.onSelectionChanged?.call(null);
   }
 
   /// Add a surface mesh to the scene.
@@ -756,6 +826,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       );
       _objectsVersion++;
     });
+    widget.onSceneChanged?.call();
   }
 
   /// Get the current construction state (null if no tool is active).
@@ -772,8 +843,9 @@ class MathCanvas3DState extends State<MathCanvas3D> {
 
   /// Set the active construction tool.
   void setTool(ConstructionTool tool, {bool notifyInstruction = true}) {
+    var sceneRolledBack = false;
     setState(() {
-      _cancelPointDrag();
+      sceneRolledBack = _cancelPointDrag();
       _selectedPointIndex = null;
       _selectedObjectIndex = null;
       _currentTool = tool;
@@ -800,11 +872,13 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       _constPlaneNormal = null;
       _constructionPreview = null;
     });
+    if (sceneRolledBack) widget.onSceneChanged?.call();
     if (notifyInstruction) {
       widget.onToolInstruction?.call(
         _construction?.currentInstruction ?? ToolInfo.all[tool]!.tooltip,
       );
     }
+    widget.onSelectionChanged?.call(null);
   }
 
   @override
@@ -1829,11 +1903,12 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           );
           _objectsVersion++;
         });
+        widget.onSceneChanged?.call();
       case ConstructionTool.volume:
         final volume = _objectVolume(_objects[index]);
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           SnackBar(
-            content: Text(
+            content: _error(
               volume == null
                   ? '该对象不是封闭立体，无法测量体积'
                   : '${_objects[index].label ?? '对象'} · 体积 ${volume.toStringAsFixed(3)}',
@@ -1850,9 +1925,8 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           final points = _createIntersectionPoints(first, _objects[index]);
           _pointIntersectionSourceIndex = null;
           if (points.isEmpty) {
-            ScaffoldMessenger.maybeOf(
-              context,
-            )?.showSnackBar(const SnackBar(content: Text('这两个对象没有可显示的离散交点')));
+            ScaffoldMessenger.maybeOf(context)
+                ?.showSnackBar(SnackBar(content: _error('这两个对象没有可显示的离散交点')));
           } else {
             for (final point in points) {
               _appendCreatedObject(Object3D.point(point, color: 0xFFD81B60));
@@ -1936,6 +2010,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       default:
         break;
     }
+    widget.onSceneChanged?.call();
   }
 
   void _appendCreatedObject(Object3D object) {
@@ -1954,6 +2029,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         _objects.add(labelled);
         _objectsVersion++;
       });
+      widget.onSceneChanged?.call();
     }
   }
 
@@ -1967,7 +2043,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       final canSelectLine = isPolarDiameter && source.type == Object3DType.line;
       if (!canSelectPoint && !canSelectLine) {
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-          SnackBar(content: Text(isPolarDiameter ? '请先选择一个点或直线' : '请先选择一个点')),
+          SnackBar(content: _error(isPolarDiameter ? '请先选择一个点或直线' : '请先选择一个点')),
         );
       } else {
         _conicSourceIndex = index;
@@ -2011,7 +2087,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           ? '请选择位于圆锥曲线平面内的直线和具有中心的圆锥曲线'
           : '请选择曲线平面内能确定有限极线的点';
       ScaffoldMessenger.maybeOf(context)
-          ?.showSnackBar(SnackBar(content: Text(message)));
+          ?.showSnackBar(SnackBar(content: _error(message)));
     } else {
       _appendCreatedObject(line);
     }
@@ -3392,6 +3468,8 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   }
 
   void _removeObjectAt(int index) {
+    final hadSelection =
+        _selectedObjectIndex != null || _selectedPointIndex != null;
     setState(() {
       final dependencies = <int, _SolidSourceDependency>{};
       for (final entry in _solidSourceDependencies.entries) {
@@ -3464,6 +3542,13 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       }
       _objectsVersion++;
     });
+    if (hadSelection) {
+      final selectedIndex = _selectedPointIndex ?? _selectedObjectIndex;
+      widget.onSelectionChanged?.call(
+        selectedIndex == null ? null : _objects[selectedIndex],
+      );
+    }
+    widget.onSceneChanged?.call();
   }
 
   bool _wouldCreateAttachmentCycle(int pointIndex, int targetIndex) {
@@ -3843,32 +3928,38 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       vertices: vertices,
       indices: indices,
       color: object.color,
-      label: '展开图',
+      label: _label('展开图'),
     );
   }
 
-  void _cancelPointDrag() {
+  bool _cancelPointDrag() {
+    var rolledBack = false;
     if (_pointBeforeDrag != null && _selectedPointIndex != null) {
       _objects[_selectedPointIndex!] = _pointBeforeDrag!;
       _updateSolidObjectsForSourcePoint(_selectedPointIndex!);
       _propagateAttachedPointMoves(_selectedPointIndex!);
       _objectsVersion++;
+      rolledBack = true;
     }
     _pointBeforeDrag = null;
     _pointEditPointer = null;
+    return rolledBack;
   }
 
   void _onPointerDown(PointerDownEvent event) {
+    if (!_interactionAllowed(event.kind)) return;
     _focusNode.requestFocus();
     _activePointers.add(event.pointer);
     if (_activePointers.length > 1) {
+      var sceneRolledBack = false;
       setState(() {
-        _cancelPointDrag();
+        sceneRolledBack = _cancelPointDrag();
         _multiTouch = true;
         _constGroundPos = null;
         _constStartPoint = null;
         _constructionPreview = null;
       });
+      if (sceneRolledBack) widget.onSceneChanged?.call();
       return;
     }
     _multiTouch = false;
@@ -3900,6 +3991,13 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         }
         if (objectHit != null) _suppressScale = true;
       });
+      widget.onSelectionChanged?.call(
+        hit != null
+            ? _objects[hit]
+            : objectHit == null
+            ? null
+            : _objects[objectHit],
+      );
       if (hit != null || objectHit != null) return;
     }
     if (event.kind != PointerDeviceKind.mouse) return;
@@ -3917,6 +4015,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   }
 
   void _onPointerMove(PointerMoveEvent event) {
+    if (!_interactionAllowed(event.kind)) return;
     if (!_objectActionGestureMoved &&
         ToolInfo.all[_currentTool]!.behavior == ToolBehavior.objectAction &&
         _pointerDownPosition != null &&
@@ -4036,14 +4135,22 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   }
 
   void _onPointerCancel(PointerCancelEvent event) {
+    if (!_interactionAllowed(event.kind) &&
+        !_activePointers.contains(event.pointer) &&
+        event.pointer != _pointEditPointer &&
+        event.pointer != _mousePointer) {
+      return;
+    }
     _activePointers.remove(event.pointer);
+    var sceneRolledBack = false;
     setState(() {
-      _cancelPointDrag();
+      sceneRolledBack = _cancelPointDrag();
       _suppressScale = true;
       _constGroundPos = null;
       _constStartPoint = null;
       _constructionPreview = null;
     });
+    if (sceneRolledBack) widget.onSceneChanged?.call();
     _onPointerUp(event);
   }
 
@@ -4274,6 +4381,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   }
 
   void _onPointerSignal(PointerSignalEvent event) {
+    if (!widget.allowMouseGestures) return;
     if (event is PointerScrollEvent) {
       // Wheel up zooms in, wheel down zooms out. Exponential scaling keeps
       // mouse wheels and high-resolution touchpads consistent.
@@ -4283,11 +4391,13 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   }
 
   void _onPointerPanZoomStart(PointerPanZoomStartEvent event) {
+    if (!widget.allowMouseGestures) return;
     _focusNode.requestFocus();
     _panZoomInitialDistance = _cameraDistance;
   }
 
   void _onPointerPanZoomUpdate(PointerPanZoomUpdateEvent event) {
+    if (!widget.allowMouseGestures) return;
     final initialDistance = _panZoomInitialDistance ?? _cameraDistance;
     final newDistance = (initialDistance / event.scale)
         .clamp(0.25, double.maxFinite)
@@ -4305,9 +4415,19 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   }
 
   void _onPointerPanZoomEnd(PointerPanZoomEndEvent event) {
+    if (!widget.allowMouseGestures) return;
     _panZoomInitialDistance = null;
     widget.onViewportChange?.call();
   }
+
+  bool _interactionAllowed(PointerDeviceKind kind) => switch (kind) {
+    PointerDeviceKind.mouse ||
+    PointerDeviceKind.trackpad => widget.allowMouseGestures,
+    PointerDeviceKind.touch ||
+    PointerDeviceKind.stylus ||
+    PointerDeviceKind.invertedStylus => widget.allowTouchGestures,
+    _ => widget.allowMouseGestures || widget.allowTouchGestures,
+  };
 
   // ==================================================================
   // Construction click handling
@@ -4744,6 +4864,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
                   _pointAttachments[index] = pointOnObjectTargetIndex;
                 }
               });
+              widget.onSelectionChanged?.call(obj);
             }
           }
         }
@@ -4782,24 +4903,27 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     final controller = TextEditingController();
     final text = await showDialog<String>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('添加文本'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: '输入要显示的内容'),
-          onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
+      builder: (dialogContext) => _dialog(
+        dialogContext,
+        AlertDialog(
+          title: Text(_label('添加文本')),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: InputDecoration(hintText: _label('输入要显示的内容')),
+            onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(_label('取消')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+              child: Text(_label('添加')),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
-            child: const Text('添加'),
-          ),
-        ],
       ),
     );
     controller.dispose();
@@ -4872,7 +4996,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         children: [
           Icon(icon, size: 20),
           const SizedBox(width: 12),
-          Expanded(child: Text(label)),
+          Expanded(child: Text(_label(label))),
           if (selected) const Icon(Icons.check, size: 18),
         ],
       ),
@@ -4883,19 +5007,19 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     _menuToggle(
       value: _ViewAction.toggleAxes,
       icon: Icons.straighten,
-      label: '坐标轴',
+      label: _label('坐标轴'),
       selected: _showAxes,
     ),
     _menuToggle(
       value: _ViewAction.togglePlane,
       icon: Icons.crop_square,
-      label: 'xOy 平面',
+      label: _label('xOy 平面'),
       selected: _showPlane,
     ),
     _menuToggle(
       value: _ViewAction.toggleGrid,
       icon: Icons.grid_on,
-      label: '网格',
+      label: _label('网格'),
       selected: _showGrid,
     ),
     const PopupMenuDivider(),
@@ -4905,7 +5029,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         children: [
           const Icon(Icons.view_in_ar, size: 20),
           const SizedBox(width: 12),
-          const Expanded(child: Text('平行投影')),
+          Expanded(child: Text(_label('平行投影'))),
           if (_projectionType == ProjectionType.parallel)
             const Icon(Icons.check, size: 18),
         ],
@@ -4917,47 +5041,47 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         children: [
           const Icon(Icons.vrpano, size: 20),
           const SizedBox(width: 12),
-          const Expanded(child: Text('透视投影')),
+          Expanded(child: Text(_label('透视投影'))),
           if (_projectionType == ProjectionType.perspective)
             const Icon(Icons.check, size: 18),
         ],
       ),
     ),
     const PopupMenuDivider(),
-    const PopupMenuItem(
+    PopupMenuItem(
       value: _ViewAction.standardView,
       child: ListTile(
         dense: true,
         contentPadding: EdgeInsets.zero,
         leading: Icon(Icons.home_outlined, size: 20),
-        title: Text('标准视图'),
+        title: Text(_label('标准视图')),
       ),
     ),
-    const PopupMenuItem(
+    PopupMenuItem(
       value: _ViewAction.topView,
       child: ListTile(
         dense: true,
         contentPadding: EdgeInsets.zero,
         leading: Icon(Icons.vertical_align_bottom, size: 20),
-        title: Text('俯视 xOy'),
+        title: Text(_label('俯视 xOy')),
       ),
     ),
-    const PopupMenuItem(
+    PopupMenuItem(
       value: _ViewAction.frontView,
       child: ListTile(
         dense: true,
         contentPadding: EdgeInsets.zero,
         leading: Icon(Icons.crop_landscape, size: 20),
-        title: Text('正视 xOz'),
+        title: Text(_label('正视 xOz')),
       ),
     ),
-    const PopupMenuItem(
+    PopupMenuItem(
       value: _ViewAction.sideView,
       child: ListTile(
         dense: true,
         contentPadding: EdgeInsets.zero,
         leading: Icon(Icons.crop_portrait, size: 20),
-        title: Text('侧视 yOz'),
+        title: Text(_label('侧视 yOz')),
       ),
     ),
   ];
@@ -4971,6 +5095,16 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         _canvasWidth = constraints.maxWidth;
         _canvasHeight = constraints.maxHeight;
 
+        final supportedDevices =
+            widget.allowTouchGestures && widget.allowMouseGestures
+            ? null
+            : <PointerDeviceKind>{
+                if (widget.allowTouchGestures) PointerDeviceKind.touch,
+                if (widget.allowTouchGestures) PointerDeviceKind.stylus,
+                if (widget.allowTouchGestures) PointerDeviceKind.invertedStylus,
+                if (widget.allowMouseGestures) PointerDeviceKind.mouse,
+                if (widget.allowMouseGestures) PointerDeviceKind.trackpad,
+              };
         return Focus(
           focusNode: _focusNode,
           child: MouseRegion(
@@ -4994,6 +5128,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
                     onPointerPanZoomEnd: _onPointerPanZoomEnd,
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
+                      supportedDevices: supportedDevices,
                       onScaleStart: _onScaleStart,
                       onScaleUpdate: _onScaleUpdate,
                       onScaleEnd: _onScaleEnd,
@@ -5062,7 +5197,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                '${selectedPoint!.label ?? '点'} · ${_pointDragMode == PointDragMode.height ? '高度移动' : '平面移动'} · 点击切换',
+                                '${selectedPoint!.label ?? _label('点')} · ${_label(_pointDragMode == PointDragMode.height ? '高度移动' : '平面移动')} · ${_label('点击切换')}',
                                 style: const TextStyle(fontSize: 12),
                               ),
                               Text(
@@ -5087,6 +5222,8 @@ class MathCanvas3DState extends State<MathCanvas3D> {
                           child: _SolidStyleControls(
                             key: const ValueKey('solid-style-controls'),
                             object: selectedObject!,
+                            labelResolver: widget.labelResolver,
+                            dialogBuilder: widget.dialogBuilder,
                             onColorChanged: (color) =>
                                 updateSelectedObjectStyle(color: color),
                             onEdgeWidthChanged: (width) =>
@@ -5106,7 +5243,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
                       elevation: 2,
                       shape: const CircleBorder(),
                       child: PopupMenuButton<_ViewAction>(
-                        tooltip: '3D 视图设置',
+                        tooltip: _label('3D 视图设置'),
                         icon: const Icon(Icons.settings, size: 21),
                         onSelected: _handleViewAction,
                         itemBuilder: (_) => _viewMenuItems(),
@@ -5124,17 +5261,17 @@ class MathCanvas3DState extends State<MathCanvas3D> {
                       children: [
                         _floatingControl(
                           icon: Icons.filter_center_focus,
-                          tooltip: '缩放至适合',
+                          tooltip: _label('缩放至适合'),
                           onPressed: fitToView,
                         ),
                         _floatingControl(
                           icon: Icons.zoom_in,
-                          tooltip: '放大',
+                          tooltip: _label('放大'),
                           onPressed: zoomIn,
                         ),
                         _floatingControl(
                           icon: Icons.zoom_out,
-                          tooltip: '缩小',
+                          tooltip: _label('缩小'),
                           onPressed: zoomOut,
                         ),
                       ],
@@ -5160,6 +5297,8 @@ class _SolidStyleControls extends StatefulWidget {
   final ValueChanged<double> onEdgeWidthChanged;
   final ValueChanged<bool> onShowEdgesChanged;
   final VoidCallback onDelete;
+  final String Function(String sourceText)? labelResolver;
+  final Widget Function(BuildContext context, Widget dialog)? dialogBuilder;
 
   const _SolidStyleControls({
     super.key,
@@ -5168,6 +5307,8 @@ class _SolidStyleControls extends StatefulWidget {
     required this.onEdgeWidthChanged,
     required this.onShowEdgesChanged,
     required this.onDelete,
+    this.labelResolver,
+    this.dialogBuilder,
   });
 
   @override
@@ -5178,6 +5319,11 @@ class _SolidStyleControlsState extends State<_SolidStyleControls> {
   late final TextEditingController _edgeWidthController;
 
   bool get _hasEdges => widget.object.type == Object3DType.polyhedron;
+
+  String _label(String source) => widget.labelResolver?.call(source) ?? source;
+
+  Widget _dialog(BuildContext context, Widget child) =>
+      widget.dialogBuilder?.call(context, child) ?? child;
 
   @override
   void initState() {
@@ -5218,70 +5364,73 @@ class _SolidStyleControlsState extends State<_SolidStyleControls> {
   void _showColorPicker() {
     showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('选择颜色'),
-        content: Wrap(
-          spacing: MathUiTokens.canvasInset,
-          runSpacing: MathUiTokens.canvasInset,
-          children: [
-            for (var index = 0; index < formulaPalette.length; index++)
-              Builder(
-                builder: (context) {
-                  final color = formulaPalette[index];
-                  final selected = widget.object.color == color.toARGB32();
-                  return Semantics(
-                    button: true,
-                    selected: selected,
-                    label: '物体颜色 ${index + 1}',
-                    child: SizedBox.square(
-                      dimension: MathUiTokens.swatchTapTarget,
-                      child: InkWell(
-                        key: ValueKey('solid-color-$index'),
-                        customBorder: const CircleBorder(),
-                        onTap: () {
-                          widget.onColorChanged(color.toARGB32());
-                          Navigator.pop(dialogContext);
-                        },
-                        child: Center(
-                          child: Container(
-                            width: 32,
-                            height: 32,
-                            decoration: BoxDecoration(
-                              color: color,
-                              shape: BoxShape.circle,
-                              border: selected
-                                  ? Border.all(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .primary,
-                                      width: 3,
+      builder: (dialogContext) => _dialog(
+        dialogContext,
+        AlertDialog(
+          title: Text(_label('选择颜色')),
+          content: Wrap(
+            spacing: MathUiTokens.canvasInset,
+            runSpacing: MathUiTokens.canvasInset,
+            children: [
+              for (var index = 0; index < formulaPalette.length; index++)
+                Builder(
+                  builder: (context) {
+                    final color = formulaPalette[index];
+                    final selected = widget.object.color == color.toARGB32();
+                    return Semantics(
+                      button: true,
+                      selected: selected,
+                      label: _label('物体颜色 ${index + 1}'),
+                      child: SizedBox.square(
+                        dimension: MathUiTokens.swatchTapTarget,
+                        child: InkWell(
+                          key: ValueKey('solid-color-$index'),
+                          customBorder: const CircleBorder(),
+                          onTap: () {
+                            widget.onColorChanged(color.toARGB32());
+                            Navigator.pop(dialogContext);
+                          },
+                          child: Center(
+                            child: Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: color,
+                                shape: BoxShape.circle,
+                                border: selected
+                                    ? Border.all(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .primary,
+                                        width: 3,
+                                      )
+                                    : null,
+                              ),
+                              child: selected
+                                  ? Icon(
+                                      Icons.check,
+                                      color: color.computeLuminance() > 0.5
+                                          ? Colors.black
+                                          : Colors.white,
+                                      size: 20,
                                     )
                                   : null,
                             ),
-                            child: selected
-                                ? Icon(
-                                    Icons.check,
-                                    color: color.computeLuminance() > 0.5
-                                        ? Colors.black
-                                        : Colors.white,
-                                    size: 20,
-                                  )
-                                : null,
                           ),
                         ),
                       ),
-                    ),
-                  );
-                },
-              ),
+                    );
+                  },
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(_label('取消')),
+            ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('取消'),
-          ),
-        ],
       ),
     );
   }
@@ -5303,7 +5452,7 @@ class _SolidStyleControlsState extends State<_SolidStyleControls> {
               children: [
                 Expanded(
                   child: Text(
-                    widget.object.label ?? '立体图形',
+                    widget.object.label ?? _label('立体图形'),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.labelLarge,
@@ -5311,7 +5460,7 @@ class _SolidStyleControlsState extends State<_SolidStyleControls> {
                 ),
                 IconButton(
                   key: const ValueKey('solid-delete'),
-                  tooltip: '删除对象',
+                  tooltip: _label('删除对象'),
                   visualDensity: VisualDensity.compact,
                   onPressed: widget.onDelete,
                   icon: Icon(Icons.delete_outline, color: cs.error),
@@ -5322,7 +5471,7 @@ class _SolidStyleControlsState extends State<_SolidStyleControls> {
               children: [
                 IconButton(
                   key: const ValueKey('solid-fill-color'),
-                  tooltip: '选择填充颜色',
+                  tooltip: _label('选择填充颜色'),
                   visualDensity: VisualDensity.compact,
                   onPressed: _showColorPicker,
                   icon: Icon(
@@ -5330,7 +5479,7 @@ class _SolidStyleControlsState extends State<_SolidStyleControls> {
                     color: Color(widget.object.color),
                   ),
                 ),
-                const Text('填充色'),
+                Text(_label('填充色')),
                 if (_hasEdges) ...[
                   const Spacer(),
                   SizedBox(
@@ -5350,8 +5499,8 @@ class _SolidStyleControlsState extends State<_SolidStyleControls> {
                       onSubmitted: _commitEdgeWidth,
                       onTapOutside: (_) =>
                           _commitEdgeWidth(_edgeWidthController.text),
-                      decoration: const InputDecoration(
-                        labelText: '棱宽 (0–6)',
+                      decoration: InputDecoration(
+                        labelText: _label('棱宽 (0–6)'),
                         suffixText: 'px',
                         isDense: true,
                         contentPadding: EdgeInsets.symmetric(
@@ -5376,7 +5525,7 @@ class _SolidStyleControlsState extends State<_SolidStyleControls> {
                     },
                     visualDensity: VisualDensity.compact,
                   ),
-                  const Text('显示棱'),
+                  Text(_label('显示棱')),
                 ],
               ),
           ],

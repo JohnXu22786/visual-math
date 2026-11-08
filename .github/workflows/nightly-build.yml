@@ -13,6 +13,47 @@ permissions:
   contents: read
 
 jobs:
+  tests:
+    name: Package and MathLive bridge tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.8
+          cache: true
+          pub-cache: true
+      - name: Resolve package dependencies
+        run: flutter pub get
+      - name: Run package tests with coverage
+        run: flutter test --coverage
+      - name: Run example widget tests when present
+        run: |
+          if [ -d example/test ] && find example/test -type f -name '*_test.dart' -print -quit | grep -q .; then
+            cd example
+            flutter pub get
+            flutter test
+          else
+            echo "No example widget tests found; skipping."
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nightly-coverage
+          path: coverage/lcov.info
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tools/math_editor_test/package-lock.json
+      - name: Install JavaScript test dependencies
+        working-directory: tools/math_editor_test
+        run: npm ci
+      - name: Run MathLive bridge tests
+        working-directory: tools/math_editor_test
+        run: npm test
+
   build-example:
     uses: ./.github/workflows/build-example.yml
     permissions:

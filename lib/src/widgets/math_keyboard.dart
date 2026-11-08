@@ -19,6 +19,10 @@ class MathKeyboard extends StatefulWidget {
   final bool supportsStructuralNavigation;
   final bool supportsStructuredEditing;
   final String location;
+  final bool persistenceEnabled;
+  final String preferenceNamespace;
+  final String Function(String sourceText)? labelResolver;
+  final Widget Function(BuildContext context, Widget dialog)? dialogBuilder;
   const MathKeyboard({
     super.key,
     required this.onCommand,
@@ -29,6 +33,10 @@ class MathKeyboard extends StatefulWidget {
     this.supportsStructuralNavigation = true,
     this.supportsStructuredEditing = true,
     this.location = '公式',
+    this.persistenceEnabled = true,
+    this.preferenceNamespace = '',
+    this.labelResolver,
+    this.dialogBuilder,
   });
 
   @override
@@ -48,7 +56,14 @@ class _MathKeyboardState extends State<MathKeyboard> {
     for (final category in _groups.keys) category: GlobalKey(),
   };
 
-  static const _categoryOrderPreferenceKey = 'math_keyboard_category_order_v1';
+  String get _categoryOrderPreferenceKey => widget.preferenceNamespace.isEmpty
+      ? 'math_keyboard_category_order_v1'
+      : 'visual_math.${widget.preferenceNamespace}.math_keyboard_category_order_v1';
+
+  String _label(String source) => widget.labelResolver?.call(source) ?? source;
+
+  Widget _dialog(BuildContext context, Widget child) =>
+      widget.dialogBuilder?.call(context, child) ?? child;
 
   @override
   void initState() {
@@ -75,6 +90,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
   }
 
   Future<void> _loadCategoryOrder() async {
+    if (!widget.persistenceEnabled) return;
     final preferences = await SharedPreferences.getInstance();
     final storedOrder = preferences.getStringList(_categoryOrderPreferenceKey);
     if (!mounted) return;
@@ -99,6 +115,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
   }
 
   Future<void> _saveCategoryOrder() async {
+    if (!widget.persistenceEnabled) return;
     final preferences = await SharedPreferences.getInstance();
     await preferences.setStringList(
       _categoryOrderPreferenceKey,
@@ -141,62 +158,65 @@ class _MathKeyboardState extends State<MathKeyboard> {
     if (!mounted) return;
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          final cs = Theme.of(context).colorScheme;
-          return AlertDialog(
-            title: const Text('选择符号分类'),
-            content: SizedBox(
-              width: 320,
-              height: 420,
-              child: ReorderableListView.builder(
-                itemCount: _categoryOrder.length,
-                buildDefaultDragHandles: false,
-                onReorderItem: (oldIndex, newIndex) =>
-                    _reorderCategories(oldIndex, newIndex, setDialogState),
-                itemBuilder: (context, index) {
-                  final category = _categoryOrder[index];
-                  return ListTile(
-                    key: ValueKey('category-row-$category'),
-                    selected: category == _category,
-                    selectedTileColor: cs.secondaryContainer,
-                    title: Text(category),
-                    subtitle: Text(
-                      _categoryDescriptions[category]!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    onTap: () {
-                      _selectCategory(category);
-                      Navigator.of(dialogContext).pop();
-                    },
-                    trailing: ReorderableDragStartListener(
-                      key: ValueKey('category-order-handle-$category'),
-                      index: index,
-                      child: const Icon(Icons.drag_handle),
-                    ),
-                  );
-                },
+      builder: (dialogContext) => _dialog(
+        dialogContext,
+        StatefulBuilder(
+          builder: (context, setDialogState) {
+            final cs = Theme.of(context).colorScheme;
+            return AlertDialog(
+              title: Text(_label('选择符号分类')),
+              content: SizedBox(
+                width: 320,
+                height: 420,
+                child: ReorderableListView.builder(
+                  itemCount: _categoryOrder.length,
+                  buildDefaultDragHandles: false,
+                  onReorderItem: (oldIndex, newIndex) =>
+                      _reorderCategories(oldIndex, newIndex, setDialogState),
+                  itemBuilder: (context, index) {
+                    final category = _categoryOrder[index];
+                    return ListTile(
+                      key: ValueKey('category-row-$category'),
+                      selected: category == _category,
+                      selectedTileColor: cs.secondaryContainer,
+                      title: Text(_label(category)),
+                      subtitle: Text(
+                        _label(_categoryDescriptions[category]!),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      onTap: () {
+                        _selectCategory(category);
+                        Navigator.of(dialogContext).pop();
+                      },
+                      trailing: ReorderableDragStartListener(
+                        key: ValueKey('category-order-handle-$category'),
+                        index: index,
+                        child: const Icon(Icons.drag_handle),
+                      ),
+                    );
+                  },
+                ),
               ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  final defaults = List<String>.of(_defaultCategoryOrder);
-                  setState(() => _categoryOrder = defaults);
-                  setDialogState(() {});
-                  _ensureCategoryVisible(_category);
-                  unawaited(_saveCategoryOrder());
-                },
-                child: const Text('恢复默认'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text('完成'),
-              ),
-            ],
-          );
-        },
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    final defaults = List<String>.of(_defaultCategoryOrder);
+                    setState(() => _categoryOrder = defaults);
+                    setDialogState(() {});
+                    _ensureCategoryVisible(_category);
+                    unawaited(_saveCategoryOrder());
+                  },
+                  child: Text(_label('恢复默认')),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: Text(_label('完成')),
+                ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -278,11 +298,11 @@ class _MathKeyboardState extends State<MathKeyboard> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Tooltip(
-                        message: '点击公式定位，长按选择；左右逐项移动，上下切换结构层',
+                        message: _label('点击公式定位，长按选择；左右逐项移动，上下切换结构层'),
                         child: Text(
                           widget.enabled
                               ? '${widget.activeLabel} · ${widget.location}'
-                              : '${widget.activeLabel} · 正在准备数学输入…',
+                              : '${widget.activeLabel} · ${_label('正在准备数学输入…')}',
                           style: TextStyle(
                             fontSize: 12,
                             color: cs.onSurfaceVariant,
@@ -295,7 +315,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
                     _action(Icons.undo, '撤销', 'undo'),
                     _action(Icons.redo, '重做', 'redo'),
                     PopupMenuButton<String>(
-                      tooltip: '选择与剪贴板',
+                      tooltip: _label('选择与剪贴板'),
                       enabled: widget.enabled,
                       onSelected: (action) => widget.onCommand(
                         action == 'selectAll' ? 'command' : 'clipboard',
@@ -303,10 +323,10 @@ class _MathKeyboardState extends State<MathKeyboard> {
                       ),
                       itemBuilder: (_) => [
                         for (final entry in {
-                          'selectAll': '全选',
-                          'copy': '复制 LaTeX',
-                          'cut': '剪切',
-                          'paste': '粘贴公式',
+                          'selectAll': _label('全选'),
+                          'copy': _label('复制 LaTeX'),
+                          'cut': _label('剪切'),
+                          'paste': _label('粘贴公式'),
                         }.entries)
                           PopupMenuItem(
                             value: entry.key,
@@ -316,7 +336,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
                     ),
                     IconButton(
                       onPressed: widget.onDismiss,
-                      tooltip: '收起数学键盘',
+                      tooltip: _label('收起数学键盘'),
                       icon: const Icon(Icons.keyboard_hide),
                     ),
                   ],
@@ -338,7 +358,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
                                 key: _categoryKeys[category],
                                 padding: const EdgeInsets.only(right: 6),
                                 child: ChoiceChip(
-                                  label: Text(category),
+                                  label: Text(_label(category)),
                                   selected: category == _category,
                                   selectedColor: cs.primaryContainer,
                                   labelStyle: TextStyle(
@@ -357,7 +377,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
                       ),
                     ),
                     IconButton(
-                      tooltip: '全部符号分类',
+                      tooltip: _label('全部符号分类'),
                       icon: const Icon(Icons.apps, size: 20),
                       onPressed: _showCategoryOrderDialog,
                     ),
@@ -402,7 +422,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
                       const Spacer(),
                       TextButton(
                         onPressed: widget.onPlot,
-                        child: const Text('绘图'),
+                        child: Text(_label('绘图')),
                       ),
                     ],
                   ),
@@ -464,7 +484,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
         padding: const EdgeInsets.symmetric(horizontal: 2),
       ),
       onPressed: canNavigate ? () => widget.onCommand('previous', '') : null,
-      child: const Text('上一项'),
+      child: Text(_label('上一项')),
     );
     final nextButton = TextButton(
       style: TextButton.styleFrom(
@@ -472,14 +492,14 @@ class _MathKeyboardState extends State<MathKeyboard> {
         padding: const EdgeInsets.symmetric(horizontal: 2),
       ),
       onPressed: canNavigate ? () => widget.onCommand('next', '') : null,
-      child: const Text('下一项'),
+      child: Text(_label('下一项')),
     );
     final isAlphabetCategory = _category == '字母';
     final currentPage = isAlphabetCategory ? 1 : _page + 1;
     final pageIndicator = pageCount > 1 || isAlphabetCategory
         ? IgnorePointer(
             child: Semantics(
-              label: '第 $currentPage 页，共 $pageCount 页',
+              label: _label('第 $currentPage 页，共 $pageCount 页'),
               child: Text('$currentPage/$pageCount'),
             ),
           )
@@ -489,7 +509,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
             mainAxisSize: MainAxisSize.min,
             children: [
               IconButton(
-                tooltip: '上一页',
+                tooltip: _label('上一页'),
                 onPressed: () => _changePage(pageCount, -1),
                 icon: const Icon(Icons.chevron_left),
                 visualDensity: VisualDensity.compact,
@@ -498,7 +518,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
               ),
               pageIndicator!,
               IconButton(
-                tooltip: '下一页',
+                tooltip: _label('下一页'),
                 onPressed: () => _changePage(pageCount, 1),
                 icon: const Icon(Icons.chevron_right),
                 visualDensity: VisualDensity.compact,
@@ -514,7 +534,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
         Semantics(
           container: true,
           explicitChildNodes: true,
-          label: '符号键盘',
+          label: _label('符号键盘'),
           value: canSwipePages ? '${_page + 1}/$pageCount' : null,
           increasedValue: canSwipePages
               ? '${(_page + 1) % pageCount + 1}/$pageCount'
@@ -522,7 +542,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
           decreasedValue: canSwipePages
               ? '${(_page - 1 + pageCount) % pageCount + 1}/$pageCount'
               : null,
-          hint: canSwipePages ? '使用增减操作切换符号页' : null,
+          hint: canSwipePages ? _label('使用增减操作切换符号页') : null,
           onIncrease: canSwipePages ? () => _changePage(pageCount, 1) : null,
           onDecrease: canSwipePages ? () => _changePage(pageCount, -1) : null,
           child: Focus(
@@ -562,7 +582,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
                       overflowDirection: VerticalDirection.down,
                       children: [
                         SizedBox(width: 44, child: _shiftKey()),
-                        const Text('大小写'),
+                        Text(_label('大小写')),
                       ],
                     ),
                   ),
@@ -639,7 +659,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
 
   Widget _shiftKey() => Semantics(
     key: const ValueKey('math-keyboard-shift'),
-    label: 'Shift',
+    label: _label('Shift'),
     button: true,
     enabled: widget.enabled,
     toggled: _shifted,
@@ -647,7 +667,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
     onTap: widget.enabled ? _toggleShift : null,
     child: Tooltip(
       excludeFromSemantics: true,
-      message: _shifted ? 'Shift：大写已开启，切换小写' : 'Shift：小写，切换大写',
+      message: _label(_shifted ? 'Shift：大写已开启，切换小写' : 'Shift：小写，切换大写'),
       child: SizedBox(
         height: 44,
         child: FilledButton.tonal(
@@ -672,7 +692,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
 
   Widget _navigate(IconData icon, String label, String direction) => IconButton(
     icon: Icon(icon, size: 20),
-    tooltip: label,
+    tooltip: _label(label),
     constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
     onPressed: widget.enabled
         ? () => widget.onCommand('navigate', direction)
@@ -681,7 +701,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
 
   Widget _action(IconData icon, String label, String command) => IconButton(
     icon: Icon(icon, size: 20),
-    tooltip: label,
+    tooltip: _label(label),
     constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
     onPressed: widget.enabled
         ? () => widget.onCommand('command', command)
@@ -693,7 +713,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
     child: key == null
         ? const SizedBox.shrink()
         : Tooltip(
-            message: key.description ?? key.label,
+            message: _label(key.description ?? key.label),
             child: FilledButton.tonal(
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.all(2),
@@ -720,7 +740,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
                         key.label,
                         textStyle: const TextStyle(fontSize: 18),
                         onErrorFallback: (_) => Text(
-                          key.label,
+                          _label(key.label),
                           style: const TextStyle(fontSize: 13),
                         ),
                       ),
@@ -752,6 +772,7 @@ typedef NumericMathInsert = void Function(String text, {int? cursorFromEnd});
 /// square-root and absolute-value templates.
 class MathNumericKeyboard extends StatelessWidget {
   final String activeLabel;
+  final String Function(String sourceText)? labelResolver;
   final NumericMathInsert onInsert;
   final VoidCallback onBackspace;
   final ValueChanged<int> onMoveCaret;
@@ -760,6 +781,7 @@ class MathNumericKeyboard extends StatelessWidget {
   const MathNumericKeyboard({
     super.key,
     required this.activeLabel,
+    this.labelResolver,
     required this.onInsert,
     required this.onBackspace,
     required this.onMoveCaret,
@@ -804,6 +826,7 @@ class MathNumericKeyboard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    String label(String source) => labelResolver?.call(source) ?? source;
     return Material(
       color: colors.surfaceContainer,
       child: SafeArea(
@@ -820,7 +843,7 @@ class MathNumericKeyboard extends StatelessWidget {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        '$activeLabel · 数学键盘（仅数值）',
+                        '$activeLabel · ${label('数学键盘（仅数值）')}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -831,7 +854,7 @@ class MathNumericKeyboard extends StatelessWidget {
                     ),
                     IconButton(
                       onPressed: onDismiss,
-                      tooltip: '收起数学键盘',
+                      tooltip: label('收起数学键盘'),
                       icon: const Icon(Icons.keyboard_hide),
                     ),
                   ],
@@ -847,7 +870,7 @@ class MathNumericKeyboard extends StatelessWidget {
                           child: SizedBox(
                             height: 44,
                             child: Tooltip(
-                              message: key.description ?? key.label,
+                              message: label(key.description ?? key.label),
                               child: FilledButton.tonal(
                                 style: FilledButton.styleFrom(
                                   padding: const EdgeInsets.all(2),

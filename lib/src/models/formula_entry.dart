@@ -30,6 +30,9 @@ class FormulaEntry {
   /// Whether this color was auto-assigned (vs. user-set).
   final bool autoColor;
 
+  /// Whether this formula row is currently included when plotting.
+  final bool visible;
+
   /// Current parameter values (only relevant if [parsed] has parameters).
   final Map<String, double> parameterValues;
 
@@ -47,6 +50,7 @@ class FormulaEntry {
     this.parsed,
     this.color = Colors.blue,
     this.autoColor = true,
+    this.visible = true,
     this.parameterValues = const {},
     this.domainMin,
     this.domainMax,
@@ -68,6 +72,7 @@ class FormulaEntry {
     bool clearParsed = false,
     Color? color,
     bool? autoColor,
+    bool? visible,
     Map<String, double>? parameterValues,
     double? domainMin,
     double? domainMax,
@@ -84,11 +89,12 @@ class FormulaEntry {
       parsed: clearParsed
           ? null
           : parsed ??
-              (rawExpression != null && rawExpression != this.rawExpression
-                  ? null
-                  : this.parsed),
+                (rawExpression != null && rawExpression != this.rawExpression
+                    ? null
+                    : this.parsed),
       color: color ?? this.color,
       autoColor: autoColor ?? this.autoColor,
+      visible: visible ?? this.visible,
       parameterValues: parameterValues ?? this.parameterValues,
       domainMin: clearDomainMin ? null : domainMin ?? this.domainMin,
       domainMax: clearDomainMax ? null : domainMax ?? this.domainMax,

@@ -14,6 +14,7 @@ class Math3DToolbar extends StatefulWidget {
   final ValueChanged<ConstructionTool> onToolSelected;
   final int polygonSides;
   final ValueChanged<int>? onPolygonSidesChanged;
+  final String Function(String sourceText)? labelResolver;
 
   const Math3DToolbar({
     super.key,
@@ -22,6 +23,7 @@ class Math3DToolbar extends StatefulWidget {
     required this.onToolSelected,
     this.polygonSides = 6,
     this.onPolygonSidesChanged,
+    this.labelResolver,
   });
 
   @override
@@ -179,6 +181,7 @@ class _Math3DToolbarState extends State<Math3DToolbar> {
         ? widget.instruction!
         : active.tooltip;
     final tools = _group.tools;
+    String label(String source) => widget.labelResolver?.call(source) ?? source;
 
     return Material(
       color: cs.surfaceContainerLow,
@@ -195,7 +198,7 @@ class _Math3DToolbarState extends State<Math3DToolbar> {
                     padding: const EdgeInsets.only(right: 8),
                     child: ChoiceChip(
                       key: _groupKeys[group],
-                      label: Text(group.label),
+                      label: Text(label(group.label)),
                       selected: _group == group,
                       selectedColor: cs.primaryContainer,
                       labelStyle: TextStyle(
@@ -222,6 +225,7 @@ class _Math3DToolbarState extends State<Math3DToolbar> {
                       info: ToolInfo.all[tool]!,
                       selected: tool == widget.activeTool,
                       colorScheme: cs,
+                      labelResolver: widget.labelResolver,
                       onPressed: () => _onToolSelected(tool),
                     ),
                   ),
@@ -232,7 +236,7 @@ class _Math3DToolbarState extends State<Math3DToolbar> {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Text('边数：'),
+                Text(label('边数：')),
                 DropdownButton<int>(
                   value: widget.polygonSides,
                   items: [
@@ -259,7 +263,7 @@ class _Math3DToolbarState extends State<Math3DToolbar> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        '${active.name} · $instruction',
+                        '${label(active.name)} · ${label(instruction)}',
                         style: TextStyle(
                           fontSize: 12,
                           color: cs.onSurfaceVariant,
@@ -267,7 +271,7 @@ class _Math3DToolbarState extends State<Math3DToolbar> {
                       ),
                       if (_commandFeedback case final feedback?)
                         Text(
-                          '命令：$feedback',
+                          '${label('命令：')}$feedback',
                           style: TextStyle(fontSize: 11, color: cs.primary),
                         ),
                     ],
@@ -275,7 +279,7 @@ class _Math3DToolbarState extends State<Math3DToolbar> {
                 ),
                 if (widget.activeTool != ConstructionTool.move)
                   IconButton(
-                    tooltip: '结束工具，返回移动',
+                    tooltip: label('结束工具，返回移动'),
                     onPressed: () => _onToolSelected(ConstructionTool.move),
                     icon: const Icon(Icons.close, size: 20),
                   )
@@ -295,6 +299,7 @@ class _ToolButton extends StatelessWidget {
   final bool selected;
   final ColorScheme colorScheme;
   final VoidCallback onPressed;
+  final String Function(String sourceText)? labelResolver;
 
   const _ToolButton({
     super.key,
@@ -302,16 +307,17 @@ class _ToolButton extends StatelessWidget {
     required this.selected,
     required this.colorScheme,
     required this.onPressed,
+    this.labelResolver,
   });
 
   @override
   Widget build(BuildContext context) {
     return Tooltip(
-      message: info.tooltip,
+      message: labelResolver?.call(info.tooltip) ?? info.tooltip,
       child: Semantics(
         selected: selected,
         button: true,
-        label: info.name,
+        label: labelResolver?.call(info.name) ?? info.name,
         child: TextButton(
           style: TextButton.styleFrom(
             minimumSize: const Size(112, 72),
@@ -333,7 +339,10 @@ class _ToolButton extends StatelessWidget {
             children: [
               Icon(info.iconData, size: 24),
               const SizedBox(height: 4),
-              Text(info.name, textAlign: TextAlign.center),
+              Text(
+                labelResolver?.call(info.name) ?? info.name,
+                textAlign: TextAlign.center,
+              ),
             ],
           ),
         ),

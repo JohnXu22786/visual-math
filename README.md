@@ -48,6 +48,28 @@ class VisualMathApp extends StatelessWidget {
 }
 ```
 
+Keep a controller in host state to integrate commands and lifecycle events.
+The page attaches the controller when mounted; commands are safe to call from
+host callbacks after that point, and the snapshot remains null before attach:
+
+```dart
+class GraphHostState extends State<GraphHost> {
+  late final drawingController = MathDrawingController()
+    ..onPlotted = (snapshot) => debugPrint('Plotted ${snapshot.formulas.length}');
+
+  @override
+  Widget build(BuildContext context) =>
+      MathDrawingPage(controller: drawingController);
+
+  void zoomInFromHostButton() => drawingController.zoomIn();
+
+  MathDrawingSnapshot? get currentSnapshot => drawingController.snapshot;
+}
+```
+
+The controller can set formulas, view, tool, camera, and viewport after the
+page is mounted. It detaches automatically when the page is disposed.
+
 ## Embed individual components
 
 `MathCanvas` is a pure-Flutter 2D plot that can be embedded independently. It
@@ -72,11 +94,13 @@ levels, with different ownership responsibilities.
 | --- | --- | --- |
 | App-owned UI | Exported models: `MathExpression`, `FormulaEntry`, `MathParameter`, `CoordinatePoint`, `Viewport`, `MathInputTemplate`; 3D data types including `Point3D`, `Vector3D`, `Object3D`, `SurfaceMesh`, `Camera3D`, `Projection3D`, `Scene3D`; and `ConstructionState`, `ConstructionTool`, and related enums | The host builds its own UI and owns its application state. Models provide math, scene, and construction data; they do not create a workspace or coordinate widgets. |
 | Embeddable components | `MathCanvas`, `MathCanvas3D`, `MathFormulaField`, `MathKeyboard`, `MathParameterControls`, `Math3DToolbar`, `MathNumericKeyboard`, and `MathCanvasWebView` | The host composes the widgets and wires their inputs and callbacks. Stateful widgets manage their interaction state. Stateless controls such as `MathParameterControls` and `MathNumericKeyboard` use host-provided values and callbacks, so the host owns the state passed to them. `MathKeyboard` also stores its category order in shared preferences. |
-| Complete workspace | `MathDrawingPage` | The package owns the formula rows, plotting state, parameter state, 2D/3D tab selection, editor mode, and workspace controls. On supported platforms it restores a saved input mode when `initialMathematicalMode` is omitted; later user changes are saved regardless. The host supplies the page and optional initial values; the workspace does not expose its internal state as an app controller. |
+| Complete workspace | `MathDrawingPage` and optional `MathDrawingController` | The page owns its editor resources and default workspace UI. A controller exposes formulas, parameters, active view/tool, 2D viewport, 3D camera/scene, commands, snapshots, and lifecycle callbacks without replacing the default UI. |
 
-There is no separately exported controller for the complete workspace,
-formula list, or editor state today; apps that build their own UI own and wire
-that state themselves. The canvases expose imperative controls on their public
+The optional `MathDrawingController` lets a host observe and control the
+complete workspace while keeping its built-in UI. Snapshots are immutable,
+versioned package objects intended for host save/restore; version 1 keeps typed
+formula and scene models and does not define a cross-package interchange
+format. The canvases also expose imperative controls on their public
 `State` classes, which a host can access with its own `GlobalKey` while the
 widget is mounted. For 2D, `MathCanvasState` includes `setFormulas`, `setExpression`,
 `setViewport`, `resetView`, `fitToView`, `zoomIn`, and `zoomOut`. For 3D, `MathCanvas3DState` includes scene methods `setObjects`, `setSurface`,
@@ -96,17 +120,175 @@ controller it creates. `MathDrawingPage` creates and disposes its own editing
 controllers and other private resources. Do not dispose controllers managed
 by a package widget.
 
-The focused widgets are composable pieces, not a separate configurable
-workspace API. For example, `MathKeyboard` and `Math3DToolbar` need the host to
-connect their callbacks to the active editor or canvas. `MathNumericKeyboard`
-is the smaller numeric-entry panel; its host supplies insertion, backspace,
-caret-movement, and dismiss callbacks. The complete page
-provides the package's integrated defaults, including its formula controls and
-canvas actions. Its current constructor supports initial values, but does not
-offer switches to hide individual panels or replace those controls.
+### Standalone 2D or 3D
+
+The focused canvases are independent Flutter widgets. They include canvas
+interaction, but no formula field, formula list, workspace tabs, or formula
+keyboard. Supply your own surrounding UI when you need those pieces:
+
+```dart
+Scaffold(
+  appBar: AppBar(title: const Text('Graph only')),
+  body: const MathCanvas(initialExpression: 'sin(x)'),
+)
+```
+
+For a 3D-only screen, use `MathCanvas3D()` in the same way. Its canvas
+supports the package's built-in pointer interactions; add `Math3DToolbar` or
+your own controls when the user needs construction tools. The two examples are
+also runnable from the repository's `example/` app.
+
+### Customize the complete workspace
+
+`MathWorkspaceOptions` keeps every existing region enabled by default. It can
+also restrict a page to one view, hide package-owned controls, or wrap/replace
+individual regions. `MathWorkspacePresentation.labels` changes the built-in
+workspace labels. Its optional `translate` callback also receives strings from
+canvas and keyboard controls; return the host-language version for labels your
+app uses and return the source string for any untranslated label. Flutter
+`Theme` controls colors and typography. The app bar can be replaced while
+remaining connected to host-owned commands:
+
+```dart
+final controller = MathDrawingController();
+
+MathDrawingPage(
+  controller: controller,
+  options: MathWorkspaceOptions(
+    persistence: const MathWorkspacePersistence(
+      namespace: 'my_graph_screen',
+    ),
+    presentation: MathWorkspacePresentation(
+      labels: MathWorkspaceLabels(
+        pageTitle: 'Studio Math',
+        addFormula: 'Add equation',
+        view2D: 'Graphs',
+        view3D: 'Geometry',
+        plotFormula: 'Plot',
+        translate: (source) => switch (source) {
+          '标准视图' => 'Standard view',
+          '平行投影' => 'Parallel projection',
+          '透视投影' => 'Perspective projection',
+          _ => source,
+        },
+      ),
+      density: MathWorkspaceDensity.compact,
+    ),
+    appBarBuilder: (context, defaultAppBar) => AppBar(
+      title: const Text('Acme • Studio Math'),
+      actions: [
+        IconButton(
+          tooltip: 'Zoom in',
+          onPressed: controller.zoomIn,
+          icon: const Icon(Icons.zoom_in),
+        ),
+      ],
+    ),
+  ),
+)
+```
+
+For a focused built-in workspace, use `MathWorkspaceOptions(show3D: false)`
+or `MathWorkspaceOptions(show2D: false, initialView: ViewMode.mode3D)`. At
+least one view must remain enabled, and `initialView` must name an enabled
+view. Region builders receive both the default region and
+`MathWorkspaceRegionActions`; return the default to retain it, wrap it, or
+replace it and call its actions from host controls.
+
+### Host state, preferences, and lifecycle
+
+Keep `MathDrawingController` in the host's `State` when its callbacks, commands,
+or snapshots must live across rebuilds. It attaches to one mounted page at a
+time, is detached when that page is disposed, and has no separate `dispose`
+method. Use `snapshot` after attachment or handle `onPlotted`, `onViewportChanged`,
+`onFormulaEdited`, and other callbacks to save host data. A version 1 snapshot
+is an immutable in-memory package model, not a promised JSON or cross-version
+storage format. Persist data in a host-defined format and map it to supported
+models when restoring. Call `restore` before attachment to queue a snapshot, or
+after attachment to apply it.
+
+By default, the complete workspace keeps its historical shared-preference
+keys. That preserves current input-mode and math-keyboard category-order
+behavior. For multiple embedded instances, set a stable distinct
+`MathWorkspacePersistence.namespace`; use `enabled: false` when the host owns
+preference persistence or wants a non-persistent session. This setting covers
+workspace input preferences, not formula/scene snapshots. Optional
+`clipboardReader` and `clipboardWriter` let the host provide clipboard access
+for keyboard paste/copy/cut commands; leaving them unset retains Flutter's
+clipboard behavior. They do not replace the editor's selection handling.
+
+### Migrate imperative `GlobalKey` integrations
+
+Existing code that controls a canvas through a key remains supported while the
+canvas is mounted. For example, `MathCanvasState.setViewport` and
+`MathCanvas3DState.setCamera` still work with the corresponding `GlobalKey`.
+For a complete `MathDrawingPage`, prefer the controller so host code can issue
+commands and observe a typed snapshot without reaching into a canvas state:
+
+```dart
+// Before: call the key only from a host callback while the canvas is mounted.
+final canvasKey = GlobalKey<MathCanvasState>();
+MathCanvas(key: canvasKey);
+void onLegacyZoomButtonPressed() => canvasKey.currentState?.zoomIn();
+
+// After: retain the controller in host state and pass it to the page.
+final controller = MathDrawingController();
+MathDrawingPage(controller: controller);
+void onZoomButtonPressed() => controller.zoomIn(); // after page attachment
+final MathDrawingSnapshot? snapshot = controller.snapshot; // null until attach
+```
+
+The controller only covers the complete workspace APIs it documents. Keep a
+canvas `GlobalKey` for focused canvas APIs not exposed by that controller, and
+check `currentState` because key operations are available only while mounted.
+Do not read or dispose private controllers owned by package widgets. Attach one
+`MathDrawingController` to only one live `MathDrawingPage` at a time.
+
+The focused widgets are composable pieces. For example, `MathKeyboard` and
+`Math3DToolbar` need the host to connect their callbacks to the active editor or
+canvas. `MathNumericKeyboard` is the smaller numeric-entry panel; its host
+supplies insertion, backspace, caret-movement, and dismiss callbacks. The
+complete page provides integrated defaults and also accepts
+`MathWorkspaceOptions` to choose views, hide regions, and wrap or replace them.
+
+```dart
+MathDrawingPage(
+  options: MathWorkspaceOptions(
+    show2D: true,
+    show3D: false,
+    initialView: ViewMode.mode2D,
+    showScaffold: false,
+    showAppBar: false,
+    showFormulaEditor: false,
+    canvas2DOverlayBuilder: (context, defaultOverlay, actions) => Stack(
+      children: [
+        defaultOverlay,
+        Positioned(
+          left: 12,
+          top: 12,
+          child: TextButton(
+            onPressed: actions.zoomIn2DCanvas,
+            child: const Text('Zoom in'),
+          ),
+        ),
+      ],
+    ),
+  ),
+)
+```
+
+Both views, the 2D initial view, the formula editor, parameter controls,
+keyboard, 3D tools, 2D canvas actions, Scaffold, and AppBar are enabled by
+default. A region builder receives the default widget so an app can keep it,
+wrap it, or return a replacement. Builders also receive `MathWorkspaceRegionActions`
+with page-connected view, formula, parameter, keyboard, tool, and canvas
+operations. With `showScaffold: false`, the workspace returns its body for
+placement inside a host-owned page.
 
 The public `MathDrawingPage` inputs are `initialExpression` (empty by default),
-`initialShowWebView` (true by default), and optional `initialMathematicalMode`.
+`initialShowWebView` (true by default), optional `initialMathematicalMode`, and
+an optional `MathDrawingController` and `options` (a default
+`MathWorkspaceOptions` instance).
 Setting `initialShowWebView` to false uses the source editor and preview even on
 a platform that supports MathLive; the platform matrix below describes which
 platforms can use the embedded editor when it is enabled.
@@ -143,13 +325,31 @@ do not claim identical runtime behavior on each target.
 | Target | Formula editor in `MathDrawingPage` | Main 2D and 3D canvases |
 | --- | --- | --- |
 | Android, iOS, macOS, Windows | MathLive editor in the platform WebView | Pure-Flutter canvases |
-| Linux, Web | Built-in formula preview and source editing fallback; no embedded MathLive editor | Pure-Flutter canvases |
+| Linux, Web, Fuchsia | Built-in formula preview and source editing fallback; no embedded MathLive editor | Pure-Flutter canvases |
 
-`MathFormulaField.supported` reports whether the embedded MathLive editor is
-used. Linux and Web use `flutter_math_fork` for formula preview and source input
-instead. That fallback does not provide MathLive's structured editing
+`MathFormulaField.supported` reports whether the runtime platform supports the
+embedded MathLive editor; it does not guarantee that a specific page is using
+it. `initialShowWebView: false` selects the fallback even on a supported
+platform. Linux, Web, and Fuchsia use `flutter_math_fork` for formula preview
+and source input. That fallback does not provide MathLive's structured editing
 interaction. The 2D `MathCanvas` and the 3D canvas are Flutter widgets and do
 not depend on WebView.
+
+Hosts can query `MathWorkspaceCapabilities.current` for the current runtime's
+MathLive support, source editor fallback, and the network requirement of the
+separate JSXGraph WebView canvas. The primary Flutter canvases remain offline.
+This capability object describes the current Flutter runtime; it is not a
+statement that a host build succeeded or that editor interactions are identical
+across targets. Android, iOS, macOS, and Windows use the embedded MathLive
+editor when enabled. Web, Linux, and Fuchsia use source editing and preview instead.
+`MathWorkspaceOptions.persistence` controls whether input preferences are
+stored and accepts a stable namespace for independently embedded workspaces;
+the empty namespace preserves the historical keys. Set `enabled: false` for
+host-owned, non-persistent sessions. `clipboardReader` and `clipboardWriter`
+can take ownership of clipboard access for the built-in keyboard while
+preserving editor selection behavior; when omitted, the workspace uses
+Flutter's platform clipboard as before. Error presentation is
+host-controlled through `MathWorkspacePresentation.errorBuilder`.
 
 Native MathLive support is provided by `flutter_inappwebview`. Use Flutter's
 normal platform plugin setup when building the host app. The

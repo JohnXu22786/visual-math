@@ -18,6 +18,8 @@ class MathFormulaField extends StatefulWidget {
   final bool mathematical;
   final bool showWebView;
   final String label;
+  final String Function(String sourceText)? labelResolver;
+  final Widget Function(BuildContext context, String message)? errorBuilder;
   final bool allowModeSwitch;
   final VoidCallback? onRevert;
   final VoidCallback? onReadyChanged;
@@ -37,6 +39,8 @@ class MathFormulaField extends StatefulWidget {
     required this.onChanged,
     required this.onSubmitted,
     required this.label,
+    this.labelResolver,
+    this.errorBuilder,
     this.showWebView = true,
     this.allowModeSwitch = true,
     this.onRevert,
@@ -78,6 +82,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
   late TextSelection _lastSelection;
   int? _preferredVerticalColumn;
   String? _failure;
+  String _label(String source) => widget.labelResolver?.call(source) ?? source;
   ColorScheme? _colorScheme;
   String _location = '公式';
   final List<TextEditingValue> _fallbackUndo = [];
@@ -165,7 +170,9 @@ class MathFormulaFieldState extends State<MathFormulaField>
       try {
         await action();
       } catch (_) {
-        if (mounted) setState(() => _failure = '公式编辑器加载失败，可切换到源码继续编辑。');
+        if (mounted) {
+          setState(() => _failure = _label('公式编辑器加载失败，可切换到源码继续编辑。'));
+        }
         widget.onReadyChanged?.call();
       }
     });
@@ -423,6 +430,8 @@ class MathFormulaFieldState extends State<MathFormulaField>
   Future<void> clipboard(
     String action, {
     bool Function()? isTargetActive,
+    Future<String?> Function()? clipboardReader,
+    Future<void> Function(String text)? clipboardWriter,
   }) async {
     if (_usesFallback) {
       final controller = widget.controller;
@@ -436,23 +445,31 @@ class MathFormulaFieldState extends State<MathFormulaField>
           ? selection.end.clamp(0, text.length).toInt()
           : text.length;
       if (action == 'paste') {
-        final data = await Clipboard.getData(Clipboard.kTextPlain);
+        final clipboardText = clipboardReader != null
+            ? await clipboardReader()
+            : (await Clipboard.getData(Clipboard.kTextPlain))?.text;
         if (mounted &&
             (isTargetActive?.call() ?? true) &&
-            data?.text != null &&
+            clipboardText != null &&
             identical(widget.controller, controller) &&
             controller.value == value) {
-          _fallbackCommand('insert', data!.text!);
+          _fallbackCommand('insert', clipboardText);
         }
       } else if (action == 'copy' && selection.isValid && start != end) {
-        await Clipboard.setData(
-          ClipboardData(text: text.substring(start, end)),
-        );
+        final selectedText = text.substring(start, end);
+        if (clipboardWriter != null) {
+          await clipboardWriter(selectedText);
+        } else {
+          await Clipboard.setData(ClipboardData(text: selectedText));
+        }
       } else if (action == 'cut' && selection.isValid && start != end) {
         final selectedValue = controller.value;
-        await Clipboard.setData(
-          ClipboardData(text: text.substring(start, end)),
-        );
+        final selectedText = text.substring(start, end);
+        if (clipboardWriter != null) {
+          await clipboardWriter(selectedText);
+        } else {
+          await Clipboard.setData(ClipboardData(text: selectedText));
+        }
         if (mounted &&
             (isTargetActive?.call() ?? true) &&
             identical(widget.controller, controller) &&
@@ -470,8 +487,10 @@ class MathFormulaFieldState extends State<MathFormulaField>
           source: 'window.stroomMath.capturePaste()',
         );
       });
-      final data = await Clipboard.getData(Clipboard.kTextPlain);
-      if (!mounted || data?.text == null || capturedValue is! String) return;
+      final clipboardText = clipboardReader != null
+          ? await clipboardReader()
+          : (await Clipboard.getData(Clipboard.kTextPlain))?.text;
+      if (!mounted || clipboardText == null || capturedValue is! String) return;
       final state = Map<String, dynamic>.from(jsonDecode(capturedValue) as Map);
       final revision = state['revision'];
       final sequence = state['sequence'];
@@ -492,38 +511,46 @@ class MathFormulaFieldState extends State<MathFormulaField>
             source:
                 'window.stroomMath.pasteIfUnchanged('
                 '$revision, $sequence, ${jsonEncode(latex)}, '
-                '${jsonEncode(selection)}, ${jsonEncode(data!.text!)})',
+                '${jsonEncode(selection)}, ${jsonEncode(clipboardText)})',
           ),
         );
       });
       return;
     }
+    dynamic capturedSelection;
     await _enqueue(() async {
       if (!_ready) return;
-      final value = await _web!.evaluateJavascript(
+      capturedSelection = await _web!.evaluateJavascript(
         source: 'window.stroomMath.cutSelection()',
       );
-      if (value is String) {
-        final selection = Map<String, dynamic>.from(jsonDecode(value) as Map);
-        final latex = selection['latex'];
-        final capturedSelection = selection['selection'];
-        if (latex is String && latex.isNotEmpty) {
-          await Clipboard.setData(ClipboardData(text: latex));
-          if (action == 'cut' &&
-              mounted &&
-              (isTargetActive?.call() ?? true) &&
-              capturedSelection is String) {
-            _acceptResult(
-              await _web!.evaluateJavascript(
-                source:
-                    'window.stroomMath.deleteSelection('
-                    '${jsonEncode(capturedSelection)}, ${jsonEncode(latex)})',
-              ),
-            );
-          }
-        }
-      }
     });
+    if (capturedSelection is! String) return;
+    final selection = Map<String, dynamic>.from(
+      jsonDecode(capturedSelection) as Map,
+    );
+    final latex = selection['latex'];
+    final selectionToken = selection['selection'];
+    if (latex is! String || latex.isEmpty) return;
+    if (clipboardWriter != null) {
+      await clipboardWriter(latex);
+    } else {
+      await Clipboard.setData(ClipboardData(text: latex));
+    }
+    if (action == 'cut' &&
+        mounted &&
+        (isTargetActive?.call() ?? true) &&
+        selectionToken is String) {
+      await _enqueue(() async {
+        if (!_ready) return;
+        _acceptResult(
+          await _web!.evaluateJavascript(
+            source:
+                'window.stroomMath.deleteSelection('
+                '${jsonEncode(selectionToken)}, ${jsonEncode(latex)})',
+          ),
+        );
+      });
+    }
   }
 
   Future<void> flush() => _enqueue(() async {
@@ -584,13 +611,15 @@ class MathFormulaFieldState extends State<MathFormulaField>
               mathematicalMode ? Icons.keyboard : Icons.calculate_outlined,
               size: 20,
             ),
-            tooltip: usesFallback
-                ? mathematicalMode
-                      ? '切换到 LaTeX 源码输入'
-                      : '切换到数学键盘（内置公式预览）'
-                : mathematicalMode
-                ? '切换到系统键盘 / LaTeX 源码'
-                : '切换到数学键盘',
+            tooltip: _label(
+              usesFallback
+                  ? mathematicalMode
+                        ? '切换到 LaTeX 源码输入'
+                        : '切换到数学键盘（内置公式预览）'
+                  : mathematicalMode
+                  ? '切换到系统键盘 / LaTeX 源码'
+                  : '切换到数学键盘',
+            ),
             onPressed: _toggle,
             constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
           );
@@ -683,7 +712,9 @@ class MathFormulaFieldState extends State<MathFormulaField>
                                   if (request.isForMainFrame == true &&
                                       mounted) {
                                     setState(
-                                      () => _failure = '公式编辑器加载失败，可切换到源码继续编辑。',
+                                      () => _failure = _label(
+                                        '公式编辑器加载失败，可切换到源码继续编辑。',
+                                      ),
                                     );
                                     widget.onReadyChanged?.call();
                                   }
@@ -701,13 +732,18 @@ class MathFormulaFieldState extends State<MathFormulaField>
                                         )
                                       : Padding(
                                           padding: const EdgeInsets.all(4),
-                                          child: Text(
-                                            _failure!,
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: cs.error,
-                                            ),
-                                          ),
+                                          child:
+                                              widget.errorBuilder?.call(
+                                                context,
+                                                _failure!,
+                                              ) ??
+                                              Text(
+                                                _failure!,
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: cs.error,
+                                                ),
+                                              ),
                                         ),
                                 ),
                               if (_hasUnsupportedSyntax)
@@ -720,15 +756,20 @@ class MathFormulaFieldState extends State<MathFormulaField>
                                         horizontal: 6,
                                         vertical: 4,
                                       ),
-                                      child: Text(
-                                        '暂不支持此语法，请切换源码',
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: cs.error,
-                                        ),
-                                      ),
+                                      child:
+                                          widget.errorBuilder?.call(
+                                            context,
+                                            _label('暂不支持此语法，请切换源码'),
+                                          ) ??
+                                          Text(
+                                            _label('暂不支持此语法，请切换源码'),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: cs.error,
+                                            ),
+                                          ),
                                     ),
                                   ),
                                 ),
@@ -763,7 +804,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
                 children: [
                   if (widget.onRevert != null)
                     IconButton(
-                      tooltip: '撤销修改',
+                      tooltip: _label('撤销修改'),
                       icon: const Icon(Icons.undo, size: 16),
                       onPressed: widget.onRevert,
                     ),

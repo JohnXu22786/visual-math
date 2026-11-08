@@ -127,6 +127,60 @@ void main() {
     },
   );
 
+  testWidgets('native clipboard writer errors leave MathLive ready', (
+    tester,
+  ) async {
+    await _withTargetPlatformOverride(TargetPlatform.android, () async {
+      final originalPlatform = InAppWebViewPlatform.instance;
+      final platform = _EditorPlatform();
+      InAppWebViewPlatform.instance = platform;
+      addTearDown(
+        () => InAppWebViewPlatform.instance =
+            originalPlatform ?? _EditorPlatform(),
+      );
+      final source = TextEditingController(text: 'x');
+      final key = GlobalKey<MathFormulaFieldState>();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MathFormulaField(
+              key: key,
+              controller: source,
+              mathematical: true,
+              onModeChanged: (_) {},
+              onActivate: () {},
+              onChanged: () {},
+              onSubmitted: () {},
+              label: '公式 1',
+            ),
+          ),
+        ),
+      );
+      final native = platform.editor!;
+      final controller = native.controllerFromPlatform<InAppWebViewController>(
+        native.controller,
+      );
+      native.controller.cutSelectionResponse =
+          '{"latex":"x","selection":"selection-1"}';
+      native.params.onWebViewCreated!(controller);
+      native.params.onLoadStop!(controller, null);
+      await tester.pumpAndSettle();
+      final editor = key.currentState!;
+
+      await expectLater(
+        editor.clipboard(
+          'copy',
+          clipboardWriter: (_) async => throw StateError('host clipboard'),
+        ),
+        throwsStateError,
+      );
+
+      expect(editor.ready, isTrue);
+      await tester.pumpWidget(const SizedBox.shrink());
+      source.dispose();
+    });
+  });
+
   testWidgets(
     'unsupported WebView platforms keep the built-in formula editor usable',
     (tester) async {
@@ -311,6 +365,50 @@ void main() {
       await editor.clipboard('copy');
 
       expect(copiedText, ['x']);
+      await tester.pumpWidget(const SizedBox.shrink());
+      source.dispose();
+    });
+  });
+
+  testWidgets('host clipboard callbacks preserve fallback selection handling', (
+    tester,
+  ) async {
+    await _withTargetPlatformOverride(TargetPlatform.linux, () async {
+      final writes = <String>[];
+      final source = TextEditingController.fromValue(
+        const TextEditingValue(
+          text: 'x+y',
+          selection: TextSelection(baseOffset: 0, extentOffset: 1),
+        ),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MathFormulaField(
+              controller: source,
+              mathematical: true,
+              onModeChanged: (_) {},
+              onActivate: () {},
+              onChanged: () {},
+              onSubmitted: () {},
+              label: '公式 1',
+            ),
+          ),
+        ),
+      );
+      final editor = tester.state<MathFormulaFieldState>(
+        find.byType(MathFormulaField),
+      );
+
+      await editor.clipboard(
+        'copy',
+        clipboardWriter: (text) async => writes.add(text),
+      );
+      await editor.clipboard('paste', clipboardReader: () async => 'z');
+
+      expect(writes, ['x']);
+      expect(source.text, 'z+y');
+      expect(source.selection, const TextSelection.collapsed(offset: 1));
       await tester.pumpWidget(const SizedBox.shrink());
       source.dispose();
     });
@@ -676,6 +774,7 @@ class _NativeEditor extends PlatformInAppWebViewWidget {
 
 class _EditorController extends PlatformInAppWebViewController {
   final scripts = <String>[];
+  String? cutSelectionResponse;
   _EditorController()
     : super.implementation(
         const PlatformInAppWebViewControllerCreationParams(id: 0),
@@ -687,6 +786,7 @@ class _EditorController extends PlatformInAppWebViewController {
     ContentWorld? contentWorld,
   }) async {
     scripts.add(source);
+    if (source.contains('cutSelection')) return cutSelectionResponse;
     return null;
   }
 

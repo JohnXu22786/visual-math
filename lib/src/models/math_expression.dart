@@ -197,6 +197,18 @@ class MathExpression {
     );
   }
 
+  /// Copy this expression with an unmodifiable parameter-name set.
+  MathExpression immutableCopy() => MathExpression._(
+    rawExpression: rawExpression,
+    normalizedExpression: normalizedExpression,
+    type: type,
+    latexDisplay: latexDisplay,
+    parameters: Set.unmodifiable(parameters),
+    evaluator: evaluator,
+    implicitEvaluator: implicitEvaluator,
+    parseError: parseError,
+  );
+
   /// Sample the function at [numPoints] points within [xMin]..[xMax].
   ///
   /// Returns a list of (x, y) coordinate pairs. Points where the function
