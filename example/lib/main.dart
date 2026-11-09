@@ -149,9 +149,7 @@ class _VisualMathShellState extends State<_VisualMathShell> {
     final content = IndexedStack(index: _selectedIndex, children: pages);
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(titles[_selectedIndex]),
-      ),
+      appBar: AppBar(title: Text(titles[_selectedIndex])),
       body: Row(
         children: [
           if (wide) ...[
@@ -394,10 +392,7 @@ class _SettingsDestinationState extends State<_SettingsDestination> {
         const Divider(),
         ListTile(
           dense: true,
-          leading: Icon(
-            Icons.code,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
+          leading: Icon(Icons.code, color: theme.colorScheme.onSurfaceVariant),
           title: Text(
             isEnglish ? 'Developer examples' : '开发者示例',
             style: theme.textTheme.bodyMedium?.copyWith(
@@ -408,9 +403,9 @@ class _SettingsDestinationState extends State<_SettingsDestination> {
             Icons.chevron_right,
             color: theme.colorScheme.onSurfaceVariant,
           ),
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(builder: (_) => const ExampleMenu()),
-          ),
+          onTap: () => Navigator.of(
+            context,
+          ).push(MaterialPageRoute<void>(builder: (_) => const ExampleMenu())),
         ),
       ],
     );
