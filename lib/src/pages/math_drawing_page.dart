@@ -38,6 +38,9 @@ class MathDrawingPage extends StatefulWidget {
   /// Initial input mode; defaults to the platform's supported editor mode.
   final bool? initialMathematicalMode;
 
+  /// Notifies the host when the user changes the mathematical input mode.
+  final ValueChanged<bool>? onMathematicalModeChanged;
+
   /// Optional host controller for formulas, canvas state, commands, and events.
   final MathDrawingController? controller;
 
@@ -50,6 +53,7 @@ class MathDrawingPage extends StatefulWidget {
     this.initialExpression,
     this.initialShowWebView = true,
     this.initialMathematicalMode,
+    this.onMathematicalModeChanged,
     this.controller,
     this.options = const MathWorkspaceOptions(),
   });
@@ -145,6 +149,12 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   @override
   void didUpdateWidget(MathDrawingPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialMathematicalMode != widget.initialMathematicalMode &&
+        widget.initialMathematicalMode != null) {
+      _modeTouched = true;
+      _mathMode = widget.initialMathematicalMode!;
+      if (!_mathMode) _keyboardVisible = false;
+    }
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller?.detach();
       widget.controller?.attach(
@@ -228,6 +238,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         ),
       );
     }
+    widget.onMathematicalModeChanged?.call(mathematical);
   }
 
   void _ensureFormulaVisible(_FormulaState formula) {
