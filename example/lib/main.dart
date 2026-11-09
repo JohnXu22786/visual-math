@@ -151,19 +151,6 @@ class _VisualMathShellState extends State<_VisualMathShell> {
     return Scaffold(
       appBar: AppBar(
         title: Text(titles[_selectedIndex]),
-        actions: _selectedIndex == 0
-            ? [
-                IconButton(
-                  tooltip: widget.isEnglish ? 'Examples' : '示例',
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const ExampleMenu(),
-                    ),
-                  ),
-                  icon: const Icon(Icons.widgets_outlined),
-                ),
-              ]
-            : null,
       ),
       body: Row(
         children: [
@@ -401,6 +388,28 @@ class _SettingsDestinationState extends State<_SettingsDestination> {
                 title: Text(isEnglish ? 'Text input' : '文本输入'),
               ),
             ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        const Divider(),
+        ListTile(
+          dense: true,
+          leading: Icon(
+            Icons.code,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          title: Text(
+            isEnglish ? 'Developer examples' : '开发者示例',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          trailing: Icon(
+            Icons.chevron_right,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => const ExampleMenu()),
           ),
         ),
       ],
