@@ -1,59 +1,411 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:visual_math/visual_math.dart';
-
-import 'orbiting_math_splash.dart';
 
 void main() => runApp(const VisualMathExampleApp());
 
-class VisualMathExampleApp extends StatelessWidget {
+class VisualMathExampleApp extends StatefulWidget {
   const VisualMathExampleApp({super.key});
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: 'Visual Math integration examples',
-    theme: ThemeData(
-      colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
-      useMaterial3: true,
-    ),
-    home: const _ExampleStartupHost(),
-  );
+  State<VisualMathExampleApp> createState() => _VisualMathExampleAppState();
 }
 
-class _ExampleStartupHost extends StatefulWidget {
-  const _ExampleStartupHost();
+class _VisualMathExampleAppState extends State<VisualMathExampleApp> {
+  static const _themeKey = 'visual_math_app_theme';
+  static const _languageKey = 'visual_math_app_language';
+  static const _mathModeKey = 'math_drawing_mathematical_input';
 
-  @override
-  State<_ExampleStartupHost> createState() => _ExampleStartupHostState();
-}
-
-class _ExampleStartupHostState extends State<_ExampleStartupHost> {
-  double _progress = 0;
-  bool _splashVisible = true;
+  ThemeMode _themeMode = ThemeMode.system;
+  bool _isEnglish = false;
+  bool _mathematicalMode = true;
+  bool _preferencesLoaded = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      setState(() => _progress = 1);
+    _loadPreferences();
+  }
+
+  Future<void> _loadPreferences() async {
+    final preferences = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _themeMode = switch (preferences.getString(_themeKey)) {
+        'light' => ThemeMode.light,
+        'dark' => ThemeMode.dark,
+        _ => ThemeMode.system,
+      };
+      _isEnglish = preferences.getString(_languageKey) == 'en';
+      _mathematicalMode = preferences.getBool(_mathModeKey) ?? true;
+      _preferencesLoaded = true;
     });
   }
 
+  Future<void> _setThemeMode(ThemeMode value) async {
+    setState(() => _themeMode = value);
+    await (await SharedPreferences.getInstance()).setString(
+      _themeKey,
+      switch (value) {
+        ThemeMode.light => 'light',
+        ThemeMode.dark => 'dark',
+        ThemeMode.system => 'system',
+      },
+    );
+  }
+
+  Future<void> _setLanguage(bool english) async {
+    setState(() => _isEnglish = english);
+    await (await SharedPreferences.getInstance()).setString(
+      _languageKey,
+      english ? 'en' : 'zh',
+    );
+  }
+
+  Future<void> _setMathematicalMode(bool value) async {
+    setState(() => _mathematicalMode = value);
+    await (await SharedPreferences.getInstance()).setBool(_mathModeKey, value);
+  }
+
   @override
-  Widget build(BuildContext context) => Stack(
-    fit: StackFit.expand,
-    children: [
-      const ExampleMenu(),
-      if (_splashVisible)
-        OrbitingMathSplash(
-          progress: _progress,
-          onTransitionComplete: () {
-            if (mounted) setState(() => _splashVisible = false);
-          },
-        ),
-    ],
+  Widget build(BuildContext context) => MaterialApp(
+    title: _isEnglish ? 'Visual Math' : '数学绘图',
+    themeMode: _themeMode,
+    theme: ThemeData(
+      colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
+      useMaterial3: true,
+    ),
+    darkTheme: ThemeData(
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: Colors.teal,
+        brightness: Brightness.dark,
+      ),
+      useMaterial3: true,
+    ),
+    home: _preferencesLoaded
+        ? _VisualMathShell(
+            isEnglish: _isEnglish,
+            themeMode: _themeMode,
+            mathematicalMode: _mathematicalMode,
+            onThemeModeChanged: _setThemeMode,
+            onLanguageChanged: _setLanguage,
+            onMathematicalModeChanged: _setMathematicalMode,
+          )
+        : const Scaffold(body: Center(child: CircularProgressIndicator())),
   );
+}
+
+class _VisualMathShell extends StatefulWidget {
+  const _VisualMathShell({
+    required this.isEnglish,
+    required this.themeMode,
+    required this.mathematicalMode,
+    required this.onThemeModeChanged,
+    required this.onLanguageChanged,
+    required this.onMathematicalModeChanged,
+  });
+
+  final bool isEnglish;
+  final ThemeMode themeMode;
+  final bool mathematicalMode;
+  final ValueChanged<ThemeMode> onThemeModeChanged;
+  final ValueChanged<bool> onLanguageChanged;
+  final ValueChanged<bool> onMathematicalModeChanged;
+
+  @override
+  State<_VisualMathShell> createState() => _VisualMathShellState();
+}
+
+class _VisualMathShellState extends State<_VisualMathShell> {
+  static const _breakpoint = 720.0;
+  int _selectedIndex = 0;
+
+  List<String> get _destinations => widget.isEnglish
+      ? const ['Home', 'Files', 'Settings']
+      : const ['主页', '文件', '设置'];
+
+  @override
+  Widget build(BuildContext context) {
+    final wide = MediaQuery.sizeOf(context).width >= _breakpoint;
+    final titles = _destinations;
+    final pages = [
+      _HomeDestination(
+        isEnglish: widget.isEnglish,
+        mathematicalMode: widget.mathematicalMode,
+        onMathematicalModeChanged: widget.onMathematicalModeChanged,
+      ),
+      _FilesDestination(isEnglish: widget.isEnglish),
+      _SettingsDestination(
+        isEnglish: widget.isEnglish,
+        isActive: _selectedIndex == 2,
+        themeMode: widget.themeMode,
+        mathematicalMode: widget.mathematicalMode,
+        onThemeModeChanged: widget.onThemeModeChanged,
+        onLanguageChanged: widget.onLanguageChanged,
+        onMathematicalModeChanged: widget.onMathematicalModeChanged,
+      ),
+    ];
+    final content = IndexedStack(index: _selectedIndex, children: pages);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(titles[_selectedIndex]),
+        actions: _selectedIndex == 0
+            ? [
+                IconButton(
+                  tooltip: widget.isEnglish ? 'Examples' : '示例',
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const ExampleMenu(),
+                    ),
+                  ),
+                  icon: const Icon(Icons.widgets_outlined),
+                ),
+              ]
+            : null,
+      ),
+      body: Row(
+        children: [
+          if (wide) ...[
+            NavigationRail(
+              selectedIndex: _selectedIndex,
+              onDestinationSelected: (index) =>
+                  setState(() => _selectedIndex = index),
+              labelType: NavigationRailLabelType.all,
+              destinations: [
+                NavigationRailDestination(
+                  icon: const Icon(Icons.home_outlined),
+                  selectedIcon: const Icon(Icons.home),
+                  label: Text(titles[0]),
+                ),
+                NavigationRailDestination(
+                  icon: const Icon(Icons.folder_outlined),
+                  selectedIcon: const Icon(Icons.folder),
+                  label: Text(titles[1]),
+                ),
+                NavigationRailDestination(
+                  icon: const Icon(Icons.settings_outlined),
+                  selectedIcon: const Icon(Icons.settings),
+                  label: Text(titles[2]),
+                ),
+              ],
+            ),
+            const VerticalDivider(width: 1),
+          ],
+          Expanded(key: const ValueKey('destination-pages'), child: content),
+        ],
+      ),
+      bottomNavigationBar: wide
+          ? null
+          : NavigationBar(
+              selectedIndex: _selectedIndex,
+              onDestinationSelected: (index) =>
+                  setState(() => _selectedIndex = index),
+              destinations: [
+                NavigationDestination(
+                  icon: const Icon(Icons.home_outlined),
+                  selectedIcon: const Icon(Icons.home),
+                  label: titles[0],
+                ),
+                NavigationDestination(
+                  icon: const Icon(Icons.folder_outlined),
+                  selectedIcon: const Icon(Icons.folder),
+                  label: titles[1],
+                ),
+                NavigationDestination(
+                  icon: const Icon(Icons.settings_outlined),
+                  selectedIcon: const Icon(Icons.settings),
+                  label: titles[2],
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+class _HomeDestination extends StatelessWidget {
+  const _HomeDestination({
+    required this.isEnglish,
+    required this.mathematicalMode,
+    required this.onMathematicalModeChanged,
+  });
+
+  final bool isEnglish;
+  final bool mathematicalMode;
+  final ValueChanged<bool> onMathematicalModeChanged;
+
+  @override
+  Widget build(BuildContext context) => MathDrawingPage(
+    initialMathematicalMode: mathematicalMode,
+    onMathematicalModeChanged: onMathematicalModeChanged,
+    options: MathWorkspaceOptions(
+      persistence: const MathWorkspacePersistence(enabled: false),
+      showScaffold: false,
+      showAppBar: false,
+      presentation: MathWorkspacePresentation(
+        labels: MathWorkspaceLabels(
+          pageTitle: isEnglish ? 'Graphs' : '数学绘图',
+          addFormula: isEnglish ? 'Add formula' : '添加公式',
+          view2D: isEnglish ? 'Graphs' : '图像',
+          view3D: isEnglish ? 'Geometry' : '几何',
+          removeFormulaTitle: isEnglish ? 'Remove formula' : '删除公式',
+          confirmRemoveFormula: isEnglish
+              ? 'Remove formula {index}?'
+              : '确定要删除"公式 {index}"吗？',
+          selectColorTitle: isEnglish ? 'Select color' : '选择颜色',
+          cancel: isEnglish ? 'Cancel' : '取消',
+          removeFormula: isEnglish ? 'Remove' : '删除',
+          removeFormulaTooltip: isEnglish ? 'Remove formula' : '删除公式',
+          hideFormula: isEnglish ? 'Hide formula' : '隐藏公式',
+          showFormula: isEnglish ? 'Show formula' : '显示公式',
+          plotFormula: isEnglish ? 'Plot' : '绘制',
+          fit2DCanvas: isEnglish ? 'Fit graph' : '缩放至适合',
+          zoomIn: isEnglish ? 'Zoom in' : '放大',
+          zoomOut: isEnglish ? 'Zoom out' : '缩小',
+          formulaLabel: isEnglish ? 'Formula {index}' : '公式 {index}',
+          formulaColorLabel: isEnglish
+              ? 'Formula color {index}'
+              : '公式颜色 {index}',
+          translate: isEnglish ? _englishWorkspaceLabel : null,
+        ),
+        responsiveBreakpoint: 720,
+      ),
+    ),
+  );
+}
+
+class _FilesDestination extends StatelessWidget {
+  const _FilesDestination({required this.isEnglish});
+
+  final bool isEnglish;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Text(
+      isEnglish ? 'Files will be available here.' : '文件功能后续开放',
+      style: Theme.of(context).textTheme.titleMedium,
+    ),
+  );
+}
+
+class _SettingsDestination extends StatefulWidget {
+  const _SettingsDestination({
+    required this.isEnglish,
+    required this.isActive,
+    required this.themeMode,
+    required this.mathematicalMode,
+    required this.onThemeModeChanged,
+    required this.onLanguageChanged,
+    required this.onMathematicalModeChanged,
+  });
+
+  final bool isEnglish;
+  final bool isActive;
+  final ThemeMode themeMode;
+  final bool mathematicalMode;
+  final ValueChanged<ThemeMode> onThemeModeChanged;
+  final ValueChanged<bool> onLanguageChanged;
+  final ValueChanged<bool> onMathematicalModeChanged;
+
+  @override
+  State<_SettingsDestination> createState() => _SettingsDestinationState();
+}
+
+class _SettingsDestinationState extends State<_SettingsDestination> {
+  static const _mathModeKey = 'math_drawing_mathematical_input';
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshMathematicalMode();
+  }
+
+  @override
+  void didUpdateWidget(_SettingsDestination oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.isActive && widget.isActive) _refreshMathematicalMode();
+  }
+
+  Future<void> _refreshMathematicalMode() async {
+    final preferences = await SharedPreferences.getInstance();
+    final value = preferences.getBool(_mathModeKey) ?? widget.mathematicalMode;
+    if (mounted && value != widget.mathematicalMode) {
+      widget.onMathematicalModeChanged(value);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isEnglish = widget.isEnglish;
+    final theme = Theme.of(context);
+    return ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        Text(
+          isEnglish ? 'Appearance' : '外观',
+          style: theme.textTheme.titleLarge,
+        ),
+        const SizedBox(height: 8),
+        SegmentedButton<ThemeMode>(
+          segments: [
+            ButtonSegment(
+              value: ThemeMode.system,
+              label: Text(isEnglish ? 'System' : '跟随系统'),
+            ),
+            ButtonSegment(
+              value: ThemeMode.light,
+              label: Text(isEnglish ? 'Light' : '浅色'),
+            ),
+            ButtonSegment(
+              value: ThemeMode.dark,
+              label: Text(isEnglish ? 'Dark' : '深色'),
+            ),
+          ],
+          selected: {widget.themeMode},
+          onSelectionChanged: (selection) =>
+              widget.onThemeModeChanged(selection.first),
+        ),
+        const SizedBox(height: 24),
+        Text(isEnglish ? 'Language' : '语言', style: theme.textTheme.titleLarge),
+        RadioGroup<bool>(
+          groupValue: isEnglish,
+          onChanged: (value) {
+            if (value != null) widget.onLanguageChanged(value);
+          },
+          child: Column(
+            children: [
+              RadioListTile<bool>(value: false, title: const Text('中文')),
+              RadioListTile<bool>(value: true, title: const Text('English')),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        Text(
+          isEnglish ? 'Math input' : '数学输入',
+          style: theme.textTheme.titleLarge,
+        ),
+        RadioGroup<bool>(
+          groupValue: widget.mathematicalMode,
+          onChanged: (value) {
+            if (value != null) widget.onMathematicalModeChanged(value);
+          },
+          child: Column(
+            children: [
+              RadioListTile<bool>(
+                value: true,
+                title: Text(isEnglish ? 'Math editor' : '数学编辑器'),
+              ),
+              RadioListTile<bool>(
+                value: false,
+                title: Text(isEnglish ? 'Text input' : '文本输入'),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class ExampleMenu extends StatelessWidget {
