@@ -1925,42 +1925,13 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                   ),
                 )
               else ...[
-                DropdownButton<String>(
-                  isExpanded: true,
-                  value: selected?.identity,
-                  items: [
-                    for (final formula in formulas)
-                      DropdownMenuItem(
-                        value: formula.identity,
-                        child: Text(
-                          formula.rawExpression,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                  ],
-                  onChanged: (identity) => setState(() {
-                    _analysisFormulaIdentity = identity;
-                  }),
-                ),
-                Row(
-                  children: [
-                    const Text('x = '),
-                    SizedBox(
-                      width: 105,
-                      child: TextField(
-                        controller: _analysisXController,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                          signed: true,
-                        ),
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          hintText: '分析位置',
-                        ),
-                        onChanged: (_) => setState(() {}),
-                      ),
-                    ),
-                  ],
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: _openLocalAnalysisDialog,
+                    icon: const Icon(Icons.tune, size: 18),
+                    label: const Text('选择函数与分析位置'),
+                  ),
                 ),
                 const SizedBox(height: 6),
                 Text(
@@ -2000,6 +1971,82 @@ class _MathDrawingPageState extends State<MathDrawingPage>
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Future<void> _openLocalAnalysisDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, refreshDialog) {
+          final formulas = _analysisFormulas;
+          final selected = _selectedAnalysisFormula;
+          return AlertDialog(
+            title: const Text('导数与局部性质'),
+            content: SizedBox(
+              width: 320,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  DropdownButton<String>(
+                    isExpanded: true,
+                    value: selected?.identity,
+                    items: [
+                      for (final formula in formulas)
+                        DropdownMenuItem(
+                          value: formula.identity,
+                          child: Text(
+                            formula.rawExpression,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                    onChanged: (identity) {
+                      setState(() => _analysisFormulaIdentity = identity);
+                      refreshDialog(() {});
+                    },
+                  ),
+                  Row(
+                    children: [
+                      const Text('x = '),
+                      SizedBox(
+                        width: 120,
+                        child: TextField(
+                          controller: _analysisXController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                            signed: true,
+                          ),
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            hintText: '分析位置',
+                          ),
+                          onChanged: (_) {
+                            setState(() {});
+                            refreshDialog(() {});
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '数值结果显示在画布左上角；切线与法线会同步绘制。',
+                    style: Theme.of(dialogContext).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('完成'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
