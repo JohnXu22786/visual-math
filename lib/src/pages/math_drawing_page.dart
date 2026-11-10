@@ -10,7 +10,8 @@ import '../models/math_3d_scene.dart';
 import '../models/math_3d_tool.dart';
 import '../models/math_drawing_controller.dart';
 import '../models/math_drawing_state.dart';
-import '../models/math_expression.dart' show MathExpression;
+import '../models/math_expression.dart' show MathExpression, MathExpressionType;
+import '../models/math_local_analysis.dart';
 import '../models/math_expression_3d.dart';
 import '../models/math_parameter.dart';
 import '../models/formula_entry.dart';
@@ -79,6 +80,9 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   /// All formula rows (each is equal).
   final List<_FormulaState> _formulas = [];
   final ScrollController _formulaScroll = ScrollController();
+  final TextEditingController _analysisXController = TextEditingController(
+    text: '0',
+  );
   _FormulaState? _activeFormula;
   bool _mathMode = true;
   bool _keyboardVisible = false;
@@ -87,6 +91,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   final Map<String, MathParameter> _parameters = {};
   Set<String> _activeParameterNames = {};
   List<FormulaEntry> _plottedFormulas = [];
+  String? _analysisFormulaIdentity;
   String? _plotError;
   List<Object3D> _lastReportedScene = const [];
 
@@ -196,6 +201,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       f.domainMaxController.dispose();
     }
     _formulaScroll.dispose();
+    _analysisXController.dispose();
     _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     widget.controller?.detach();
@@ -730,6 +736,12 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         _parameters.putIfAbsent(name, MathParameter.new);
       }
       _plottedFormulas = entries;
+      if (!entries.any((entry) => entry.identity == _analysisFormulaIdentity)) {
+        _analysisFormulaIdentity = entries
+            .where((entry) => entry.parsed?.type == MathExpressionType.explicit)
+            .firstOrNull
+            ?.identity;
+      }
       for (final f in _formulas) {
         f.committedText = f.controller.text.trim();
       }
@@ -780,6 +792,9 @@ class _MathDrawingPageState extends State<MathDrawingPage>
               _resolveDomainEndpoint(entry.domainMaxExpression) == null,
         ),
     ];
+    if (mounted) {
+      setState(() => _plottedFormulas = entries);
+    }
     _canvasKey.currentState?.setFormulas(entries);
   }
 
@@ -1723,6 +1738,9 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                 child: MathCanvas(
                   key: _canvasKey,
                   initialExpression: null,
+                  localAnalysis: _selectedLocalDerivative,
+                  localAnalysisColor:
+                      _selectedAnalysisFormula?.color ?? Colors.deepOrange,
                   allowTouchGestures: widget
                       .options
                       .presentation
@@ -1740,6 +1758,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                   onViewportChange: (_, __, ___, ____) {
                     _syncController();
                     widget.controller?.onViewportChanged?.call(_makeSnapshot());
+                    if (mounted) setState(() {});
                   },
                   onError: (msg) {
                     debugPrint('[MathDrawing] Canvas error: $msg');
@@ -1765,7 +1784,269 @@ class _MathDrawingPageState extends State<MathDrawingPage>
             widget.options.canvas2DOverlayBuilder,
             defaultOverlay,
           ),
+          Positioned(left: 8, top: 8, child: _buildLocalAnalysisPanel(cs)),
         ],
+      ),
+    );
+  }
+
+  List<FormulaEntry> get _analysisFormulas => _plottedFormulas
+      .where(
+        (formula) =>
+            formula.visible &&
+            formula.parsed?.type == MathExpressionType.explicit,
+      )
+      .toList(growable: false);
+
+  FormulaEntry? get _selectedAnalysisFormula {
+    final formulas = _analysisFormulas;
+    for (final formula in formulas) {
+      if (formula.identity == _analysisFormulaIdentity) return formula;
+    }
+    return formulas.firstOrNull;
+  }
+
+  LocalDerivativeResult? get _selectedLocalDerivative {
+    final formula = _selectedAnalysisFormula;
+    final x = double.tryParse(_analysisXController.text.trim());
+    final expression = formula?.parsed;
+    if (formula == null || expression == null || x == null || !x.isFinite) {
+      return null;
+    }
+    final unresolvedDomain =
+        (formula.domainMinExpression.isNotEmpty && formula.domainMin == null) ||
+        (formula.domainMaxExpression.isNotEmpty && formula.domainMax == null);
+    if (unresolvedDomain) {
+      return LocalDerivativeResult(
+        x: x,
+        y: null,
+        derivative: null,
+        secondDerivative: null,
+        status: LocalDerivativeStatus.undefined,
+        step: 0,
+      );
+    }
+    if ((formula.domainMin != null &&
+            (x < formula.domainMin! ||
+                (x == formula.domainMin && !formula.includeDomainMin))) ||
+        (formula.domainMax != null &&
+            (x > formula.domainMax! ||
+                (x == formula.domainMax && !formula.includeDomainMax)))) {
+      return LocalDerivativeResult(
+        x: x,
+        y: null,
+        derivative: null,
+        secondDerivative: null,
+        status: LocalDerivativeStatus.undefined,
+        step: 0,
+      );
+    }
+    return MathLocalAnalysis.derivativeAt(
+      expression,
+      x,
+      domainMin: formula.domainMin,
+      domainMax: formula.domainMax,
+    );
+  }
+
+  Widget _buildLocalAnalysisPanel(ColorScheme colorScheme) {
+    final formulas = _analysisFormulas;
+    final selected = _selectedAnalysisFormula;
+    final result = _selectedLocalDerivative;
+    final panelWidth = dart_math
+        .max(180, dart_math.min(300, MediaQuery.sizeOf(context).width - 32))
+        .toDouble();
+    final unresolvedDomain =
+        selected != null &&
+        ((selected.domainMinExpression.isNotEmpty &&
+                selected.domainMin == null) ||
+            (selected.domainMaxExpression.isNotEmpty &&
+                selected.domainMax == null));
+    final visibleBounds = _canvasKey.currentState?.visibleBounds;
+    final criticalPoints = selected?.parsed == null || unresolvedDomain
+        ? const <LocalCriticalPoint>[]
+        : MathLocalAnalysis.criticalPoints(
+                selected!.parsed!,
+                xMin: dart_math
+                    .max(
+                      _canvasKey.currentState?.viewport.$1 ?? -10,
+                      selected.domainMin ?? double.negativeInfinity,
+                    )
+                    .toDouble(),
+                xMax: dart_math
+                    .min(
+                      _canvasKey.currentState?.viewport.$3 ?? 10,
+                      selected.domainMax ?? double.infinity,
+                    )
+                    .toDouble(),
+              )
+              .where(
+                (point) =>
+                    visibleBounds == null ||
+                    (point.y >= visibleBounds.$2 &&
+                        point.y <= visibleBounds.$4),
+              )
+              .toList();
+    String derivativeDescription() {
+      if (result == null) return '请输入有限的 x 值';
+      return switch (result.status) {
+        LocalDerivativeStatus.estimated =>
+          'f(${result.x}) ≈ ${result.y!.toStringAsPrecision(5)}，f′(${result.x}) ≈ ${result.derivative!.toStringAsPrecision(5)}',
+        LocalDerivativeStatus.undefined => '该点附近函数值未定义或超出定义域',
+        LocalDerivativeStatus.possibleVerticalTangent => '数值样本提示可能存在竖直切线',
+        LocalDerivativeStatus.unstable => '附近采样不稳定，无法可靠估计导数',
+      };
+    }
+
+    String criticalLabel(LocalCriticalPoint point) => switch (point.kind) {
+      LocalCriticalPointKind.localMinimum => '局部极小值',
+      LocalCriticalPointKind.localMaximum => '局部极大值',
+      LocalCriticalPointKind.possibleStationaryInflection => '可能的驻点拐点',
+    };
+
+    return SizedBox(
+      width: panelWidth,
+      child: Card(
+        color: colorScheme.surface.withValues(alpha: 0.96),
+        elevation: 3,
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('导数与局部性质', style: Theme.of(context).textTheme.titleSmall),
+              if (formulas.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    '绘制显式函数后可分析导数与临界点。',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                )
+              else ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: _openLocalAnalysisDialog,
+                    icon: const Icon(Icons.tune, size: 18),
+                    label: const Text('选择函数与分析位置'),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  derivativeDescription(),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                Text(
+                  result?.hasFiniteTangent == true
+                      ? '切线与法线为步长 ${result!.step.toStringAsPrecision(2)} 的数值估计。'
+                      : result?.status ==
+                            LocalDerivativeStatus.possibleVerticalTangent
+                      ? '步长 ${result!.step.toStringAsPrecision(2)} 的样本提示可能存在竖直切线。'
+                      : '导数未能可靠估计，切线与法线不可用。',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                if (criticalPoints.isNotEmpty) ...[
+                  const Divider(height: 12),
+                  Text(
+                    '当前视窗内的采样分类',
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 72),
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        for (final point in criticalPoints)
+                          Text(
+                            '${criticalLabel(point)}：x ≈ ${point.x.toStringAsPrecision(4)}, y ≈ ${point.y.toStringAsPrecision(4)}',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openLocalAnalysisDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, refreshDialog) {
+          final formulas = _analysisFormulas;
+          final selected = _selectedAnalysisFormula;
+          return AlertDialog(
+            title: const Text('导数与局部性质'),
+            content: SizedBox(
+              width: 320,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  DropdownButton<String>(
+                    isExpanded: true,
+                    value: selected?.identity,
+                    items: [
+                      for (final formula in formulas)
+                        DropdownMenuItem(
+                          value: formula.identity,
+                          child: Text(
+                            formula.rawExpression,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                    onChanged: (identity) {
+                      setState(() => _analysisFormulaIdentity = identity);
+                      refreshDialog(() {});
+                    },
+                  ),
+                  Row(
+                    children: [
+                      const Text('x = '),
+                      SizedBox(
+                        width: 120,
+                        child: TextField(
+                          controller: _analysisXController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                            signed: true,
+                          ),
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            hintText: '分析位置',
+                          ),
+                          onChanged: (_) {
+                            setState(() {});
+                            refreshDialog(() {});
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '数值结果显示在画布左上角；切线与法线会同步绘制。',
+                    style: Theme.of(dialogContext).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('完成'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
