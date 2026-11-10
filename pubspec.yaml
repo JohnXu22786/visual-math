@@ -1,6 +1,6 @@
 name: visual_math
 description: 2D graphing and 3D geometry math models, editors, and rendering widgets.
-version: 0.1.1
+version: 0.1.2
 repository: https://github.com/JohnXu22786/visual-math
 homepage: https://github.com/JohnXu22786/visual-math
 license: AGPL-3.0-only
