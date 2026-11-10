@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/math_3d_object.dart';
 import '../models/math_3d_scene.dart';
 import '../models/math_3d_tool.dart';
+import '../models/definite_integral.dart';
 import '../models/math_drawing_controller.dart';
 import '../models/math_drawing_state.dart';
 import '../models/math_expression.dart' show MathExpression, MathExpressionType;
@@ -1660,6 +1661,11 @@ class _MathDrawingPageState extends State<MathDrawingPage>
               mainAxisSize: MainAxisSize.min,
               children: [
                 _floatingControl(
+                  icon: Icons.area_chart,
+                  tooltip: '定积分与面积',
+                  onPressed: _showDefiniteIntegralDialog,
+                ),
+                _floatingControl(
                   icon: Icons.filter_center_focus,
                   tooltip: widget.options.presentation.labels.resolve(
                     widget.options.presentation.labels.fit2DCanvas,
@@ -2088,6 +2094,275 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         ),
       ),
     );
+  }
+
+  Future<void> _showDefiniteIntegralDialog() async {
+    final functions = _plottedFormulas
+        .where(
+          (entry) =>
+              entry.parsed?.isValid == true &&
+              entry.parsed!.type == MathExpressionType.explicit,
+        )
+        .map((entry) {
+          final values = {
+            for (final name in entry.parsed!.parameters)
+              if (_parameters.containsKey(name)) name: _parameters[name]!.value,
+          };
+          final lower = _resolveDomainEndpoint(entry.domainMinExpression);
+          final upper = _resolveDomainEndpoint(entry.domainMaxExpression);
+          return entry.copyWith(
+            parsed: entry.parsed!.withParameters(values),
+            parameterValues: values,
+            domainMin: lower,
+            domainMax: upper,
+            clearDomainMin:
+                entry.domainMinExpression.isNotEmpty && lower == null,
+            clearDomainMax:
+                entry.domainMaxExpression.isNotEmpty && upper == null,
+          );
+        })
+        .toList();
+    if (functions.isEmpty) {
+      _showError('请先绘制至少一个显式函数，再计算定积分。');
+      return;
+    }
+
+    final lowerController = TextEditingController(text: '0');
+    final upperController = TextEditingController(text: '1');
+    var kind = DefiniteIntegralKind.signedIntegral;
+    var firstIndex = 0;
+    var secondIndex = functions.length > 1 ? 1 : 0;
+    DefiniteIntegralResult? result;
+    String? inputError;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final labels = widget.options.presentation.labels;
+          Widget functionPicker(
+            String title,
+            int selected,
+            ValueChanged<int> onChanged,
+          ) => DropdownButtonFormField<int>(
+            initialValue: selected,
+            decoration: InputDecoration(labelText: title),
+            items: [
+              for (var i = 0; i < functions.length; i++)
+                DropdownMenuItem(
+                  value: i,
+                  child: Text(functions[i].rawExpression),
+                ),
+            ],
+            onChanged: (value) {
+              if (value != null) onChanged(value);
+            },
+          );
+
+          return widget.options.presentation.buildDialog(
+            dialogContext,
+            AlertDialog(
+              title: const Text('定积分与面积'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    DropdownButtonFormField<DefiniteIntegralKind>(
+                      initialValue: kind,
+                      decoration: const InputDecoration(labelText: '计算类型'),
+                      items: const [
+                        DropdownMenuItem(
+                          value: DefiniteIntegralKind.signedIntegral,
+                          child: Text('定积分（带符号）'),
+                        ),
+                        DropdownMenuItem(
+                          value: DefiniteIntegralKind.areaUnderCurve,
+                          child: Text('曲线与 x 轴围成的面积'),
+                        ),
+                        DropdownMenuItem(
+                          value: DefiniteIntegralKind.areaBetweenCurves,
+                          child: Text('两曲线之间的面积'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) {
+                          setDialogState(() {
+                            kind = value;
+                            result = null;
+                            inputError = null;
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    functionPicker('函数', firstIndex, (value) {
+                      setDialogState(() {
+                        firstIndex = value;
+                        result = null;
+                      });
+                    }),
+                    if (kind == DefiniteIntegralKind.areaBetweenCurves) ...[
+                      const SizedBox(height: 8),
+                      functionPicker('第二个函数', secondIndex, (value) {
+                        setDialogState(() {
+                          secondIndex = value;
+                          result = null;
+                        });
+                      }),
+                    ],
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: lowerController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                              signed: true,
+                            ),
+                            decoration: const InputDecoration(labelText: '下限'),
+                            onChanged: (_) => setDialogState(() {
+                              result = null;
+                              inputError = null;
+                            }),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: upperController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                              signed: true,
+                            ),
+                            decoration: const InputDecoration(labelText: '上限'),
+                            onChanged: (_) => setDialogState(() {
+                              result = null;
+                              inputError = null;
+                            }),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (inputError != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        inputError!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ],
+                    if (result != null) ...[
+                      const SizedBox(height: 12),
+                      _buildIntegralResult(result!),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text(labels.resolve(labels.cancel)),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final lower = double.tryParse(lowerController.text.trim());
+                    final upper = double.tryParse(upperController.text.trim());
+                    if (lower == null ||
+                        upper == null ||
+                        !lower.isFinite ||
+                        !upper.isFinite ||
+                        upper <= lower) {
+                      setDialogState(() {
+                        inputError = '请输入有限数值，且下限必须小于上限。';
+                        result = null;
+                      });
+                      return;
+                    }
+                    final first = functions[firstIndex];
+                    final second =
+                        kind == DefiniteIntegralKind.areaBetweenCurves
+                        ? functions[secondIndex]
+                        : null;
+                    final domainMessage =
+                        _integralDomainError(first, lower, upper) ??
+                        (second == null
+                            ? null
+                            : _integralDomainError(second, lower, upper));
+                    if (domainMessage != null) {
+                      setDialogState(() {
+                        inputError = domainMessage;
+                        result = null;
+                      });
+                      return;
+                    }
+                    setDialogState(() {
+                      inputError = null;
+                      result = calculateDefiniteIntegral(
+                        function: first.parsed!,
+                        secondFunction: second?.parsed,
+                        parameterValues: first.parameterValues,
+                        secondParameterValues:
+                            second?.parameterValues ?? const {},
+                        kind: kind,
+                        lowerBound: lower,
+                        upperBound: upper,
+                      );
+                    });
+                  },
+                  child: const Text('计算'),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    lowerController.dispose();
+    upperController.dispose();
+  }
+
+  String? _integralDomainError(
+    FormulaEntry formula,
+    double lower,
+    double upper,
+  ) {
+    if (formula.domainMin != null && lower < formula.domainMin!) {
+      return '积分区间超出函数 ${formula.rawExpression} 的定义域。';
+    }
+    if (formula.domainMax != null && upper > formula.domainMax!) {
+      return '积分区间超出函数 ${formula.rawExpression} 的定义域。';
+    }
+    if (formula.domainMin != null &&
+        lower == formula.domainMin &&
+        !formula.includeDomainMin) {
+      return '积分下限位于函数 ${formula.rawExpression} 未包含的定义域端点。';
+    }
+    if (formula.domainMax != null &&
+        upper == formula.domainMax &&
+        !formula.includeDomainMax) {
+      return '积分上限位于函数 ${formula.rawExpression} 未包含的定义域端点。';
+    }
+    return null;
+  }
+
+  Widget _buildIntegralResult(DefiniteIntegralResult result) {
+    final message = switch (result.status) {
+      DefiniteIntegralStatus.converged =>
+        '结果：${result.value!.toStringAsPrecision(10)}\n估计绝对误差：${result.estimatedAbsoluteError.toStringAsPrecision(3)}',
+      DefiniteIntegralStatus.didNotConverge =>
+        !result.estimatedAbsoluteError.isFinite
+            ? '表达式可能包含未采样的间断或未解析的快速振荡，无法确认区间有效性或误差。${result.value == null ? '未提供数值估计。' : '当前数值仅供参考：${result.value!.toStringAsPrecision(10)}'}'
+            : '未达到误差要求。当前估计：${result.value!.toStringAsPrecision(10)}\n估计绝对误差：${result.estimatedAbsoluteError.toStringAsPrecision(3)}',
+      DefiniteIntegralStatus.invalidFunction => '函数在区间内包含无效或非有限取值，无法给出可靠结果。',
+      DefiniteIntegralStatus.numericalOverflow => '积分估计超出可表示的数值范围，无法给出有限结果。',
+      DefiniteIntegralStatus.invalidBounds => '积分上下限无效。',
+      DefiniteIntegralStatus.invalidOptions => '数值积分设置无效。',
+      DefiniteIntegralStatus.invalidExpression => '请选择有效的显式函数。',
+    };
+    return Text(message, style: Theme.of(context).textTheme.bodyMedium);
   }
 
   // ==================================================================

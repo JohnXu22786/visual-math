@@ -8,6 +8,7 @@
 library visual_math;
 
 export 'src/models/formula_entry.dart';
+export 'src/models/definite_integral.dart';
 export 'src/models/math_3d_construction.dart';
 export 'src/models/math_3d_object.dart';
 export 'src/models/math_3d_scene.dart';
