@@ -43,7 +43,7 @@ class DefiniteIntegralResult {
   /// Estimated absolute error from the adaptive Simpson refinement.
   final double estimatedAbsoluteError;
 
-  /// Number of function evaluations used.
+  /// Number of underlying function evaluations used by quadrature estimates.
   final int evaluationCount;
 
   /// Whether the estimate met its tolerance or why it did not.
@@ -64,13 +64,14 @@ class DefiniteIntegralResult {
 ///
 /// Adaptive Simpson refinement estimates the value and its absolute error.
 /// Four differently sized initial partitions are compared before convergence
-/// is reported, which reduces false convergence from sampled-out oscillations. For
+/// is reported, which reduces false convergence from sampled-out oscillations.
+/// Trigonometric phases are also checked on uniform and off-grid samples. For
 /// geometric areas, the integrand is the absolute function value or absolute
 /// difference of the two functions. This is a numerical method, not a proof
 /// that an arbitrary expression has no unsampled discontinuities. Possible
-/// denominator zeros are checked over the selected interval; known discontinuous
-/// constructs are reported as inconclusive because finite sampling cannot rule
-/// out every unsampled discontinuity.
+/// denominator zeros are checked over the selected interval; possible
+/// discontinuities and unresolved oscillations are reported as inconclusive
+/// because finite sampling cannot rule them all out.
 ///
 /// [parameterValues] and [secondParameterValues] provide values used while
 /// checking parameterized denominators. The supplied expressions should also
@@ -136,6 +137,29 @@ DefiniteIntegralResult calculateDefiniteIntegral({
     };
     if (!value.isFinite) throw const _InvalidSample();
     return value;
+  }
+
+  final unresolvedOscillation =
+      _hasUnresolvedTrigOscillation(
+        function.normalizedExpression,
+        lowerBound,
+        upperBound,
+        parameterValues,
+      ) ||
+      (kind == DefiniteIntegralKind.areaBetweenCurves &&
+          _hasUnresolvedTrigOscillation(
+            secondFunction!.normalizedExpression,
+            lowerBound,
+            upperBound,
+            secondParameterValues,
+          ));
+  if (unresolvedOscillation) {
+    return const DefiniteIntegralResult(
+      value: null,
+      estimatedAbsoluteError: double.infinity,
+      evaluationCount: 0,
+      status: DefiniteIntegralStatus.didNotConverge,
+    );
   }
 
   try {
@@ -250,13 +274,110 @@ bool _mayHaveUnsampledSingularity(
         upperBound,
         parameterValues,
       ) ||
-      _hasUnresolvedTrigOscillation(
+      _hasSampledModuloDiscontinuity(
         source,
         lowerBound,
         upperBound,
         parameterValues,
       ) ||
       _hasSampledRoundingJump(source, lowerBound, upperBound, parameterValues);
+}
+
+bool _hasSampledModuloDiscontinuity(
+  String source,
+  double lowerBound,
+  double upperBound,
+  Map<String, double> parameterValues,
+) {
+  for (
+    var modulo = source.indexOf('%');
+    modulo >= 0;
+    modulo = source.indexOf('%', modulo + 1)
+  ) {
+    final depthAtModulo = _parenthesisDepth(source, modulo);
+    var start = modulo - 1;
+    var depth = depthAtModulo;
+    while (start >= 0) {
+      final character = source[start];
+      if (character == ')') depth++;
+      if (character == '(') {
+        if (depth == depthAtModulo) break;
+        depth--;
+      }
+      if (depth == depthAtModulo &&
+          (character == '+' || character == '-' || character == ',')) {
+        break;
+      }
+      start--;
+    }
+    start++;
+
+    var end = modulo + 1;
+    depth = depthAtModulo;
+    while (end < source.length) {
+      final character = source[end];
+      if (character == '(') depth++;
+      if (character == ')') {
+        if (depth == depthAtModulo) break;
+        depth--;
+      }
+      if (depth == depthAtModulo &&
+          (character == '+' ||
+              character == '-' ||
+              character == '*' ||
+              character == '/' ||
+              character == '%' ||
+              character == ',')) {
+        break;
+      }
+      end++;
+    }
+
+    final left = MathExpression.fromInput(source.substring(start, modulo));
+    final right = MathExpression.fromInput(source.substring(modulo + 1, end));
+    if (!left.isValid ||
+        left.type != MathExpressionType.explicit ||
+        !right.isValid ||
+        right.type != MathExpressionType.explicit ||
+        left.parameters.any(
+          (name) => name != 'x' && !parameterValues.containsKey(name),
+        ) ||
+        right.parameters.any(
+          (name) => name != 'x' && !parameterValues.containsKey(name),
+        )) {
+      return true;
+    }
+
+    final leftEvaluator = left.withParameters(parameterValues).evaluator;
+    final rightEvaluator = right.withParameters(parameterValues).evaluator;
+    final step = (upperBound - lowerBound) / 1024;
+    int? previousQuotient;
+    try {
+      for (var i = 0; i <= 1024; i++) {
+        final x = lowerBound + step * i;
+        final divisor = rightEvaluator(x);
+        final ratio = leftEvaluator(x) / divisor;
+        if (!ratio.isFinite || divisor == 0) return true;
+        final quotient = ratio.truncate();
+        if (previousQuotient != null && quotient != previousQuotient) {
+          return true;
+        }
+        previousQuotient = quotient;
+      }
+    } catch (_) {
+      return true;
+    }
+  }
+  return false;
+}
+
+int _parenthesisDepth(String source, int end) {
+  var depth = 0;
+  for (var i = 0; i < end; i++) {
+    if (source[i] == '(') depth++;
+    if (source[i] == ')') depth--;
+  }
+  return depth;
 }
 
 bool _hasUnresolvedTrigOscillation(
@@ -289,15 +410,30 @@ bool _hasUnresolvedTrigOscillation(
     ))
       return true;
     final evaluator = argument.withParameters(parameterValues).evaluator;
-    const samples = 1024;
-    final step = (upperBound - lowerBound) / samples;
+    // Keep the phase scan dense enough that ordinary, rapidly varying
+    // functions can be resolved without treating the scan's own coarse step
+    // as evidence of aliasing.
+    const samples = 8192;
+    final width = upperBound - lowerBound;
+    final xSamples = [
+      for (var i = 0; i <= samples; i++) lowerBound + width * (i / samples),
+    ];
+    // The irrationally spaced points prevent a high frequency from aligning
+    // with every point on the uniform phase grid.
+    const goldenFraction = 0.6180339887498949;
+    for (var i = 1; i <= 257; i++) {
+      final fraction = (i * goldenFraction) % 1;
+      xSamples.add(lowerBound + width * fraction);
+    }
+    xSamples.sort();
     var previous = double.nan;
     try {
-      for (var i = 0; i <= samples; i++) {
-        final value = evaluator(lowerBound + step * i);
+      for (final x in xSamples) {
+        final value = evaluator(x);
         if (!value.isFinite) return true;
-        if (previous.isFinite && (value - previous).abs() > math.pi / 4) {
-          return true;
+        if (previous.isFinite) {
+          final phaseStep = (value - previous).abs();
+          if (phaseStep > math.pi / 4) return true;
         }
         previous = value;
       }

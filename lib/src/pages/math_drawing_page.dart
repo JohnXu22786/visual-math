@@ -2073,7 +2073,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         '结果：${result.value!.toStringAsPrecision(10)}\n估计绝对误差：${result.estimatedAbsoluteError.toStringAsPrecision(3)}',
       DefiniteIntegralStatus.didNotConverge =>
         !result.estimatedAbsoluteError.isFinite
-            ? '表达式可能包含未采样的间断，无法确认区间有效性或误差。当前数值仅供参考：${result.value!.toStringAsPrecision(10)}'
+            ? '表达式可能包含未采样的间断或未解析的快速振荡，无法确认区间有效性或误差。${result.value == null ? '未提供数值估计。' : '当前数值仅供参考：${result.value!.toStringAsPrecision(10)}'}'
             : '未达到误差要求。当前估计：${result.value!.toStringAsPrecision(10)}\n估计绝对误差：${result.estimatedAbsoluteError.toStringAsPrecision(3)}',
       DefiniteIntegralStatus.invalidFunction => '函数在区间内包含无效或非有限取值，无法给出可靠结果。',
       DefiniteIntegralStatus.invalidBounds => '积分上下限无效。',
