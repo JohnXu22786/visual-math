@@ -25,6 +25,9 @@ enum DefiniteIntegralStatus {
   /// A sampled function value was invalid, threw, or was non-finite.
   invalidFunction,
 
+  /// The estimated integral or its error exceeded the finite double range.
+  numericalOverflow,
+
   /// Bounds are non-finite or the lower bound is not less than the upper.
   invalidBounds,
 
@@ -206,6 +209,7 @@ DefiniteIntegralResult calculateDefiniteIntegral({
       }
       for (var j = i + 1; j < estimates.length; j++) {
         final difference = (estimates[i].value - estimates[j].value).abs();
+        if (!difference.isFinite) throw const _NonFiniteIntegral();
         if (difference > estimateSpread) estimateSpread = difference;
       }
     }
@@ -244,6 +248,13 @@ DefiniteIntegralResult calculateDefiniteIntegral({
       estimatedAbsoluteError: double.infinity,
       evaluationCount: evaluations,
       status: DefiniteIntegralStatus.invalidFunction,
+    );
+  } on _NonFiniteIntegral {
+    return DefiniteIntegralResult(
+      value: null,
+      estimatedAbsoluteError: double.infinity,
+      evaluationCount: evaluations,
+      status: DefiniteIntegralStatus.numericalOverflow,
     );
   } catch (_) {
     return DefiniteIntegralResult(
@@ -410,6 +421,7 @@ bool _hasUnresolvedTrigOscillation(
     ))
       return true;
     final evaluator = argument.withParameters(parameterValues).evaluator;
+    final trigFunction = match.group(1)!;
     // Keep the phase scan dense enough that ordinary, rapidly varying
     // functions can be resolved without treating the scan's own coarse step
     // as evidence of aliasing.
@@ -432,6 +444,9 @@ bool _hasUnresolvedTrigOscillation(
         final value = evaluator(x);
         if (!value.isFinite) return true;
         if (previous.isFinite) {
+          if (_crossesTrigonometricPole(trigFunction, previous, value)) {
+            return true;
+          }
           final phaseStep = (value - previous).abs();
           if (phaseStep > math.pi / 4) return true;
         }
@@ -442,6 +457,22 @@ bool _hasUnresolvedTrigOscillation(
     }
   }
   return false;
+}
+
+bool _crossesTrigonometricPole(String function, double first, double second) {
+  if (function != 'tan' &&
+      function != 'sec' &&
+      function != 'cot' &&
+      function != 'csc') {
+    return false;
+  }
+  final hasHalfTurnOffset = function == 'tan' || function == 'sec';
+  final offset = hasHalfTurnOffset ? math.pi / 2 : 0.0;
+  final lower = math.min(first, second);
+  final upper = math.max(first, second);
+  final poleIndex = ((lower - offset) / math.pi).ceil();
+  final pole = offset + poleIndex * math.pi;
+  return pole >= lower && pole <= upper;
 }
 
 bool _hasSampledRoundingJump(
@@ -716,6 +747,9 @@ _Refinement _integratePartition({
     );
     value += result.value;
     error += result.error;
+    if (!value.isFinite || !error.isFinite) {
+      throw const _NonFiniteIntegral();
+    }
     converged = converged && result.converged;
   }
   return _Refinement(value, error, converged);
@@ -750,7 +784,7 @@ _Refinement _refine({
   final delta = left + right - whole;
   final error = delta.abs() / 15;
   final value = left + right + delta / 15;
-  if (!value.isFinite || !error.isFinite) throw const _InvalidSample();
+  if (!value.isFinite || !error.isFinite) throw const _NonFiniteIntegral();
   if (error <= tolerance) return _Refinement(value, error, true);
   if (depth <= 1) return _Refinement(value, error, false);
 
@@ -788,4 +822,8 @@ double _simpson(double a, double b, double fa, double fm, double fb) =>
 
 class _InvalidSample implements Exception {
   const _InvalidSample();
+}
+
+class _NonFiniteIntegral implements Exception {
+  const _NonFiniteIntegral();
 }

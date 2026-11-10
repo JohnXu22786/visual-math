@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 
 import '../models/math_expression.dart' show MathExpression, MathExpressionType;
+import '../models/math_local_analysis.dart';
 import '../models/formula_entry.dart';
 import 'math_ui_tokens.dart';
 
@@ -52,6 +53,12 @@ class MathCanvas extends StatefulWidget {
   /// Whether mouse and trackpad gestures and wheel signals can navigate.
   final bool allowMouseGestures;
 
+  /// Numerical tangent and normal overlay for the selected explicit function.
+  final LocalDerivativeResult? localAnalysis;
+
+  /// Color used for the local analysis overlay.
+  final Color localAnalysisColor;
+
   /// Creates a Flutter-rendered 2D graph canvas.
   const MathCanvas({
     super.key,
@@ -62,6 +69,8 @@ class MathCanvas extends StatefulWidget {
     this.onError,
     this.allowTouchGestures = true,
     this.allowMouseGestures = true,
+    this.localAnalysis,
+    this.localAnalysisColor = Colors.deepOrange,
   });
 
   @override
@@ -380,6 +389,12 @@ class MathCanvasState extends State<MathCanvas> {
   /// Get the current viewport bounds.
   (double xMin, double yMin, double xMax, double yMax) get viewport =>
       (_xMin, _yMin, _xMax, _yMax);
+
+  /// Get visible graph bounds, including the aspect-ratio-adjusted y range.
+  (double xMin, double yMin, double xMax, double yMax) get visibleBounds {
+    final (effectiveYMin, effectiveYMax) = _effectiveYBounds();
+    return (_xMin, effectiveYMin, _xMax, effectiveYMax);
+  }
 
   /// Get all current curve points (from all formulas).
   List<Map<String, double>> get curvePoints =>
@@ -1377,6 +1392,8 @@ class MathCanvasState extends State<MathCanvas> {
                       curves: _buildCurvesList(),
                       curveColors: _buildColorsList(),
                       characteristicPoints: _characteristicPoints,
+                      localAnalysis: widget.localAnalysis,
+                      localAnalysisColor: widget.localAnalysisColor,
                       showAxes: _showAxes,
                       showGrid: _showGrid,
                       backgroundColor: cs.surface,
@@ -1496,6 +1513,8 @@ class GraphPainter extends CustomPainter {
   /// Colors for each curve.
   final List<Color> curveColors;
   final List<_GraphPoint> characteristicPoints;
+  final LocalDerivativeResult? localAnalysis;
+  final Color localAnalysisColor;
   final bool showAxes;
   final bool showGrid;
 
@@ -1512,6 +1531,8 @@ class GraphPainter extends CustomPainter {
     this.curves = const [],
     this.curveColors = const [],
     this.characteristicPoints = const [],
+    this.localAnalysis,
+    this.localAnalysisColor = Colors.deepOrange,
     this.showAxes = true,
     this.showGrid = true,
     this.backgroundColor = Colors.white,
@@ -1564,6 +1585,7 @@ class GraphPainter extends CustomPainter {
           ..strokeWidth = 1.5,
       );
     }
+    _drawLocalAnalysis(canvas, size, eYMin, eYMax);
   }
 
   @override
@@ -1579,8 +1601,150 @@ class GraphPainter extends CustomPainter {
         oldDelegate.labelColor != labelColor ||
         oldDelegate.curveColors != curveColors ||
         oldDelegate.characteristicPoints != characteristicPoints ||
+        oldDelegate.localAnalysis != localAnalysis ||
+        oldDelegate.localAnalysisColor != localAnalysisColor ||
         oldDelegate.showAxes != showAxes ||
         oldDelegate.showGrid != showGrid;
+  }
+
+  void _drawLocalAnalysis(
+    Canvas canvas,
+    Size size,
+    double effectiveYMin,
+    double effectiveYMax,
+  ) {
+    final analysis = localAnalysis;
+    final y = analysis?.y;
+    if (analysis == null || y == null || !analysis.x.isFinite || !y.isFinite) {
+      return;
+    }
+    canvas.save();
+    canvas.clipRect(Offset.zero & size);
+    final linePaint = Paint()
+      ..color = localAnalysisColor.withValues(alpha: 0.8)
+      ..strokeWidth = 1.8;
+    final point = _mathToScreen(
+      analysis.x,
+      y,
+      size,
+      effectiveYMin,
+      effectiveYMax,
+    );
+    final vertical =
+        analysis.status == LocalDerivativeStatus.possibleVerticalTangent;
+    if (analysis.hasFiniteTangent) {
+      final slope = analysis.derivative!;
+      _drawLineInViewport(
+        canvas,
+        size,
+        effectiveYMin,
+        effectiveYMax,
+        slope: slope,
+        intercept: y - slope * analysis.x,
+        paint: linePaint,
+      );
+      if (slope.abs() <= 1e-10) {
+        _drawLineInViewport(
+          canvas,
+          size,
+          effectiveYMin,
+          effectiveYMax,
+          verticalX: analysis.x,
+          paint: linePaint..color = localAnalysisColor.withValues(alpha: 0.52),
+        );
+      } else {
+        final normalSlope = -1 / slope;
+        _drawLineInViewport(
+          canvas,
+          size,
+          effectiveYMin,
+          effectiveYMax,
+          slope: normalSlope,
+          intercept: y - normalSlope * analysis.x,
+          paint: linePaint..color = localAnalysisColor.withValues(alpha: 0.52),
+        );
+      }
+    } else if (vertical) {
+      _drawLineInViewport(
+        canvas,
+        size,
+        effectiveYMin,
+        effectiveYMax,
+        verticalX: analysis.x,
+        paint: linePaint,
+      );
+      _drawLineInViewport(
+        canvas,
+        size,
+        effectiveYMin,
+        effectiveYMax,
+        slope: 0,
+        intercept: y,
+        paint: linePaint..color = localAnalysisColor.withValues(alpha: 0.52),
+      );
+    }
+    canvas.drawCircle(point, 6, Paint()..color = backgroundColor);
+    canvas.drawCircle(point, 4, Paint()..color = localAnalysisColor);
+    canvas.restore();
+  }
+
+  void _drawLineInViewport(
+    Canvas canvas,
+    Size size,
+    double effectiveYMin,
+    double effectiveYMax, {
+    double? slope,
+    double? intercept,
+    double? verticalX,
+    required Paint paint,
+  }) {
+    final candidates = <(double, double)>[];
+    if (verticalX != null) {
+      if (verticalX >= xMin && verticalX <= xMax) {
+        candidates
+          ..add((verticalX, effectiveYMin))
+          ..add((verticalX, effectiveYMax));
+      }
+    } else if (slope != null &&
+        intercept != null &&
+        slope.isFinite &&
+        intercept.isFinite) {
+      void add(double x, double y) {
+        if (x.isFinite &&
+            y.isFinite &&
+            x >= xMin &&
+            x <= xMax &&
+            y >= effectiveYMin &&
+            y <= effectiveYMax) {
+          candidates.add((x, y));
+        }
+      }
+
+      if (slope.abs() > 1e-15) {
+        add((effectiveYMin - intercept) / slope, effectiveYMin);
+        add((effectiveYMax - intercept) / slope, effectiveYMax);
+      }
+      add(xMin, slope * xMin + intercept);
+      add(xMax, slope * xMax + intercept);
+    }
+    if (candidates.length < 2) return;
+    final first = candidates.first;
+    var second = candidates[1];
+    var farthest = -1.0;
+    for (final candidate in candidates.skip(1)) {
+      final distance =
+          dart_math.pow(candidate.$1 - first.$1, 2) +
+          dart_math.pow(candidate.$2 - first.$2, 2);
+      if (distance > farthest) {
+        farthest = distance.toDouble();
+        second = candidate;
+      }
+    }
+    canvas.drawLine(
+      _mathToScreen(first.$1, first.$2, size, effectiveYMin, effectiveYMax),
+      _mathToScreen(second.$1, second.$2, size, effectiveYMin, effectiveYMax),
+      paint,
+    );
   }
 
   // ==================================================================
