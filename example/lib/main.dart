@@ -57,7 +57,12 @@ class _ExampleStartupHostState extends State<_ExampleStartupHost> {
 }
 
 class ExampleMenu extends StatelessWidget {
-  const ExampleMenu({super.key});
+  const ExampleMenu({
+    super.key,
+    this.documentStorage = const MathDrawingStorage(),
+  });
+
+  final MathDrawingStorage documentStorage;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -65,6 +70,11 @@ class ExampleMenu extends StatelessWidget {
     body: ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        _ExampleLink(
+          title: 'Files',
+          subtitle: 'Open a saved drawing.',
+          page: FilesPage(documentStorage: documentStorage),
+        ),
         _ExampleLink(
           title: 'Standalone 2D canvas',
           subtitle: 'A graph without the formula editor or 3D workspace.',
@@ -78,10 +88,88 @@ class ExampleMenu extends StatelessWidget {
         _ExampleLink(
           title: 'Customized workspace',
           subtitle: 'Host branding, labels, controller, and preferences.',
-          page: const CustomizedWorkspaceExample(),
+          page: CustomizedWorkspaceExample(documentStorage: documentStorage),
         ),
         const _CapabilitiesCard(),
       ],
+    ),
+  );
+}
+
+class FilesPage extends StatefulWidget {
+  const FilesPage({super.key, required this.documentStorage});
+
+  final MathDrawingStorage documentStorage;
+
+  @override
+  State<FilesPage> createState() => _FilesPageState();
+}
+
+class _FilesPageState extends State<FilesPage> {
+  late Future<List<String>> _names;
+  bool _opening = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  void _refresh() => _names = widget.documentStorage.listNames();
+
+  Future<void> _open(String name) async {
+    if (_opening) return;
+    setState(() => _opening = true);
+    try {
+      final document = await widget.documentStorage.load(name);
+      if (!mounted) return;
+      if (document == null) throw StateError('Drawing no longer exists');
+      final controller = MathDrawingController()..restore(document.drawing);
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => MathDrawingPage(
+            controller: controller,
+            documentStorage: widget.documentStorage,
+          ),
+        ),
+      );
+      if (mounted) setState(_refresh);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('无法打开绘图：$error')));
+      }
+    } finally {
+      if (mounted) setState(() => _opening = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Files')),
+    body: FutureBuilder<List<String>>(
+      future: _names,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text('无法读取绘图列表：${snapshot.error}'));
+        }
+        final names = snapshot.data!;
+        if (names.isEmpty) {
+          return const Center(child: Text('没有已保存的绘图'));
+        }
+        return ListView(
+          children: [
+            for (final name in names)
+              ListTile(
+                title: Text(name),
+                onTap: _opening ? null : () => _open(name),
+              ),
+          ],
+        );
+      },
     ),
   );
 }
@@ -131,7 +219,12 @@ class Standalone3DExample extends StatelessWidget {
 }
 
 class CustomizedWorkspaceExample extends StatefulWidget {
-  const CustomizedWorkspaceExample({super.key});
+  const CustomizedWorkspaceExample({
+    super.key,
+    this.documentStorage = const MathDrawingStorage(),
+  });
+
+  final MathDrawingStorage documentStorage;
 
   @override
   State<CustomizedWorkspaceExample> createState() =>
@@ -157,6 +250,7 @@ class _CustomizedWorkspaceExampleState
   Widget build(BuildContext context) => MathDrawingPage(
     initialExpression: 'x^2',
     controller: _controller,
+    documentStorage: widget.documentStorage,
     options: MathWorkspaceOptions(
       persistence: const MathWorkspacePersistence(
         namespace: 'integration_demo',
