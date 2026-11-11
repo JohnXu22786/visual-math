@@ -187,6 +187,78 @@ void main() {
       // Should have points from both expressions
       expect(key.currentState!.curvePoints.length, greaterThanOrEqualTo(2));
     });
+
+    testWidgets('domain expressions clip curves and exclude open endpoints', (
+      tester,
+    ) async {
+      final key = GlobalKey<MathCanvasState>();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 300,
+              height: 300,
+              child: MathCanvas(key: key),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await key.currentState!.setViewport(-2, -2, 2, 2);
+      await key.currentState!.setFormulas([
+        FormulaEntry(
+          rawExpression: 'x',
+          parsed: MathExpression.fromInput('x'),
+          domainStartExpression: '-1',
+          domainEndExpression: '1',
+          includeDomainStart: false,
+          includeDomainEnd: false,
+        ),
+      ]);
+
+      final xs = key.currentState!.curvePoints.map((point) => point['x']!);
+      expect(xs, isNotEmpty);
+      expect(xs.every((x) => x > -1 && x < 1), isTrue);
+    });
+
+    testWidgets('implicit open domains keep clipped contour segments intact', (
+      tester,
+    ) async {
+      final key = GlobalKey<MathCanvasState>();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 300,
+              height: 300,
+              child: MathCanvas(key: key),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await key.currentState!.setViewport(-2, -2, 2, 2);
+      await key.currentState!.setFormulas([
+        FormulaEntry(
+          rawExpression: 'x^2+y^2=1',
+          parsed: MathExpression.fromInput('x^2+y^2=1'),
+          domainStartExpression: '0',
+          domainEndExpression: '1',
+          includeDomainStart: false,
+          includeDomainEnd: false,
+        ),
+      ]);
+
+      final segments = key.currentState!.curveSegments;
+      expect(segments, isNotEmpty);
+      expect(segments.every((segment) => segment.length >= 2), isTrue);
+      expect(
+        segments.expand((segment) => segment).every(
+          (point) => point['x']! > 0 && point['x']! < 1,
+        ),
+        isTrue,
+      );
+    });
   });
 
   group('MathCanvas - viewport', () {

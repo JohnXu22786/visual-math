@@ -9,6 +9,7 @@ import '../models/math_3d_object.dart';
 import '../models/formula_entry.dart';
 import '../models/math_3d_scene.dart';
 import '../models/math_3d_tool.dart';
+import '../models/math_3d_relationship.dart';
 import '../models/math_3d_construction.dart';
 import 'math_ui_tokens.dart';
 
@@ -350,7 +351,8 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   int? _selectedObjectIndex;
   int _objectsVersion = 0;
   final Map<int, int> _pointAttachments = {};
-  final Map<int, _SolidSourceDependency> _solidSourceDependencies = {};
+  final Map<int, _SolidSourceDependency> _constructionDependencies = {};
+  int _nextDocumentObjectId = 0;
   int? _styleSourceIndex;
   int? _intersectionSourceIndex;
   int? _pointIntersectionSourceIndex;
@@ -359,6 +361,94 @@ class MathCanvas3DState extends State<MathCanvas3D> {
 
   /// Get the list of objects (unmodifiable).
   List<Object3D> get objects => List.unmodifiable(_objects);
+
+  void ensureDocumentIds() {
+    final used = _objects
+        .map((object) => object.documentId)
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    for (var i = 0; i < _objects.length; i++) {
+      if (_objects[i].documentId.isNotEmpty) continue;
+      String id;
+      do {
+        id = 'object-${_nextDocumentObjectId++}';
+      } while (used.contains(id));
+      used.add(id);
+      _objects[i] = _objects[i].copyWith(documentId: id);
+    }
+  }
+
+  List<PointAttachment> get documentPointAttachments {
+    ensureDocumentIds();
+    return [
+      for (final entry in _pointAttachments.entries)
+        if (entry.key < _objects.length && entry.value < _objects.length)
+          PointAttachment(
+            pointId: _objects[entry.key].documentId,
+            targetId: _objects[entry.value].documentId,
+          ),
+    ];
+  }
+
+  List<ConstructionDependency> get documentConstructionDependencies {
+    ensureDocumentIds();
+    return [
+      for (final entry in _constructionDependencies.entries)
+        if (entry.key < _objects.length)
+          ConstructionDependency(
+            objectId: _objects[entry.key].documentId,
+            tool: entry.value.tool,
+            inputPoints: entry.value.points,
+            sourcePointIds: [
+              for (final index in entry.value.sourcePointIndices)
+                index != null && index >= 0 && index < _objects.length
+                    ? _objects[index].documentId
+                    : null,
+            ],
+            workingPlaneNormal: entry.value.workingPlaneNormal,
+            polygonSides: entry.value.polygonSides,
+          ),
+    ];
+  }
+
+  void restoreDocumentRelationships({
+    required List<PointAttachment> pointAttachments,
+    required List<ConstructionDependency> constructionDependencies,
+  }) {
+    ensureDocumentIds();
+    final indexById = {
+      for (var i = 0; i < _objects.length; i++) _objects[i].documentId: i,
+    };
+    _pointAttachments
+      ..clear()
+      ..addEntries(
+        pointAttachments.map(
+          (relation) => MapEntry(
+            indexById[relation.pointId]!,
+            indexById[relation.targetId]!,
+          ),
+        ),
+      );
+    _constructionDependencies
+      ..clear()
+      ..addEntries(
+        constructionDependencies.map(
+          (dependency) => MapEntry(
+            indexById[dependency.objectId]!,
+            _SolidSourceDependency(
+              tool: dependency.tool,
+              points: dependency.inputPoints,
+              sourcePointIndices: [
+                for (final id in dependency.sourcePointIds)
+                  id == null ? null : indexById[id],
+              ],
+              workingPlaneNormal: dependency.workingPlaneNormal,
+              polygonSides: dependency.polygonSides,
+            ),
+          ),
+        ),
+      );
+  }
 
   // Construction state
   ConstructionState? _construction;
@@ -477,6 +567,21 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   bool get showPlane => _showPlane;
 
   bool get showLabels => _showLabels;
+
+  /// Restore persisted canvas display toggles.
+  void setDisplaySettings({
+    required bool showAxes,
+    required bool showPlane,
+    required bool showGrid,
+    required bool showLabels,
+  }) {
+    setState(() {
+      _showAxes = showAxes;
+      _showPlane = showPlane;
+      _showGrid = showGrid;
+      _showLabels = showLabels;
+    });
+  }
 
   /// Number of objects in the scene.
   int get objectCount => _objects.length;
@@ -764,7 +869,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       }
       if (!preservesExistingObjects) {
         _pointAttachments.clear();
-        _solidSourceDependencies.clear();
+        _constructionDependencies.clear();
         _attachmentPointIndex = null;
         _styleSourceIndex = null;
         _intersectionSourceIndex = null;
@@ -793,7 +898,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       _selectedObjectIndex = null;
       _pointEditPointer = null;
       _pointAttachments.clear();
-      _solidSourceDependencies.clear();
+      _constructionDependencies.clear();
       _attachmentPointIndex = null;
       _styleSourceIndex = null;
       _intersectionSourceIndex = null;
@@ -3472,7 +3577,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         _selectedObjectIndex != null || _selectedPointIndex != null;
     setState(() {
       final dependencies = <int, _SolidSourceDependency>{};
-      for (final entry in _solidSourceDependencies.entries) {
+      for (final entry in _constructionDependencies.entries) {
         if (entry.key == index) continue;
         final dependency = entry.value;
         for (var i = 0; i < dependency.sourcePointIndices.length; i++) {
@@ -3486,7 +3591,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         dependencies[entry.key > index ? entry.key - 1 : entry.key] =
             dependency;
       }
-      _solidSourceDependencies
+      _constructionDependencies
         ..clear()
         ..addAll(dependencies);
       _objects.removeAt(index);
@@ -3588,7 +3693,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         );
         if (position != attachedPoint.point) {
           _objects[attachedIndex] = attachedPoint.copyWith(point: position);
-          _updateSolidObjectsForSourcePoint(attachedIndex);
+          _updateConstructionObjectsForSourcePoint(attachedIndex);
         }
         pending.add(attachedIndex);
       }
@@ -3610,8 +3715,8 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     return null;
   }
 
-  void _updateSolidObjectsForSourcePoint(int sourcePointIndex) {
-    for (final entry in _solidSourceDependencies.entries) {
+  void _updateConstructionObjectsForSourcePoint(int sourcePointIndex) {
+    for (final entry in _constructionDependencies.entries) {
       final solidIndex = entry.key;
       final dependency = entry.value;
       if (!dependency.sourcePointIndices.contains(sourcePointIndex) ||
@@ -3654,13 +3759,9 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       if (!acceptedAllPoints) continue;
 
       final updated = construction.result;
-      if (updated == null ||
-          (updated.type != Object3DType.polyhedron &&
-              updated.type != Object3DType.surface &&
-              updated.type != Object3DType.sphere)) {
-        continue;
-      }
+      if (updated == null) continue;
       _objects[solidIndex] = updated.copyWith(
+        documentId: original.documentId,
         label: original.label,
         color: original.color,
         opacity: original.opacity,
@@ -3936,7 +4037,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     var rolledBack = false;
     if (_pointBeforeDrag != null && _selectedPointIndex != null) {
       _objects[_selectedPointIndex!] = _pointBeforeDrag!;
-      _updateSolidObjectsForSourcePoint(_selectedPointIndex!);
+      _updateConstructionObjectsForSourcePoint(_selectedPointIndex!);
       _propagateAttachedPointMoves(_selectedPointIndex!);
       _objectsVersion++;
       rolledBack = true;
@@ -4093,7 +4194,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       setState(() {
         final selectedIndex = _selectedPointIndex!;
         _objects[selectedIndex] = _pointBeforeDrag!.copyWith(point: position);
-        _updateSolidObjectsForSourcePoint(selectedIndex);
+        _updateConstructionObjectsForSourcePoint(selectedIndex);
         _propagateAttachedPointMoves(selectedIndex);
         _objectsVersion++;
       });
@@ -4840,12 +4941,8 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           }
           final objectIndex = _objects.indexOf(obj);
           if (objectIndex >= 0 &&
-              ToolGroup.solids.tools.contains(_currentTool) &&
-              (obj.type == Object3DType.polyhedron ||
-                  obj.type == Object3DType.surface ||
-                  obj.type == Object3DType.sphere) &&
               _constructionPointSources.any((index) => index != null)) {
-            _solidSourceDependencies[objectIndex] = _SolidSourceDependency(
+            _constructionDependencies[objectIndex] = _SolidSourceDependency(
               tool: _currentTool,
               points: construction.points,
               sourcePointIndices: _constructionPointSources,

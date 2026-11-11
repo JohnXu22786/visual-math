@@ -94,6 +94,29 @@ class MathCanvasState extends State<MathCanvas> {
   Offset? _lastFocalPoint;
   double? _lastScale;
   bool _isReady = false;
+  bool _showAxes = true;
+  bool _showGrid = true;
+  bool _showZeros = false;
+  bool _showExtrema = false;
+
+  bool get showAxes => _showAxes;
+  bool get showGrid => _showGrid;
+  bool get showZeros => _showZeros;
+  bool get showExtrema => _showExtrema;
+
+  void setDisplaySettings({
+    required bool showAxes,
+    required bool showGrid,
+    required bool showZeros,
+    required bool showExtrema,
+  }) {
+    setState(() {
+      _showAxes = showAxes;
+      _showGrid = showGrid;
+      _showZeros = showZeros;
+      _showExtrema = showExtrema;
+    });
+  }
 
   // Widget size
   double _canvasWidth = 1;
@@ -329,6 +352,12 @@ class MathCanvasState extends State<MathCanvas> {
   List<Map<String, double>> get curvePoints =>
       _formulaCurves.expand((fc) => fc.polylines.expand((pl) => pl)).toList();
 
+  /// Get the sampled line segments for each formula.
+  List<List<Map<String, double>>> get curveSegments => [
+    for (final formula in _formulaCurves)
+      for (final segment in formula.polylines) segment,
+  ];
+
   // ==================================================================
   // Build helpers for painter
   // ==================================================================
@@ -350,6 +379,35 @@ class MathCanvasState extends State<MathCanvas> {
     for (final fc in _formulaCurves) {
       for (final poly in fc.polylines) {
         if (poly.length >= 2) result.add(fc.formula.color);
+      }
+    }
+    return result;
+  }
+
+  List<(double, double, Color)> _buildCharacteristicPoints() {
+    if (!_showZeros && !_showExtrema) return const [];
+    final result = <(double, double, Color)>[];
+    for (final curve in _formulaCurves) {
+      if (curve.formula.parsed?.type != MathExpressionType.explicit) continue;
+      for (final points in curve.polylines) {
+        for (var i = 1; i < points.length; i++) {
+          final p0 = points[i - 1];
+          final p1 = points[i];
+          final x0 = p0['x']!;
+          final y0 = p0['y']!;
+          final x1 = p1['x']!;
+          final y1 = p1['y']!;
+          if (_showZeros && (y0 == 0 || y1 == 0 || y0.sign != y1.sign)) {
+            final t = y1 == y0 ? 0.0 : (-y0 / (y1 - y0)).clamp(0.0, 1.0);
+            result.add((x0 + (x1 - x0) * t, 0, curve.formula.color));
+          }
+          if (_showExtrema && i + 1 < points.length) {
+            final y2 = points[i + 1]['y']!;
+            if ((y0 < y1 && y1 > y2) || (y0 > y1 && y1 < y2)) {
+              result.add((x1, y1, curve.formula.color));
+            }
+          }
+        }
       }
     }
     return result;
@@ -385,6 +443,23 @@ class MathCanvasState extends State<MathCanvas> {
     final parsed = formula.parsed!;
     final marginScale = includePanMargin ? _renderMarginScale : 0.0;
     final marginX = (_xMax - _xMin) * marginScale;
+    final domainStart = _resolveDomainValue(
+      formula.domainStartExpression,
+      formula.parameterValues,
+    );
+    final domainEnd = _resolveDomainValue(
+      formula.domainEndExpression,
+      formula.parameterValues,
+    );
+    final sampleMin = dart_math.max(
+      _xMin - marginX,
+      domainStart ?? double.negativeInfinity,
+    );
+    final sampleMax = dart_math.min(
+      _xMax + marginX,
+      domainEnd ?? double.infinity,
+    );
+    if (sampleMin >= sampleMax) return [];
     if (parsed.type == MathExpressionType.implicit) {
       final (effectiveYMin, effectiveYMax) = _effectiveYBounds();
       final marginY = (effectiveYMax - effectiveYMin) * marginScale;
@@ -392,24 +467,124 @@ class MathCanvasState extends State<MathCanvas> {
       // Extend bounds and proportionally increase grid cells so that
       // contour detail remains consistent across the visible area.
       final scale = 1.0 + 2.0 * marginScale;
-      return parsed.sampleContourSegments(
-        xMin: _xMin - marginX,
-        xMax: _xMax + marginX,
+      final contours = parsed.sampleContourSegments(
+        xMin: sampleMin,
+        xMax: sampleMax,
         yMin: effectiveYMin - marginY,
         yMax: effectiveYMax + marginY,
         gridX: (80 * scale).round().clamp(80, 200),
         gridY: (80 * scale).round().clamp(80, 200),
       );
+      return [
+        for (final segment in contours)
+          if (_clipContourSegment(
+                segment,
+                domainStart: domainStart,
+                domainEnd: domainEnd,
+                includeStart: formula.includeDomainStart,
+                includeEnd: formula.includeDomainEnd,
+              )
+              case final clipped?)
+            clipped,
+      ];
     }
     // Sample well beyond viewport bounds to ensure curves reach the
     // canvas edges during pan/zoom without visible holes in the graph.
     // With _renderMarginScale=1.0, this yields scalePoints=3.0 (3× points).
     final scalePoints = 1.0 + 2.0 * marginScale;
-    return parsed.samplePointSegments(
-      xMin: _xMin - marginX,
-      xMax: _xMax + marginX,
+    final segments = parsed.samplePointSegments(
+      xMin: sampleMin,
+      xMax: sampleMax,
       numPoints: (300 * scalePoints).round().clamp(300, 1200),
     );
+    return [
+      for (final segment in segments)
+        [
+          for (final point in segment)
+            if ((domainStart == null ||
+                    point['x']! > domainStart ||
+                    (formula.includeDomainStart &&
+                        point['x'] == domainStart)) &&
+                (domainEnd == null ||
+                    point['x']! < domainEnd ||
+                    (formula.includeDomainEnd && point['x'] == domainEnd)))
+              point,
+        ],
+    ];
+  }
+
+  List<Map<String, double>>? _clipContourSegment(
+    List<Map<String, double>> segment, {
+    required double? domainStart,
+    required double? domainEnd,
+    required bool includeStart,
+    required bool includeEnd,
+  }) {
+    if (segment.length < 2) return null;
+    final first = segment.first;
+    final last = segment.last;
+    final x0 = first['x']!;
+    final dx = last['x']! - x0;
+    if (dx == 0) {
+      if (domainStart != null &&
+          (x0 < domainStart || (!includeStart && x0 == domainStart))) {
+        return null;
+      }
+      if (domainEnd != null &&
+          (x0 > domainEnd || (!includeEnd && x0 == domainEnd))) {
+        return null;
+      }
+      return [first, last];
+    }
+
+    var startT = 0.0;
+    var endT = 1.0;
+    if (domainStart != null) {
+      final t = (domainStart - x0) / dx;
+      if (dx > 0) {
+        startT = dart_math.max(startT, t);
+        if (!includeStart && t >= 0 && t <= 1) {
+          startT = dart_math.max(startT, t + 1e-9);
+        }
+      } else {
+        endT = dart_math.min(endT, t);
+        if (!includeStart && t >= 0 && t <= 1) {
+          endT = dart_math.min(endT, t - 1e-9);
+        }
+      }
+    }
+    if (domainEnd != null) {
+      final t = (domainEnd - x0) / dx;
+      if (dx > 0) {
+        endT = dart_math.min(endT, t);
+        if (!includeEnd && t >= 0 && t <= 1) {
+          endT = dart_math.min(endT, t - 1e-9);
+        }
+      } else {
+        startT = dart_math.max(startT, t);
+        if (!includeEnd && t >= 0 && t <= 1) {
+          startT = dart_math.max(startT, t + 1e-9);
+        }
+      }
+    }
+    if (startT >= endT) return null;
+
+    Map<String, double> interpolate(double t) => {
+      'x': x0 + dx * t,
+      'y': first['y']! + (last['y']! - first['y']!) * t,
+    };
+    return [interpolate(startT), interpolate(endT)];
+  }
+
+  double? _resolveDomainValue(String? source, Map<String, double> parameters) {
+    if (source == null || source.trim().isEmpty) return null;
+    final expression = MathExpression.fromInput(
+      source,
+      parameterValues: parameters,
+    );
+    if (!expression.isValid) return null;
+    final value = expression.evaluator(0);
+    return value.isFinite ? value : null;
   }
 
   // ==================================================================
@@ -583,6 +758,9 @@ class MathCanvasState extends State<MathCanvas> {
                   yMax: _yMax,
                   curves: _buildCurvesList(),
                   curveColors: _buildColorsList(),
+                  showAxes: _showAxes,
+                  showGrid: _showGrid,
+                  characteristicPoints: _buildCharacteristicPoints(),
                   backgroundColor: cs.surface,
                   gridColor: cs.outlineVariant.withValues(alpha: 0.5),
                   axisColor: cs.onSurface,
@@ -619,6 +797,9 @@ class GraphPainter extends CustomPainter {
 
   /// Colors for each curve.
   final List<Color> curveColors;
+  final bool showAxes;
+  final bool showGrid;
+  final List<(double, double, Color)> characteristicPoints;
 
   final Color backgroundColor;
   final Color gridColor;
@@ -632,6 +813,9 @@ class GraphPainter extends CustomPainter {
     required this.yMax,
     this.curves = const [],
     this.curveColors = const [],
+    this.showAxes = true,
+    this.showGrid = true,
+    this.characteristicPoints = const [],
     this.backgroundColor = Colors.white,
     this.gridColor = const Color(0x80CCCCCC),
     this.axisColor = Colors.black87,
@@ -666,9 +850,10 @@ class GraphPainter extends CustomPainter {
     _drawBackground(canvas, size);
     final eYMin = _effectiveYMin(size.width, size.height);
     final eYMax = _effectiveYMax(size.width, size.height);
-    _drawGrid(canvas, size, eYMin, eYMax);
-    _drawAxes(canvas, size, eYMin, eYMax);
+    if (showGrid) _drawGrid(canvas, size, eYMin, eYMax);
+    if (showAxes) _drawAxes(canvas, size, eYMin, eYMax);
     _drawCurves(canvas, size, eYMin, eYMax);
+    _drawCharacteristicPoints(canvas, size, eYMin, eYMax);
   }
 
   @override
@@ -682,7 +867,10 @@ class GraphPainter extends CustomPainter {
         oldDelegate.gridColor != gridColor ||
         oldDelegate.axisColor != axisColor ||
         oldDelegate.labelColor != labelColor ||
-        oldDelegate.curveColors != curveColors;
+        oldDelegate.curveColors != curveColors ||
+        oldDelegate.showAxes != showAxes ||
+        oldDelegate.showGrid != showGrid ||
+        oldDelegate.characteristicPoints != characteristicPoints;
   }
 
   // ==================================================================
@@ -993,6 +1181,31 @@ class GraphPainter extends CustomPainter {
   // ==================================================================
   // Curves
   // ==================================================================
+
+  void _drawCharacteristicPoints(
+    Canvas canvas,
+    Size size,
+    double eYMin,
+    double eYMax,
+  ) {
+    for (final point in characteristicPoints) {
+      final screen = _mathToScreen(point.$1, point.$2, size, eYMin, eYMax);
+      if (screen.dx < 0 ||
+          screen.dx > size.width ||
+          screen.dy < 0 ||
+          screen.dy > size.height)
+        continue;
+      canvas.drawCircle(screen, 4, Paint()..color = point.$3);
+      canvas.drawCircle(
+        screen,
+        4,
+        Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.25,
+      );
+    }
+  }
 
   void _drawCurves(Canvas canvas, Size size, double eYMin, double eYMax) {
     // Clip to canvas bounds so lines at the very edge are cleanly clipped
