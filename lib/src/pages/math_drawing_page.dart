@@ -43,6 +43,9 @@ class MathDrawingPage extends StatefulWidget {
   /// Optional host controller for formulas, canvas state, commands, and events.
   final MathDrawingController? controller;
 
+  /// App-private drawing storage, replaceable by hosts with custom backends.
+  final MathDrawingStorage documentStorage;
+
   /// Configures the available views and composable workspace regions.
   final MathWorkspaceOptions options;
 
@@ -53,6 +56,7 @@ class MathDrawingPage extends StatefulWidget {
     this.initialShowWebView = true,
     this.initialMathematicalMode,
     this.controller,
+    this.documentStorage = const MathDrawingStorage(),
     this.options = const MathWorkspaceOptions(),
   });
 
@@ -87,7 +91,6 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   List<FormulaEntry> _plottedFormulas = [];
   String? _plotError;
   List<Object3D> _lastReportedScene = const [];
-  final MathDrawingStorage _drawingStorage = const MathDrawingStorage();
   String? _currentDocumentName;
 
   @override
@@ -269,29 +272,17 @@ class _MathDrawingPageState extends State<MathDrawingPage>
 
   MathDrawingSnapshot _makeSnapshot() {
     final formulas = [
-      for (final formula in _formulas)
-        FormulaEntry(
-          id: formula.id,
-          rawExpression: formula.controller.text,
-          parsed: MathExpression.fromInput(formula.controller.text),
-          color: formula.color,
-          autoColor: formula.autoColor,
-          visible: formula.visible,
-          parameterValues: {
-            for (final name in MathExpression.fromInput(
-              formula.controller.text,
-            ).parameters)
-              if (_parameters.containsKey(name)) name: _parameters[name]!.value,
-          },
-        ),
+      for (final formula in _formulas) _formulaEntryForSnapshot(formula),
     ];
     final viewport =
         _canvasKey.currentState?.viewport ?? (-10.0, -10.0, 10.0, 10.0);
+    _canvas3DKey.currentState?.ensureDocumentIds();
     return MathDrawingSnapshot(
       formulas: formulas,
       parameters: _parameters,
       activeView: _currentView,
       activeTool: _current3DTool,
+      polygonSides3D: _polygonSides,
       viewport2D: Viewport(
         xMin: viewport.$1,
         yMin: viewport.$2,
@@ -306,8 +297,51 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       showGrid3D: _canvas3DKey.currentState?.showGrid ?? false,
       showLabels3D: _canvas3DKey.currentState?.showLabels ?? true,
       scene3D: _canvas3DKey.currentState?.objects ?? const [],
+      pointAttachments3D:
+          _canvas3DKey.currentState?.documentPointAttachments ?? const [],
+      constructionDependencies3D:
+          _canvas3DKey.currentState?.documentConstructionDependencies ??
+          const [],
+      showAxes2D: _canvasKey.currentState?.showAxes ?? true,
+      showGrid2D: _canvasKey.currentState?.showGrid ?? true,
+      showZeros2D: _canvasKey.currentState?.showZeros ?? false,
+      showExtrema2D: _canvasKey.currentState?.showExtrema ?? false,
     );
   }
+
+  FormulaEntry _formulaEntryForSnapshot(_FormulaState formula) {
+    final parsed = MathExpression.fromInput(formula.controller.text);
+    final parameterNames = {
+      ...parsed.parameters,
+      ..._domainParameterNames(
+        formula.domainStartExpression,
+        formula.domainEndExpression,
+      ),
+    };
+    return FormulaEntry(
+      id: formula.id,
+      rawExpression: formula.controller.text,
+      parsed: parsed,
+      color: formula.color,
+      autoColor: formula.autoColor,
+      visible: formula.visible,
+      domainStartExpression: formula.domainStartExpression,
+      domainEndExpression: formula.domainEndExpression,
+      includeDomainStart: formula.includeDomainStart,
+      includeDomainEnd: formula.includeDomainEnd,
+      parameterValues: {
+        for (final name in parameterNames)
+          if (_parameters.containsKey(name)) name: _parameters[name]!.value,
+      },
+    );
+  }
+
+  Set<String> _domainParameterNames(String? start, String? end) => {
+    for (final source in [start, end])
+      if (source != null && source.trim().isNotEmpty)
+        ...MathExpression.fromInput(source).parameters
+            .where((name) => name != 'x' && name != 'y'),
+  };
 
   void _syncController() {
     final controller = widget.controller;
@@ -341,10 +375,13 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     final controller = widget.controller;
     if (controller == null) return;
     final previousScene = _lastReportedScene;
-    final currentScene =
-        _canvas3DKey.currentState?.objects ?? const <Object3D>[];
     final previousSnapshot = controller.snapshot;
     final snapshot = _makeSnapshot();
+    // Snapshot capture may assign stable document IDs and replace scene
+    // objects with immutable copies. Compare the post-capture scene so that
+    // this bookkeeping does not report one edit twice.
+    final currentScene =
+        _canvas3DKey.currentState?.objects ?? const <Object3D>[];
     controller.publish(snapshot);
     final camera = snapshot.camera3D;
     final sceneChanged =
@@ -380,6 +417,10 @@ class _MathDrawingPageState extends State<MathDrawingPage>
               color: entry.color,
               autoColor: entry.autoColor,
               visible: entry.visible,
+              domainStartExpression: entry.domainStartExpression ?? '',
+              domainEndExpression: entry.domainEndExpression ?? '',
+              includeDomainStart: entry.includeDomainStart,
+              includeDomainEnd: entry.includeDomainEnd,
             ),
         ]);
       _activeFormula = null;
@@ -428,6 +469,10 @@ class _MathDrawingPageState extends State<MathDrawingPage>
               color: entry.color,
               autoColor: entry.autoColor,
               visible: entry.visible,
+              domainStartExpression: entry.domainStartExpression ?? '',
+              domainEndExpression: entry.domainEndExpression ?? '',
+              includeDomainStart: entry.includeDomainStart,
+              includeDomainEnd: entry.includeDomainEnd,
             )..committedText = entry.rawExpression.trim(),
         ]);
       _activeFormula = null;
@@ -445,6 +490,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         ..addAll(snapshot.parameters);
       _currentView = restoredView;
       _current3DTool = snapshot.activeTool;
+      _polygonSides = snapshot.polygonSides3D;
       _activeParameterNames = _parameters.keys.toSet();
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -463,14 +509,29 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         showGrid: snapshot.showGrid3D,
         showLabels: snapshot.showLabels3D,
       );
+      _canvasKey.currentState?.setDisplaySettings(
+        showAxes: snapshot.showAxes2D,
+        showGrid: snapshot.showGrid2D,
+        showZeros: snapshot.showZeros2D,
+        showExtrema: snapshot.showExtrema2D,
+      );
       _canvas3DKey.currentState?.setObjects(snapshot.scene3D);
+      _canvas3DKey.currentState?.restoreDocumentRelationships(
+        pointAttachments: snapshot.pointAttachments3D,
+        constructionDependencies: snapshot.constructionDependencies3D,
+      );
       _canvas3DKey.currentState?.setTool(snapshot.activeTool);
       _publish3DChange();
       _tabController.animateTo(restoredView == ViewMode.mode2D ? 0 : 1);
+      _plottedFormulas = [];
+      unawaited(_canvasKey.currentState?.setFormulas([]) ?? Future.value());
       if (restoredView == ViewMode.mode2D) {
-        _plottedFormulas = [];
-        unawaited(_canvasKey.currentState?.setFormulas([]) ?? Future.value());
         unawaited(_plotAll());
+      } else {
+        // Keep the offstage 2D canvas synchronized too, so switching views
+        // after reopening a 3D drawing cannot reveal the previously open plot.
+        _plotAll2D();
+        _syncController();
       }
     });
     _syncController();
@@ -512,8 +573,8 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     if (!mounted || name == null || name.isEmpty) return;
     final document = MathDrawingDocument(name: name, drawing: _makeSnapshot());
     try {
-      await _drawingStorage.save(document);
-    } on StateError {
+      await widget.documentStorage.save(document);
+    } on DuplicateDrawingException {
       if (!mounted) return;
       final overwrite = await showDialog<bool>(
         context: context,
@@ -533,13 +594,27 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         ),
       );
       if (overwrite != true) return;
-      await _drawingStorage.save(document, overwrite: true);
+      try {
+        await widget.documentStorage.save(document, overwrite: true);
+      } catch (error) {
+        _showError('无法保存绘图：$error');
+        return;
+      }
+    } catch (error) {
+      _showError('无法保存绘图：$error');
+      return;
     }
     if (mounted) setState(() => _currentDocumentName = name);
   }
 
   Future<void> _openDrawingList() async {
-    final names = await _drawingStorage.listNames();
+    final List<String> names;
+    try {
+      names = await widget.documentStorage.listNames();
+    } catch (error) {
+      _showError('无法读取绘图列表：$error');
+      return;
+    }
     if (!mounted) return;
     final selected = await showDialog<String>(
       context: context,
@@ -560,7 +635,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     );
     if (!mounted || selected == null) return;
     try {
-      final document = await _drawingStorage.load(selected);
+      final document = await widget.documentStorage.load(selected);
       if (document == null) return;
       _restoreSnapshot(document.drawing);
       setState(() => _currentDocumentName = document.name);
@@ -620,6 +695,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
 
   void _setPolygonSides(int sides) {
     setState(() => _polygonSides = sides);
+    _syncController();
   }
 
   MathWorkspaceRegionActions get _regionActions {
@@ -726,7 +802,21 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       if (text.isEmpty) continue;
       if (!f.visible) continue;
 
-      final parsed = MathExpression.fromInput(text);
+      final sourceExpression = MathExpression.fromInput(text);
+      final domainParameters = _domainParameterNames(
+        f.domainStartExpression,
+        f.domainEndExpression,
+      );
+      final names = {...sourceExpression.parameters, ...domainParameters};
+      final parameterValues = {
+        for (final name in names)
+          if (name != 'x' && name != 'y')
+            name: (_parameters[name] ?? MathParameter()).value,
+      };
+      final parsed = MathExpression.fromInput(
+        text,
+        parameterValues: parameterValues,
+      );
       if (!parsed.isValid) {
         _showError(
           text.contains(r'\placeholder')
@@ -735,22 +825,48 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         );
         return;
       }
+      final domainStart = _parseDomainBound(
+        f.domainStartExpression,
+        parameterValues,
+      );
+      final domainEnd = _parseDomainBound(
+        f.domainEndExpression,
+        parameterValues,
+      );
+      if ((f.domainStartExpression.trim().isNotEmpty && domainStart == null) ||
+          (f.domainEndExpression.trim().isNotEmpty && domainEnd == null) ||
+          (domainStart != null &&
+              domainEnd != null &&
+              domainStart >= domainEnd)) {
+        _showError('定义域表达式无效或下界不小于上界，公式已保留。');
+        return;
+      }
       entries.add(
         FormulaEntry(
           rawExpression: text,
           parsed: parsed,
           color: f.color,
           autoColor: f.autoColor,
+          parameterValues: parameterValues,
+          domainStartExpression: f.domainStartExpression,
+          domainEndExpression: f.domainEndExpression,
+          includeDomainStart: f.includeDomainStart,
+          includeDomainEnd: f.includeDomainEnd,
         ),
       );
     }
     // Mark all rows as committed
     setState(() {
       _activeParameterNames = {
-        for (final entry in entries)
+        for (final entry in entries) ...{
           ...entry.parsed!.parameters.where(
             (name) => name != 'x' && name != 'y',
           ),
+          ..._domainParameterNames(
+            entry.domainStartExpression,
+            entry.domainEndExpression,
+          ),
+        },
       };
       for (final name in _activeParameterNames) {
         _parameters.putIfAbsent(name, MathParameter.new);
@@ -770,7 +886,13 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       for (final entry in _plottedFormulas)
         entry.copyWith(
           parameterValues: {
-            for (final name in entry.parsed!.parameters)
+            for (final name in {
+              ...entry.parsed!.parameters,
+              ..._domainParameterNames(
+                entry.domainStartExpression,
+                entry.domainEndExpression,
+              ),
+            })
               if (_parameters.containsKey(name)) name: _parameters[name]!.value,
           },
           parsed: entry.parsed!.withParameters({
@@ -788,6 +910,20 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     _refreshParameterCurves();
     _syncController();
     widget.controller?.onParameterChanged?.call(name, parameter);
+  }
+
+  double? _parseDomainBound(
+    String source,
+    Map<String, double> parameterValues,
+  ) {
+    if (source.trim().isEmpty) return null;
+    final expression = MathExpression.fromInput(
+      source,
+      parameterValues: parameterValues,
+    );
+    if (!expression.isValid) return null;
+    final value = expression.evaluator(0);
+    return value.isFinite ? value : null;
   }
 
   void _plotAll3D() {
@@ -963,6 +1099,69 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     });
     // Re-plot to update canvas
     _plotAll();
+  }
+
+  Future<void> _showFormulaDomain(int formulaIndex) async {
+    final formula = _formulas[formulaIndex];
+    var start = formula.domainStartExpression;
+    var end = formula.domainEndExpression;
+    var includeStart = formula.includeDomainStart;
+    var includeEnd = formula.includeDomainEnd;
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('公式 ${formulaIndex + 1} 定义域'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                initialValue: start,
+                decoration: const InputDecoration(labelText: '下界表达式'),
+                onChanged: (value) => start = value,
+              ),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('包含下界'),
+                value: includeStart,
+                onChanged: (value) =>
+                    setDialogState(() => includeStart = value ?? false),
+              ),
+              TextFormField(
+                initialValue: end,
+                decoration: const InputDecoration(labelText: '上界表达式'),
+                onChanged: (value) => end = value,
+              ),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('包含上界'),
+                value: includeEnd,
+                onChanged: (value) =>
+                    setDialogState(() => includeEnd = value ?? false),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (saved != true || !mounted) return;
+    setState(() {
+      formula.domainStartExpression = start;
+      formula.domainEndExpression = end;
+      formula.includeDomainStart = includeStart;
+      formula.includeDomainEnd = includeEnd;
+    });
+    await _plotAll();
   }
 
   void _showColorPicker(int formulaIndex) {
@@ -1510,6 +1709,13 @@ class _MathDrawingPageState extends State<MathDrawingPage>
           ),
 
           // ---- Action buttons ----
+          _buildActionButton(
+            icon: Icons.tune,
+            iconSize: 18,
+            color: cs.onSurfaceVariant,
+            tooltip: '设置公式定义域',
+            onPressed: () => _showFormulaDomain(index),
+          ),
           // Each action button carries a uniform 12px leading gap. This also
           // matches the left-side gap between the color circle and the input.
           _buildActionButton(
@@ -1593,12 +1799,60 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   // ==================================================================
 
   Widget _buildCanvas(ColorScheme cs) {
+    void toggleDisplaySetting(String setting) {
+      final canvas = _canvasKey.currentState;
+      if (canvas == null) return;
+      canvas.setDisplaySettings(
+        showAxes: setting == 'axes' ? !canvas.showAxes : canvas.showAxes,
+        showGrid: setting == 'grid' ? !canvas.showGrid : canvas.showGrid,
+        showZeros: setting == 'zeros' ? !canvas.showZeros : canvas.showZeros,
+        showExtrema: setting == 'extrema'
+            ? !canvas.showExtrema
+            : canvas.showExtrema,
+      );
+      _syncController();
+    }
+
     final defaultActions = _workspaceRegion(
       widget.options.canvas2DActionsBuilder,
       widget.options.show2DCanvasActions
           ? Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                PopupMenuButton<String>(
+                  tooltip: '2D显示设置',
+                  onSelected: toggleDisplaySetting,
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: 'axes',
+                      child: Text(
+                        '${_canvasKey.currentState?.showAxes == true ? '✓ ' : ''}坐标轴',
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'grid',
+                      child: Text(
+                        '${_canvasKey.currentState?.showGrid == true ? '✓ ' : ''}网格',
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'zeros',
+                      child: Text(
+                        '${_canvasKey.currentState?.showZeros == true ? '✓ ' : ''}零点',
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'extrema',
+                      child: Text(
+                        '${_canvasKey.currentState?.showExtrema == true ? '✓ ' : ''}极值点',
+                      ),
+                    ),
+                  ],
+                  child: const Padding(
+                    padding: EdgeInsets.all(8),
+                    child: Icon(Icons.tune),
+                  ),
+                ),
                 _floatingControl(
                   icon: Icons.filter_center_focus,
                   tooltip: widget.options.presentation.labels.resolve(
@@ -1781,8 +2035,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                     activeTool: _current3DTool,
                     polygonSides: _polygonSides,
                     labelResolver: widget.options.presentation.labels.resolve,
-                    onPolygonSidesChanged: (sides) =>
-                        setState(() => _polygonSides = sides),
+                    onPolygonSidesChanged: _setPolygonSides,
                     instruction: _current3DTool != ConstructionTool.move
                         ? (_canvas3DKey.currentState?.constructionInstruction ??
                               _toolInstruction)
@@ -1879,6 +2132,10 @@ class _FormulaState {
   bool autoColor;
   String committedText;
   bool visible;
+  String domainStartExpression;
+  String domainEndExpression;
+  bool includeDomainStart;
+  bool includeDomainEnd;
 
   _FormulaState({
     required this.controller,
@@ -1886,6 +2143,10 @@ class _FormulaState {
     String? id,
     this.autoColor = true,
     this.visible = true,
+    this.domainStartExpression = '',
+    this.domainEndExpression = '',
+    this.includeDomainStart = true,
+    this.includeDomainEnd = true,
   }) : id = id ?? _newId(),
        committedText = '' {
     _knownIds.add(this.id);

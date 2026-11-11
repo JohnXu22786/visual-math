@@ -3,63 +3,62 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'math_drawing_document.dart';
+export 'math_drawing_storage_error.dart';
+import 'math_drawing_storage_native.dart'
+    if (dart.library.js_interop) 'math_drawing_storage_web.dart'
+    as backend;
 
-/// App-private, cross-platform storage for named `.vm` documents.
-/// The shared-preferences implementation maps to platform preferences on
-/// native targets and browser-local storage on web.
+/// App-private `.vm` document storage. Native platforms use files; web uses
+/// IndexedDB. The API keeps list, read, atomic write, and overwrite policy common.
 class MathDrawingStorage {
-  static const String _key = 'visual_math.documents.v1';
+  static const _legacyDocumentsKey = 'visual_math.documents.v1';
+  static Future<void>? _migration;
+
   const MathDrawingStorage();
 
   Future<List<String>> listNames() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_key);
-    if (raw == null) return const [];
-    final value = jsonDecode(raw);
-    if (value is! Map<String, dynamic>)
-      throw const FormatException('Saved drawing index is damaged.');
-    return value.keys.toList()..sort();
+    await _ensureLegacyDocumentsMigrated();
+    return backend.listDocumentNames();
   }
 
   Future<MathDrawingDocument?> load(String name) async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_key);
-    if (raw == null) return null;
-    final value = jsonDecode(raw);
-    if (value is! Map<String, dynamic>)
-      throw const FormatException('Saved drawing index is damaged.');
-    final content = value[name];
-    return content is String ? MathDrawingDocument.decode(content) : null;
+    await _ensureLegacyDocumentsMigrated();
+    return backend.loadDocument(name);
   }
 
-  /// Save a document. Existing names require an explicit [overwrite] choice.
-  Future<void> save(
-    MathDrawingDocument document, {
-    bool overwrite = false,
-  }) async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_key);
-    final value = raw == null ? <String, dynamic>{} : jsonDecode(raw);
-    if (value is! Map<String, dynamic>)
-      throw const FormatException('Saved drawing index is damaged.');
-    if (value.containsKey(document.name) && !overwrite) {
-      throw StateError(
-        'A drawing named "${document.name}" already exists. Choose another name or confirm overwrite.',
-      );
-    }
-    value[document.name] = document.encode();
-    if (!await prefs.setString(_key, jsonEncode(value)))
-      throw StateError('Could not save the drawing.');
+  Future<void> save(MathDrawingDocument document, {bool overwrite = false}) async {
+    await _ensureLegacyDocumentsMigrated();
+    await backend.saveDocument(document, overwrite: overwrite);
   }
 
   Future<void> delete(String name) async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_key);
+    await _ensureLegacyDocumentsMigrated();
+    await backend.deleteDocument(name);
+  }
+
+  static Future<void> _ensureLegacyDocumentsMigrated() {
+    final current = _migration;
+    if (current != null) return current;
+    final migration = _migrateLegacyDocuments();
+    _migration = migration;
+    return migration.catchError((Object error, StackTrace stack) {
+      _migration = null;
+      Error.throwWithStackTrace(error, stack);
+    });
+  }
+
+  static Future<void> _migrateLegacyDocuments() async {
+    final preferences = await SharedPreferences.getInstance();
+    final raw = preferences.getString(_legacyDocumentsKey);
     if (raw == null) return;
-    final value = jsonDecode(raw);
-    if (value is! Map<String, dynamic>)
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map<String, dynamic> ||
+        decoded.values.any((value) => value is! String)) {
       throw const FormatException('Saved drawing index is damaged.');
-    value.remove(name);
-    await prefs.setString(_key, jsonEncode(value));
+    }
+    await backend.importLegacyDocuments(decoded.cast<String, String>());
+    if (!await preferences.remove(_legacyDocumentsKey)) {
+      throw StateError('Migrated drawings but could not remove the old index.');
+    }
   }
 }

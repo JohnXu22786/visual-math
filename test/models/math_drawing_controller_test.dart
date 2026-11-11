@@ -86,6 +86,7 @@ void main() {
           controller: controller,
           initialShowWebView: false,
           initialMathematicalMode: false,
+          options: const MathWorkspaceOptions(show3D: true, show3DTools: true),
         ),
       ),
     );
@@ -95,7 +96,14 @@ void main() {
     controller.setViewport2D(
       const Viewport(xMin: -4, yMin: -3, xMax: 4, yMax: 3),
     );
+    controller.setActiveView(ViewMode.mode3D);
+    controller.setActiveTool(ConstructionTool.regularPolygon);
     await tester.pumpAndSettle();
+    await tester.tap(find.byType(DropdownButton<int>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('9').last);
+    await tester.pumpAndSettle();
+    expect(controller.snapshot?.polygonSides3D, 9);
     await controller.plot();
 
     expect(controller.formulas.single.rawExpression, 'x^2');
@@ -113,6 +121,7 @@ void main() {
           controller: restoredController,
           initialShowWebView: false,
           initialMathematicalMode: false,
+          options: const MathWorkspaceOptions(show3D: true, show3DTools: true),
         ),
       ),
     );
@@ -120,6 +129,11 @@ void main() {
     expect(restoredController.formulas.single.rawExpression, 'x^2');
     expect(restoredController.viewport2D.xMin, -4);
     expect(restoredController.viewport2D.yMax, 3);
+    expect(restoredController.snapshot?.polygonSides3D, 9);
+    expect(
+      tester.widget<DropdownButton<int>>(find.byType(DropdownButton<int>)).value,
+      9,
+    );
   });
 
   testWidgets('formula edits and plotting errors reach host callbacks', (
@@ -204,5 +218,106 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(restoredController.formulas.single.visible, isFalse);
+  });
+
+  testWidgets('restoring a 3D drawing replaces the offstage 2D plot', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          initialShowWebView: false,
+          initialMathematicalMode: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    controller.setFormulas([
+      FormulaEntry(
+        rawExpression: 'x^2',
+        parsed: MathExpression.fromInput('x^2'),
+      ),
+    ]);
+    await controller.plot();
+    await tester.pump();
+
+    controller.restore(
+      MathDrawingSnapshot(
+        formulas: [
+          FormulaEntry(id: 'restored-formula', rawExpression: 'x + 5'),
+        ],
+        parameters: const {},
+        activeView: ViewMode.mode3D,
+        activeTool: ConstructionTool.move,
+        viewport2D: Viewport.defaultViewport(),
+        camera3D: const Camera3D(),
+        projection3D: ProjectionType.parallel,
+        scene3D: const [],
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(controller.activeView, ViewMode.mode3D);
+    final canvas = tester.state<MathCanvasState>(
+      find.byType(MathCanvas, skipOffstage: false),
+    );
+    expect(canvas.curvePoints, isNotEmpty);
+    expect(
+      canvas.curvePoints.every(
+        (point) => (point['y']! - point['x']! - 5).abs() < 1e-8,
+      ),
+      isTrue,
+    );
+  });
+
+  testWidgets('domain-only expressions use and follow shared parameters', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          initialShowWebView: false,
+          initialMathematicalMode: false,
+          options: const MathWorkspaceOptions(
+            show3D: false,
+            showFormulaEditor: false,
+            showKeyboard: false,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    controller.setParameters({
+      'a': MathParameter(value: 2, min: 0, max: 6, step: 1),
+    });
+    controller.setFormulas([
+      FormulaEntry(
+        rawExpression: 'x',
+        parsed: MathExpression.fromInput('x'),
+        domainStartExpression: 'a',
+        domainEndExpression: 'a + 1',
+      ),
+    ]);
+    await controller.plot();
+    await tester.pump();
+
+    final canvas = tester.state<MathCanvasState>(find.byType(MathCanvas));
+    void expectDomain(double start, double end) {
+      final xs = canvas.curvePoints.map((point) => point['x']!);
+      expect(xs, isNotEmpty);
+      expect(xs.every((x) => x >= start && x <= end), isTrue);
+    }
+
+    expectDomain(2, 3);
+    controller.setParameters({
+      'a': MathParameter(value: 4, min: 0, max: 6, step: 1),
+    });
+    await tester.pump();
+    expectDomain(4, 5);
   });
 }

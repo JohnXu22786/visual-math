@@ -4,6 +4,7 @@ import 'package:flutter/material.dart' hide Viewport;
 
 import 'formula_entry.dart';
 import 'math_3d_object.dart';
+import 'math_3d_relationship.dart';
 import 'math_3d_scene.dart';
 import 'math_3d_tool.dart';
 import 'math_drawing_controller.dart';
@@ -65,9 +66,19 @@ class MathDrawingDocument {
     final rawExtensions = decoded['extensions'];
     if (rawExtensions != null && rawExtensions is! Map<String, dynamic>)
       throw const FormatException('Document extensions must be an object.');
+    final MathDrawingSnapshot drawingSnapshot;
+    try {
+      drawingSnapshot = _snapshotFromJson(drawing);
+    } on FormatException {
+      rethrow;
+    } on TypeError catch (error) {
+      throw FormatException('Drawing data is malformed: $error');
+    } on ArgumentError catch (error) {
+      throw FormatException('Drawing data is malformed: $error');
+    }
     return MathDrawingDocument(
       name: rawName,
-      drawing: _snapshotFromJson(drawing),
+      drawing: drawingSnapshot,
       extensions: Map.unmodifiable(
         (rawExtensions as Map<String, dynamic>?) ?? const {},
       ),
@@ -84,6 +95,10 @@ Map<String, dynamic> _snapshotToJson(MathDrawingSnapshot s) => {
         'color': s.formulas[i].color.toARGB32(),
         'colorMode': s.formulas[i].autoColor ? 'auto' : 'custom',
         'visible': s.formulas[i].visible,
+        'domainStart': s.formulas[i].domainStartExpression ?? '',
+        'domainEnd': s.formulas[i].domainEndExpression ?? '',
+        'includeDomainStart': s.formulas[i].includeDomainStart,
+        'includeDomainEnd': s.formulas[i].includeDomainEnd,
         'parameterValues': s.formulas[i].parameterValues,
       },
   ],
@@ -98,6 +113,13 @@ Map<String, dynamic> _snapshotToJson(MathDrawingSnapshot s) => {
   },
   'view': s.activeView.name,
   'activeTool': s.activeTool.name,
+  'polygonSides3D': s.polygonSides3D,
+  'view2D': {
+    'showAxes': s.showAxes2D,
+    'showGrid': s.showGrid2D,
+    'showZeros': s.showZeros2D,
+    'showExtrema': s.showExtrema2D,
+  },
   'viewport2D': s.viewport2D.toJson(),
   'view3D': {
     'camera': {
@@ -111,7 +133,30 @@ Map<String, dynamic> _snapshotToJson(MathDrawingSnapshot s) => {
     'showPlane': s.showPlane3D,
     'showGrid': s.showGrid3D,
     'showLabels': s.showLabels3D,
-    'objects': [for (final o in s.scene3D) _objectToJson(o)],
+    'objects': [
+      for (var i = 0; i < s.scene3D.length; i++)
+        _objectToJson(
+          s.scene3D[i],
+          s.scene3D[i].documentId.isEmpty
+              ? 'object-$i'
+              : s.scene3D[i].documentId,
+        ),
+    ],
+    'pointAttachments': [
+      for (final relationship in s.pointAttachments3D)
+        {'pointId': relationship.pointId, 'targetId': relationship.targetId},
+    ],
+    'constructionDependencies': [
+      for (final dependency in s.constructionDependencies3D)
+        {
+          'objectId': dependency.objectId,
+          'tool': dependency.tool.name,
+          'inputPoints': [for (final p in dependency.inputPoints) _point(p)],
+          'sourcePointIds': dependency.sourcePointIds,
+          'workingPlaneNormal': _vector(dependency.workingPlaneNormal),
+          'polygonSides': dependency.polygonSides,
+        },
+    ],
   },
 };
 
@@ -143,22 +188,36 @@ MathDrawingSnapshot _snapshotFromJson(Map<String, dynamic> j) {
           _ => throw const FormatException('Unknown formula color mode.'),
         },
         visible: _required<bool>(f, 'visible'),
+        domainStartExpression: _optional<String>(f, 'domainStart', ''),
+        domainEndExpression: _optional<String>(f, 'domainEnd', ''),
+        includeDomainStart: _optional<bool>(f, 'includeDomainStart', true),
+        includeDomainEnd: _optional<bool>(f, 'includeDomainEnd', true),
         parameterValues: _doubleMap(f['parameterValues']),
       ),
   ];
   final formulaIds = formulas.map((formula) => formula.id).toSet();
   if (formulaIds.length != formulas.length ||
       formulas.any((formula) => formula.id.isEmpty)) {
-    throw const FormatException('Formula row IDs must be non-empty and unique.');
+    throw const FormatException(
+      'Formula row IDs must be non-empty and unique.',
+    );
   }
   final parameterJson = obj(j['parameters'], 'parameters');
   final parameters = <String, MathParameter>{};
   parameterJson.forEach((key, value) {
     final p = obj(value, 'parameters.$key');
+    final parameterValue = _num(p, 'value');
+    final min = _num(p, 'min');
+    final max = _num(p, 'max');
+    if (parameterValue < min || parameterValue > max) {
+      throw FormatException(
+        'Parameter "$key" value must be within its saved slider range.',
+      );
+    }
     parameters[key] = MathParameter(
-      value: _num(p, 'value'),
-      min: _num(p, 'min'),
-      max: _num(p, 'max'),
+      value: parameterValue,
+      min: min,
+      max: max,
       step: _num(p, 'step'),
     );
   });
@@ -169,6 +228,10 @@ MathDrawingSnapshot _snapshotFromJson(Map<String, dynamic> j) {
       .firstOrNull;
   if (tool == null)
     throw const FormatException('Unknown active construction tool.');
+  final polygonSides3D = _optional<int>(j, 'polygonSides3D', 6);
+  if (polygonSides3D < 3 || polygonSides3D > 12) {
+    throw const FormatException('3D polygon side count must be between 3 and 12.');
+  }
   final viewportJson = obj(j['viewport2D'], 'viewport2D');
   final viewport = Viewport(
     xMin: _num(viewportJson, 'xMin'),
@@ -180,24 +243,83 @@ MathDrawingSnapshot _snapshotFromJson(Map<String, dynamic> j) {
     throw const FormatException('2D viewport bounds are invalid.');
   }
   final v3 = obj(j['view3D'], 'view3D');
+  final v2 = j['view2D'] == null
+      ? const <String, dynamic>{}
+      : obj(j['view2D'], 'view2D');
   final camera = obj(v3['camera'], 'view3D.camera');
   final target = _pointFrom(camera['target'], 'view3D.camera.target');
+  final cameraDistance = _num(camera, 'distance');
+  if (cameraDistance <= 0) {
+    throw const FormatException('3D camera distance must be positive.');
+  }
   final projection = ProjectionType.values
       .where((e) => e.name == v3['projection'])
       .firstOrNull;
   if (projection == null) throw const FormatException('Unknown 3D projection.');
   final objects = [
-    for (final o in list(v3['objects'], 'view3D.objects')) _objectFromJson(o),
+    for (final (index, object) in list(
+      v3['objects'],
+      'view3D.objects',
+    ).indexed)
+      _objectFromJson(object, 'object-$index'),
   ];
+  final ids = objects.map((object) => object.documentId).toSet();
+  final objectsById = {for (final object in objects) object.documentId: object};
+  if (ids.length != objects.length ||
+      objects.any((object) => object.documentId.isEmpty)) {
+    throw const FormatException('3D object IDs must be non-empty and unique.');
+  }
+  final attachments = [
+    for (final relation in list(
+      v3['pointAttachments'] ?? const <dynamic>[],
+      'view3D.pointAttachments',
+    ))
+      PointAttachment(
+        pointId: _required<String>(relation, 'pointId'),
+        targetId: _required<String>(relation, 'targetId'),
+      ),
+  ];
+  final dependencies = [
+    for (final dependency in list(
+      v3['constructionDependencies'] ?? const <dynamic>[],
+      'view3D.constructionDependencies',
+    ))
+      _dependencyFromJson(dependency),
+  ];
+  for (final attachment in attachments) {
+    if (!ids.contains(attachment.pointId) ||
+        !ids.contains(attachment.targetId) ||
+        objectsById[attachment.pointId]?.type != Object3DType.point) {
+      throw const FormatException(
+        'Point attachment references an unknown object ID.',
+      );
+    }
+  }
+  for (final dependency in dependencies) {
+    if (!ids.contains(dependency.objectId) ||
+        dependency.polygonSides < 3 ||
+        dependency.polygonSides > 12 ||
+        dependency.sourcePointIds.any(
+          (id) =>
+              id != null &&
+              (!ids.contains(id) ||
+                  objectsById[id]?.type != Object3DType.point),
+        )) {
+      throw const FormatException(
+        'Construction dependency references an unknown object ID.',
+      );
+    }
+  }
   return MathDrawingSnapshot(
     formulas: formulas,
     parameters: parameters,
     activeView: view,
     activeTool: tool,
+    polygonSides3D: polygonSides3D,
     viewport2D: viewport,
     camera3D: Camera3D(
       target: target,
-      distance: _num(camera, 'distance'),
+      distance: cameraDistance,
       theta: _num(camera, 'theta'),
       phi: _num(camera, 'phi'),
     ),
@@ -207,6 +329,12 @@ MathDrawingSnapshot _snapshotFromJson(Map<String, dynamic> j) {
     showGrid3D: _required<bool>(v3, 'showGrid'),
     showLabels3D: _required<bool>(v3, 'showLabels'),
     scene3D: objects,
+    showAxes2D: _optional<bool>(v2, 'showAxes', true),
+    showGrid2D: _optional<bool>(v2, 'showGrid', true),
+    showZeros2D: _optional<bool>(v2, 'showZeros', false),
+    showExtrema2D: _optional<bool>(v2, 'showExtrema', false),
+    pointAttachments3D: attachments,
+    constructionDependencies3D: dependencies,
   );
 }
 
@@ -215,6 +343,15 @@ T _required<T>(Map<String, dynamic> m, String k) {
   if (v is! T)
     throw FormatException('Required field "$k" is missing or invalid.');
   return v;
+}
+
+T _optional<T>(Map<String, dynamic> m, String k, T fallback) {
+  if (!m.containsKey(k)) return fallback;
+  final value = m[k];
+  if (value is! T) {
+    throw FormatException('Optional field "$k" is invalid.');
+  }
+  return value;
 }
 
 double _num(Map<String, dynamic> m, String k) {
@@ -250,7 +387,44 @@ Vector3D _vectorFrom(Object? v, String field) {
   return Vector3D(_num(v, 'x'), _num(v, 'y'), _num(v, 'z'));
 }
 
-Map<String, dynamic> _objectToJson(Object3D o) => {
+ConstructionDependency _dependencyFromJson(Map<String, dynamic> json) {
+  final tool = ConstructionTool.values
+      .where((value) => value.name == json['tool'])
+      .firstOrNull;
+  if (tool == null)
+    throw const FormatException('Unknown construction dependency tool.');
+  final inputPoints = json['inputPoints'];
+  final sourceIds = json['sourcePointIds'];
+  if (inputPoints is! List ||
+      sourceIds is! List ||
+      inputPoints.length != sourceIds.length) {
+    throw const FormatException(
+      'Construction dependency inputs are malformed.',
+    );
+  }
+  if (sourceIds.any((id) => id != null && id is! String)) {
+    throw const FormatException(
+      'Construction dependency source IDs are malformed.',
+    );
+  }
+  return ConstructionDependency(
+    objectId: _required<String>(json, 'objectId'),
+    tool: tool,
+    inputPoints: [
+      for (final point in inputPoints)
+        _pointFrom(point, 'dependency.inputPoints'),
+    ],
+    sourcePointIds: sourceIds.cast<String?>(),
+    workingPlaneNormal: _vectorFrom(
+      json['workingPlaneNormal'],
+      'dependency.workingPlaneNormal',
+    ),
+    polygonSides: _required<int>(json, 'polygonSides'),
+  );
+}
+
+Map<String, dynamic> _objectToJson(Object3D o, String id) => {
+  'id': id,
   'type': o.type.name,
   'color': o.color,
   'opacity': o.opacity,
@@ -285,14 +459,31 @@ Map<String, dynamic> _objectToJson(Object3D o) => {
       'constant': o.conic!.constant,
     },
 };
-Object3D _objectFromJson(Map<String, dynamic> j) {
+Object3D _objectFromJson(Map<String, dynamic> j, String fallbackId) {
   final type = Object3DType.values
       .where((e) => e.name == j['type'])
       .firstOrNull;
   if (type == null) throw const FormatException('Unsupported 3D object type.');
   final color = _required<int>(j, 'color'),
       opacity = _num(j, 'opacity'),
-      label = j['label'] as String?;
+      label = j['label'] as String?,
+      edgeWidth = _num(j, 'edgeWidth');
+  final showEdges = _required<bool>(j, 'showEdges');
+  final rawVertices = j['vertices'];
+  final rawIndices = j['indices'];
+  if (type == Object3DType.curve &&
+      (rawVertices is! List || rawVertices.length < 2)) {
+    throw const FormatException(
+      'Curve geometry must contain at least two points.',
+    );
+  }
+  if ((type == Object3DType.surface || type == Object3DType.polyhedron) &&
+      (rawVertices is! List ||
+          rawIndices is! List ||
+          rawVertices.length < 3 ||
+          rawIndices.length < 3)) {
+    throw const FormatException('Mesh geometry is missing required triangles.');
+  }
   final vertices = (j['vertices'] as List? ?? const [])
       .map((p) => _pointFrom(p, 'object.vertices'))
       .toList();
@@ -302,6 +493,23 @@ Object3D _objectFromJson(Map<String, dynamic> j) {
   final normals = (j['normals'] as List? ?? const [])
       .map((v) => _vectorFrom(v, 'object.normals'))
       .toList();
+  final curveStarts = (j['curveStarts'] as List? ?? const [])
+      .map((value) => value as int)
+      .toList();
+  if (type == Object3DType.curve &&
+      (curveStarts.any((start) => start <= 0 || start >= vertices.length) ||
+          curveStarts.toSet().length != curveStarts.length ||
+          curveStarts.asMap().entries.any(
+            (entry) =>
+                entry.key > 0 && curveStarts[entry.key - 1] >= entry.value,
+          ))) {
+    throw const FormatException('Curve branch indices are invalid.');
+  }
+  if ((type == Object3DType.surface || type == Object3DType.polyhedron) &&
+      (indices.length % 3 != 0 ||
+          indices.any((index) => index < 0 || index >= vertices.length))) {
+    throw const FormatException('Mesh triangle indices are invalid.');
+  }
   switch (type) {
     case Object3DType.point:
       final point = _pointFrom(j['point'], 'object.point');
@@ -314,8 +522,11 @@ Object3D _objectFromJson(Map<String, dynamic> j) {
             )
           : Object3D.point(point, color: color, opacity: opacity, label: label);
       return result.copyWith(
+        documentId: _optional<String>(j, 'id', fallbackId),
         visible: _required<bool>(j, 'visible'),
         transformOrigin: _required<bool>(j, 'transformOrigin'),
+        edgeWidth: edgeWidth,
+        showEdges: showEdges,
       );
     case Object3DType.line:
       final kind = Line3DKind.values
@@ -330,8 +541,11 @@ Object3D _objectFromJson(Map<String, dynamic> j) {
         opacity: opacity,
         label: label,
       ).copyWith(
+        documentId: _optional<String>(j, 'id', fallbackId),
         visible: _required<bool>(j, 'visible'),
         transformOrigin: _required<bool>(j, 'transformOrigin'),
+        edgeWidth: edgeWidth,
+        showEdges: showEdges,
       );
     case Object3DType.plane:
       final p = j['plane'];
@@ -348,8 +562,11 @@ Object3D _objectFromJson(Map<String, dynamic> j) {
         opacity: opacity,
         label: label,
       ).copyWith(
+        documentId: _optional<String>(j, 'id', fallbackId),
         visible: _required<bool>(j, 'visible'),
         transformOrigin: _required<bool>(j, 'transformOrigin'),
+        edgeWidth: edgeWidth,
+        showEdges: showEdges,
       );
     case Object3DType.surface:
       return Object3D.surface(
@@ -358,12 +575,15 @@ Object3D _objectFromJson(Map<String, dynamic> j) {
         normals: normals,
         color: color,
         opacity: opacity,
-        edgeWidth: _num(j, 'edgeWidth'),
-        showEdges: _required<bool>(j, 'showEdges'),
+        edgeWidth: edgeWidth,
+        showEdges: showEdges,
         label: label,
       ).copyWith(
+        documentId: _optional<String>(j, 'id', fallbackId),
         visible: _required<bool>(j, 'visible'),
         transformOrigin: _required<bool>(j, 'transformOrigin'),
+        edgeWidth: edgeWidth,
+        showEdges: showEdges,
       );
     case Object3DType.sphere:
       return Object3D.sphere(
@@ -373,8 +593,11 @@ Object3D _objectFromJson(Map<String, dynamic> j) {
         opacity: opacity,
         label: label,
       ).copyWith(
+        documentId: _optional<String>(j, 'id', fallbackId),
         visible: _required<bool>(j, 'visible'),
         transformOrigin: _required<bool>(j, 'transformOrigin'),
+        edgeWidth: edgeWidth,
+        showEdges: showEdges,
       );
     case Object3DType.polyhedron:
       return Object3D.polyhedron(
@@ -382,12 +605,15 @@ Object3D _objectFromJson(Map<String, dynamic> j) {
         indices: indices,
         color: color,
         opacity: opacity,
-        edgeWidth: _num(j, 'edgeWidth'),
-        showEdges: _required<bool>(j, 'showEdges'),
+        edgeWidth: edgeWidth,
+        showEdges: showEdges,
         label: label,
       ).copyWith(
+        documentId: _optional<String>(j, 'id', fallbackId),
         visible: _required<bool>(j, 'visible'),
         transformOrigin: _required<bool>(j, 'transformOrigin'),
+        edgeWidth: edgeWidth,
+        showEdges: showEdges,
       );
     case Object3DType.vector:
       return Object3D.vectorObj(
@@ -397,8 +623,11 @@ Object3D _objectFromJson(Map<String, dynamic> j) {
         opacity: opacity,
         label: label,
       ).copyWith(
+        documentId: _optional<String>(j, 'id', fallbackId),
         visible: _required<bool>(j, 'visible'),
         transformOrigin: _required<bool>(j, 'transformOrigin'),
+        edgeWidth: edgeWidth,
+        showEdges: showEdges,
       );
     case Object3DType.curve:
       final cj = j['conic'];
@@ -420,14 +649,17 @@ Object3D _objectFromJson(Map<String, dynamic> j) {
       }
       return Object3D.curve(
         points: vertices,
-        curveStarts: (j['curveStarts'] as List? ?? const []).cast<int>(),
+        curveStarts: curveStarts,
         conic: conic,
         color: color,
         opacity: opacity,
         label: label,
       ).copyWith(
+        documentId: _optional<String>(j, 'id', fallbackId),
         visible: _required<bool>(j, 'visible'),
         transformOrigin: _required<bool>(j, 'transformOrigin'),
+        edgeWidth: edgeWidth,
+        showEdges: showEdges,
       );
   }
 }

@@ -157,6 +157,9 @@ enum Line3DKind { segment, line, ray }
 class Object3D {
   final Object3DType type;
 
+  /// Stable identity used by portable documents and scene relationships.
+  final String documentId;
+
   // Point fields
   final Point3D? _point;
   Point3D get point => _point ?? Point3D.origin;
@@ -215,6 +218,7 @@ class Object3D {
 
   const Object3D._({
     required this.type,
+    this.documentId = '',
     this.lineKind = Line3DKind.segment,
     Point3D? point,
     Point3D? pointA,
@@ -255,6 +259,7 @@ class Object3D {
 
   /// Preserve geometry and appearance when naming or moving an object.
   Object3D copyWith({
+    String? documentId,
     Point3D? point,
     String? label,
     int? color,
@@ -265,6 +270,7 @@ class Object3D {
     bool? transformOrigin,
   }) => Object3D._(
     type: type,
+    documentId: documentId ?? this.documentId,
     lineKind: lineKind,
     point: point ?? _point,
     pointA: _pointA,
@@ -296,6 +302,7 @@ class Object3D {
   /// Copy this object with independent, unmodifiable geometry collections.
   Object3D immutableCopy() => Object3D._(
     type: type,
+    documentId: documentId,
     lineKind: lineKind,
     point: _point,
     pointA: _pointA,

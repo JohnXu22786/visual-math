@@ -20,6 +20,7 @@ const List<Color> formulaPalette = [
 class FormulaEntry {
   /// Stable identity for this row in saved documents.
   final String id;
+
   /// Raw user input (e.g. "x^2", "sin(x)").
   final String rawExpression;
 
@@ -35,6 +36,12 @@ class FormulaEntry {
   /// Whether this formula row is currently included when plotting.
   final bool visible;
 
+  /// Optional lower/upper x-domain expressions, stored exactly as entered.
+  final String? domainStartExpression;
+  final String? domainEndExpression;
+  final bool includeDomainStart;
+  final bool includeDomainEnd;
+
   /// Current parameter values (only relevant if [parsed] has parameters).
   final Map<String, double> parameterValues;
 
@@ -45,6 +52,10 @@ class FormulaEntry {
     this.color = Colors.blue,
     this.autoColor = true,
     this.visible = true,
+    this.domainStartExpression,
+    this.domainEndExpression,
+    this.includeDomainStart = true,
+    this.includeDomainEnd = true,
     this.parameterValues = const {},
   });
 
@@ -61,6 +72,10 @@ class FormulaEntry {
     Color? color,
     bool? autoColor,
     bool? visible,
+    String? domainStartExpression,
+    String? domainEndExpression,
+    bool? includeDomainStart,
+    bool? includeDomainEnd,
     Map<String, double>? parameterValues,
   }) {
     return FormulaEntry(
@@ -75,6 +90,11 @@ class FormulaEntry {
       color: color ?? this.color,
       autoColor: autoColor ?? this.autoColor,
       visible: visible ?? this.visible,
+      domainStartExpression:
+          domainStartExpression ?? this.domainStartExpression,
+      domainEndExpression: domainEndExpression ?? this.domainEndExpression,
+      includeDomainStart: includeDomainStart ?? this.includeDomainStart,
+      includeDomainEnd: includeDomainEnd ?? this.includeDomainEnd,
       parameterValues: parameterValues ?? this.parameterValues,
     );
   }

@@ -1,7 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Viewport;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:visual_math/visual_math.dart';
 
@@ -206,6 +206,63 @@ void main() {
       expect(preservedSolid.vertices, movedSolid.vertices);
     },
   );
+
+  testWidgets('restored construction dependencies remain editable', (
+    tester,
+  ) async {
+    final original = await setup(tester);
+    const first = Point3D(-2, 0, 0);
+    const second = Point3D(-1, 0, 0);
+    original.setObjects([
+      const Object3D.point(first, label: 'A'),
+      const Object3D.point(second, label: 'B'),
+    ]);
+    original.setTool(ConstructionTool.tetrahedron);
+    await tester.pump();
+    await tester.tapAt(screen(original, first));
+    await tester.pump();
+    await tester.tapAt(screen(original, second));
+    await tester.pump();
+
+    original.ensureDocumentIds();
+    final document = MathDrawingDocument(
+      name: 'construction',
+      drawing: MathDrawingSnapshot(
+        formulas: const [],
+        parameters: const {},
+        activeView: ViewMode.mode3D,
+        activeTool: ConstructionTool.move,
+        viewport2D: Viewport.defaultViewport(),
+        camera3D: original.camera,
+        projection3D: original.projectionType,
+        scene3D: original.objects,
+        pointAttachments3D: original.documentPointAttachments,
+        constructionDependencies3D: original.documentConstructionDependencies,
+      ),
+    );
+    final reopenedDocument = MathDrawingDocument.decode(document.encode());
+    final reopenedSnapshot = reopenedDocument.drawing;
+    final reopened = await setup(tester);
+    reopened.setObjects(reopenedSnapshot.scene3D);
+    reopened.restoreDocumentRelationships(
+      pointAttachments: reopenedSnapshot.pointAttachments3D,
+      constructionDependencies: reopenedSnapshot.constructionDependencies3D,
+    );
+    reopened.setTool(ConstructionTool.move);
+    await tester.pump();
+    final oldPoint = reopened.objects.first.point;
+    final oldDerived = reopened.objects.last.vertices;
+    await tester.dragFrom(screen(reopened, oldPoint), const Offset(-45, 24));
+    await tester.pump();
+
+    final movedPoint = reopened.objects.first.point;
+    expect(movedPoint.distanceTo(oldPoint), greaterThan(0.1));
+    expect(reopened.objects.last.vertices[0], movedPoint);
+    expect(
+      reopened.objects.last.vertices[2].distanceTo(oldDerived[2]),
+      greaterThan(0.1),
+    );
+  });
 
   testWidgets('a snapped solid vertex can begin a later construction', (
     tester,

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import 'formula_entry.dart';
 import 'math_3d_object.dart';
+import 'math_3d_relationship.dart';
 import 'math_3d_scene.dart';
 import 'math_3d_tool.dart';
 import 'math_drawing_state.dart';
@@ -20,6 +21,7 @@ class MathDrawingSnapshot {
   final Map<String, MathParameter> parameters;
   final ViewMode activeView;
   final ConstructionTool activeTool;
+  final int polygonSides3D;
   final Viewport viewport2D;
   final Camera3D camera3D;
   final ProjectionType projection3D;
@@ -28,6 +30,12 @@ class MathDrawingSnapshot {
   final bool showGrid3D;
   final bool showLabels3D;
   final List<Object3D> scene3D;
+  final List<PointAttachment> pointAttachments3D;
+  final List<ConstructionDependency> constructionDependencies3D;
+  final bool showAxes2D;
+  final bool showGrid2D;
+  final bool showZeros2D;
+  final bool showExtrema2D;
 
   MathDrawingSnapshot({
     this.version = currentVersion,
@@ -35,6 +43,7 @@ class MathDrawingSnapshot {
     required Map<String, MathParameter> parameters,
     required this.activeView,
     required this.activeTool,
+    this.polygonSides3D = 6,
     required this.viewport2D,
     required this.camera3D,
     required this.projection3D,
@@ -43,6 +52,12 @@ class MathDrawingSnapshot {
     this.showGrid3D = false,
     this.showLabels3D = true,
     required List<Object3D> scene3D,
+    List<PointAttachment> pointAttachments3D = const [],
+    List<ConstructionDependency> constructionDependencies3D = const [],
+    this.showAxes2D = true,
+    this.showGrid2D = true,
+    this.showZeros2D = false,
+    this.showExtrema2D = false,
   }) : formulas = List.unmodifiable([
          for (final formula in formulas)
            formula.copyWith(
@@ -53,7 +68,27 @@ class MathDrawingSnapshot {
        parameters = Map.unmodifiable(parameters),
        scene3D = List.unmodifiable(
          scene3D.map((object) => object.immutableCopy()),
+       ),
+       pointAttachments3D = List.unmodifiable(pointAttachments3D),
+       constructionDependencies3D = List.unmodifiable(
+         constructionDependencies3D.map(
+           (dependency) => ConstructionDependency(
+             objectId: dependency.objectId,
+             tool: dependency.tool,
+             inputPoints: dependency.inputPoints,
+             sourcePointIds: dependency.sourcePointIds,
+             workingPlaneNormal: dependency.workingPlaneNormal,
+             polygonSides: dependency.polygonSides,
+           ),
+         ),
        ) {
+    if (polygonSides3D < 3 || polygonSides3D > 12) {
+      throw ArgumentError.value(
+        polygonSides3D,
+        'polygonSides3D',
+        'Use 3–12 sides',
+      );
+    }
     if (version != currentVersion) {
       throw ArgumentError.value(
         version,
