@@ -83,6 +83,44 @@ void main() {
   });
 
   group('MathCanvas3D - objects', () {
+    testWidgets('renders the initial scene supplied by the host', (
+      tester,
+    ) async {
+      final initialObject = Object3D.point(
+        const Point3D(1, 2, 3),
+        label: 'host point',
+      );
+      List<Object3D>? sceneUpdate;
+      final key = GlobalKey<MathCanvas3DState>();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 400,
+              height: 400,
+              child: MathCanvas3D(
+                key: key,
+                initialObjects: [initialObject],
+                initialCamera: const Camera3D(distance: 12),
+                onSceneUpdated: (objects) => sceneUpdate = objects,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(key.currentState!.objects, [initialObject]);
+      expect(key.currentState!.camera.distance, 12);
+      key.currentState!.setCamera(const Camera3D(distance: 20));
+      key.currentState!.setObjects(const []);
+      await tester.pump();
+      expect(sceneUpdate, isEmpty);
+      key.currentState!.resetView();
+      await tester.pump();
+      expect(key.currentState!.camera.distance, 12);
+    });
+
     testWidgets('setSurface adds a surface mesh', (tester) async {
       final key = GlobalKey<MathCanvas3DState>();
       await tester.pumpWidget(
