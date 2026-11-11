@@ -390,6 +390,7 @@ class MathCanvasState extends State<MathCanvas> {
     for (final curve in _formulaCurves) {
       if (curve.formula.parsed?.type != MathExpressionType.explicit) continue;
       for (final points in curve.polylines) {
+        double? lastTouchingZero;
         for (var i = 1; i < points.length; i++) {
           final p0 = points[i - 1];
           final p1 = points[i];
@@ -400,6 +401,55 @@ class MathCanvasState extends State<MathCanvas> {
           if (_showZeros && (y0 == 0 || y1 == 0 || y0.sign != y1.sign)) {
             final t = y1 == y0 ? 0.0 : (-y0 / (y1 - y0)).clamp(0.0, 1.0);
             result.add((x0 + (x1 - x0) * t, 0, curve.formula.color));
+          }
+          if (_showZeros && i + 1 < points.length) {
+            final p2 = points[i + 1];
+            final y2 = p2['y']!;
+            // A touching root is a local minimum of |f| with no sign change.
+            if (y0 != 0 &&
+                y1 != 0 &&
+                y2 != 0 &&
+                y0.sign == y1.sign &&
+                y1.sign == y2.sign &&
+                y1.abs() <= y0.abs() &&
+                y1.abs() <= y2.abs() &&
+                (y1.abs() < y0.abs() || y1.abs() < y2.abs())) {
+              final evaluate = curve.formula.parsed!.evaluator;
+              var left = x0;
+              var right = p2['x']!;
+              for (var step = 0; step < 256; step++) {
+                final a = left + (right - left) / 3;
+                final b = right - (right - left) / 3;
+                final ya = evaluate(a).abs();
+                final yb = evaluate(b).abs();
+                if (!ya.isFinite || !yb.isFinite) break;
+                if (ya < yb) {
+                  right = b;
+                } else {
+                  left = a;
+                }
+              }
+              final x = (left + right) / 2;
+              final y = evaluate(x).abs();
+              // Compare the residual to the change at floating-point
+              // resolution, so a nearby nonzero extremum is not a root.
+              final radius = dart_math.max(
+                (right - left) * 2,
+                x.abs() * 2.220446049250313e-16,
+              );
+              final before = evaluate(x - radius).abs();
+              final after = evaluate(x + radius).abs();
+              final resolution = dart_math.max(before - y, after - y);
+              if (y.isFinite &&
+                  before.isFinite &&
+                  after.isFinite &&
+                  y <= resolution &&
+                  (lastTouchingZero == null ||
+                      (x - lastTouchingZero).abs() > (x1 - x0).abs() * 1e-6)) {
+                result.add((x, 0, curve.formula.color));
+                lastTouchingZero = x;
+              }
+            }
           }
           if (_showExtrema && i + 1 < points.length) {
             final y2 = points[i + 1]['y']!;
