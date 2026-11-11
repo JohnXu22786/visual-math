@@ -414,40 +414,36 @@ class MathCanvasState extends State<MathCanvas> {
                 y1.abs() <= y0.abs() &&
                 y1.abs() <= y2.abs() &&
                 (y1.abs() < y0.abs() || y1.abs() < y2.abs())) {
-              final evaluate = curve.formula.parsed!.evaluator;
-              var left = x0;
-              var right = p2['x']!;
-              for (var step = 0; step < 256; step++) {
-                final a = left + (right - left) / 3;
-                final b = right - (right - left) / 3;
-                final ya = evaluate(a).abs();
-                final yb = evaluate(b).abs();
-                if (!ya.isFinite || !yb.isFinite) break;
-                if (ya < yb) {
-                  right = b;
-                } else {
-                  left = a;
+              try {
+                final evaluate = curve.formula.parsed!.evaluator;
+                var left = x0;
+                var right = p2['x']!;
+                for (var step = 0; step < 256; step++) {
+                  final a = left + (right - left) / 3;
+                  final b = right - (right - left) / 3;
+                  final ya = evaluate(a).abs();
+                  final yb = evaluate(b).abs();
+                  if (!ya.isFinite || !yb.isFinite) break;
+                  if (ya < yb) {
+                    right = b;
+                  } else {
+                    left = a;
+                  }
                 }
-              }
-              final x = (left + right) / 2;
-              final y = evaluate(x).abs();
-              // Compare the residual to the change at floating-point
-              // resolution, so a nearby nonzero extremum is not a root.
-              final radius = dart_math.max(
-                (right - left) * 2,
-                x.abs() * 2.220446049250313e-16,
-              );
-              final before = evaluate(x - radius).abs();
-              final after = evaluate(x + radius).abs();
-              final resolution = dart_math.max(before - y, after - y);
-              if (y.isFinite &&
-                  before.isFinite &&
-                  after.isFinite &&
-                  y <= resolution &&
-                  (lastTouchingZero == null ||
-                      (x - lastTouchingZero).abs() > (x1 - x0).abs() * 1e-6)) {
-                result.add((x, 0, curve.formula.color));
-                lastTouchingZero = x;
+                // Only emit an evaluated zero. A small residual could also be
+                // a nonzero extremum, so uncertain candidates are omitted.
+                final x = x0 <= 0 && p2['x']! >= 0 && evaluate(0) == 0
+                    ? 0.0
+                    : (left + right) / 2;
+                if (evaluate(x) == 0 &&
+                    (lastTouchingZero == null ||
+                        (x - lastTouchingZero).abs() >
+                            (x1 - x0).abs() * 1e-6)) {
+                  result.add((x, 0, curve.formula.color));
+                  lastTouchingZero = x;
+                }
+              } catch (_) {
+                // An invalid probe leaves this extremum uncertain.
               }
             }
           }

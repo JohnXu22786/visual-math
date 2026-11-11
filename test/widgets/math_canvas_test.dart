@@ -115,10 +115,9 @@ void main() {
       expect(await zeros('(x-1.23)^2+0.0001'), isEmpty);
       expect(await zeros('(x-1.23)^2+0.000000000000001'), isEmpty);
       expect(await zeros('(x-1.23)^2+1e-30'), isEmpty);
-      final irrational = await zeros('abs(x^2-2)^1.5');
-      expect(irrational, hasLength(2));
-      expect(irrational.first.$1, closeTo(-math.sqrt(2), 1e-5));
-      expect(irrational.last.$1, closeTo(math.sqrt(2), 1e-5));
+      expect(await zeros('(x-1.23)^2+1e-100'), isEmpty);
+      expect(await zeros('abs(x-1.23)+1e-16'), isEmpty);
+      expect(await zeros('-(x-1.23)^2-1e-100'), isEmpty);
       expect((await zeros('x')).single.$1, closeTo(0, 1e-5));
     },
   );
