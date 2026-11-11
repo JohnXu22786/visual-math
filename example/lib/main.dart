@@ -124,11 +124,12 @@ class _FilesPageState extends State<FilesPage> {
       final document = await widget.documentStorage.load(name);
       if (!mounted) return;
       if (document == null) throw StateError('Drawing no longer exists');
-      final controller = MathDrawingController()..restore(document.drawing);
+      final controller = MathDrawingController();
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => MathDrawingPage(
             controller: controller,
+            initialDocument: document,
             documentStorage: widget.documentStorage,
           ),
         ),

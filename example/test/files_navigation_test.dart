@@ -6,7 +6,15 @@ import 'package:visual_math_example/main.dart';
 
 class MemoryStorage extends MathDrawingStorage {
   MemoryStorage(this.document);
-  final MathDrawingDocument document;
+  MathDrawingDocument document;
+
+  @override
+  Future<void> save(MathDrawingDocument value, {bool overwrite = false}) async {
+    if (!overwrite && value.name == document.name) {
+      throw DuplicateDrawingException(value.name);
+    }
+    document = value;
+  }
 
   @override
   Future<List<String>> listNames() async => [document.name];
@@ -22,6 +30,9 @@ void main() {
     debugDefaultTargetPlatformOverride = TargetPlatform.linux;
     final document = MathDrawingDocument(
       name: 'Saved graph',
+      extensions: const {
+        'vendor': {'setting': 42},
+      },
       drawing: MathDrawingSnapshot(
         formulas: const [FormulaEntry(rawExpression: 'x^2')],
         parameters: const {},
@@ -33,8 +44,9 @@ void main() {
         scene3D: const [],
       ),
     );
+    final storage = MemoryStorage(document);
     await tester.pumpWidget(
-      MaterialApp(home: ExampleMenu(documentStorage: MemoryStorage(document))),
+      MaterialApp(home: ExampleMenu(documentStorage: storage)),
     );
     await tester.tap(find.text('Files'));
     await tester.pumpAndSettle();
@@ -46,6 +58,22 @@ void main() {
     final page = tester.widget<MathDrawingPage>(find.byType(MathDrawingPage));
     expect(page.controller!.snapshot!.formulas.single.rawExpression, 'x^2');
     expect(page.controller!.snapshot!.viewport2D.xMin, -4);
+    await tester.tap(find.byTooltip('保存绘图'));
+    await tester.pump();
+    await tester.enterText(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      ),
+      'Saved graph',
+    );
+    await tester.tap(find.text('继续'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('覆盖'));
+    await tester.pump();
+    expect(storage.document.extensions, {
+      'vendor': {'setting': 42},
+    });
     expect(tester.takeException(), isNull);
     debugDefaultTargetPlatformOverride = null;
   });

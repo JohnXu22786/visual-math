@@ -34,6 +34,9 @@ class MathDrawingPage extends StatefulWidget {
   /// Initial expression shown in the first formula row, if any.
   final String? initialExpression;
 
+  /// Saved document to open when the workspace is first created.
+  final MathDrawingDocument? initialDocument;
+
   /// Whether to show the platform WebView editor when it is supported.
   final bool initialShowWebView;
 
@@ -53,6 +56,7 @@ class MathDrawingPage extends StatefulWidget {
   const MathDrawingPage({
     super.key,
     this.initialExpression,
+    this.initialDocument,
     this.initialShowWebView = true,
     this.initialMathematicalMode,
     this.controller,
@@ -92,6 +96,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   String? _plotError;
   List<Object3D> _lastReportedScene = const [];
   String? _currentDocumentName;
+  Map<String, dynamic> _documentExtensions = const {};
 
   @override
   void initState() {
@@ -146,6 +151,12 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       setParameters: _setParameters,
       restore: _restoreSnapshot,
     );
+    final document = widget.initialDocument;
+    if (document != null) {
+      _currentDocumentName = document.name;
+      _documentExtensions = document.extensions;
+      _restoreSnapshot(document.drawing);
+    }
     _syncController();
   }
 
@@ -571,7 +582,11 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     if (!mounted) return;
     var name = await _askDocumentName();
     if (!mounted || name == null || name.isEmpty) return;
-    final document = MathDrawingDocument(name: name, drawing: _makeSnapshot());
+    final document = MathDrawingDocument(
+      name: name,
+      drawing: _makeSnapshot(),
+      extensions: _documentExtensions,
+    );
     try {
       await widget.documentStorage.save(document);
     } on DuplicateDrawingException {
@@ -638,7 +653,10 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       final document = await widget.documentStorage.load(selected);
       if (document == null) return;
       _restoreSnapshot(document.drawing);
-      setState(() => _currentDocumentName = document.name);
+      setState(() {
+        _currentDocumentName = document.name;
+        _documentExtensions = document.extensions;
+      });
     } catch (error) {
       _showError('无法打开绘图：$error');
     }
