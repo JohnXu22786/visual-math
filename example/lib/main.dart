@@ -229,7 +229,7 @@ class _HomeDestination extends StatelessWidget {
           key: const ValueKey('host-owned-composition'),
           onPressed: () => Navigator.of(context).push(
             MaterialPageRoute<void>(
-              builder: (_) => const _HostOwnedCompositionPage(),
+              builder: (_) => const HostOwnedCompositionPage(),
             ),
           ),
           icon: const Icon(Icons.widgets_outlined),
@@ -281,15 +281,15 @@ class _HomeDestination extends StatelessWidget {
 
 /// Demonstrates composing the exported editor, keyboard, parameter controls,
 /// and canvas while this example owns the editing and parameter state.
-class _HostOwnedCompositionPage extends StatefulWidget {
-  const _HostOwnedCompositionPage();
+class HostOwnedCompositionPage extends StatefulWidget {
+  const HostOwnedCompositionPage({super.key});
 
   @override
-  State<_HostOwnedCompositionPage> createState() =>
+  State<HostOwnedCompositionPage> createState() =>
       _HostOwnedCompositionPageState();
 }
 
-class _HostOwnedCompositionPageState extends State<_HostOwnedCompositionPage> {
+class _HostOwnedCompositionPageState extends State<HostOwnedCompositionPage> {
   final _formulaController = TextEditingController(text: 'a*x + b');
   final _formulaKey = GlobalKey<MathFormulaFieldState>();
   final _canvasKey = GlobalKey<MathCanvasState>();
