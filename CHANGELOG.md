@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- Support host-owned composition of the public math controls and canvases.
+- Add initial 3D scene and camera inputs plus scene update callbacks for external hosts.
+- Preserve canvas `GlobalKey` controls; use `MathDrawingController` for complete workspace commands and snapshots.
+
 ## 0.1.2
 
 - Add 2D graph view controls and formula domains with characteristic points.
