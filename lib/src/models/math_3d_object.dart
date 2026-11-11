@@ -262,6 +262,7 @@ class Object3D {
     double? edgeWidth,
     bool? showEdges,
     bool? visible,
+    bool? transformOrigin,
   }) => Object3D._(
     type: type,
     lineKind: lineKind,
@@ -287,7 +288,7 @@ class Object3D {
         : edgeWidth.clamp(0, maxSolidEdgeWidth).toDouble(),
     showEdges: showEdges ?? this.showEdges,
     label: label ?? this.label,
-    transformOrigin: transformOrigin,
+    transformOrigin: transformOrigin ?? this.transformOrigin,
     visible: visible ?? this.visible,
     isTextAnnotation: isTextAnnotation,
   );

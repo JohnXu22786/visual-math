@@ -23,6 +23,10 @@ class MathDrawingSnapshot {
   final Viewport viewport2D;
   final Camera3D camera3D;
   final ProjectionType projection3D;
+  final bool showAxes3D;
+  final bool showPlane3D;
+  final bool showGrid3D;
+  final bool showLabels3D;
   final List<Object3D> scene3D;
 
   MathDrawingSnapshot({
@@ -34,6 +38,10 @@ class MathDrawingSnapshot {
     required this.viewport2D,
     required this.camera3D,
     required this.projection3D,
+    this.showAxes3D = true,
+    this.showPlane3D = true,
+    this.showGrid3D = false,
+    this.showLabels3D = true,
     required List<Object3D> scene3D,
   }) : formulas = List.unmodifiable([
          for (final formula in formulas)

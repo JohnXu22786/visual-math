@@ -18,6 +18,8 @@ const List<Color> formulaPalette = [
 
 /// A single formula entry with its parsed expression, color, and parameters.
 class FormulaEntry {
+  /// Stable identity for this row in saved documents.
+  final String id;
   /// Raw user input (e.g. "x^2", "sin(x)").
   final String rawExpression;
 
@@ -37,6 +39,7 @@ class FormulaEntry {
   final Map<String, double> parameterValues;
 
   const FormulaEntry({
+    this.id = '',
     required this.rawExpression,
     this.parsed,
     this.color = Colors.blue,
@@ -51,6 +54,7 @@ class FormulaEntry {
   /// clears the old parse so the two values cannot silently get out of sync.
   /// Set [clearParsed] to clear the parse without changing the raw expression.
   FormulaEntry copyWith({
+    String? id,
     String? rawExpression,
     MathExpression? parsed,
     bool clearParsed = false,
@@ -60,6 +64,7 @@ class FormulaEntry {
     Map<String, double>? parameterValues,
   }) {
     return FormulaEntry(
+      id: id ?? this.id,
       rawExpression: rawExpression ?? this.rawExpression,
       parsed: clearParsed
           ? null

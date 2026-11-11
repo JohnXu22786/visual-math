@@ -14,6 +14,8 @@ export 'src/models/math_3d_scene.dart';
 export 'src/models/math_3d_tool.dart';
 export 'src/models/math_drawing_state.dart';
 export 'src/models/math_drawing_controller.dart';
+export 'src/models/math_drawing_document.dart';
+export 'src/models/math_drawing_storage.dart';
 export 'src/models/math_expression.dart';
 export 'src/models/math_expression_3d.dart';
 export 'src/models/math_input_catalog.dart';

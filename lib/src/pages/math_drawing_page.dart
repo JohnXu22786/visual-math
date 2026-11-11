@@ -9,6 +9,8 @@ import '../models/math_3d_object.dart';
 import '../models/math_3d_scene.dart';
 import '../models/math_3d_tool.dart';
 import '../models/math_drawing_controller.dart';
+import '../models/math_drawing_document.dart';
+import '../models/math_drawing_storage.dart';
 import '../models/math_drawing_state.dart';
 import '../models/math_expression.dart' show MathExpression;
 import '../models/math_expression_3d.dart';
@@ -85,6 +87,8 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   List<FormulaEntry> _plottedFormulas = [];
   String? _plotError;
   List<Object3D> _lastReportedScene = const [];
+  final MathDrawingStorage _drawingStorage = const MathDrawingStorage();
+  String? _currentDocumentName;
 
   @override
   void initState() {
@@ -267,11 +271,18 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     final formulas = [
       for (final formula in _formulas)
         FormulaEntry(
+          id: formula.id,
           rawExpression: formula.controller.text,
           parsed: MathExpression.fromInput(formula.controller.text),
           color: formula.color,
           autoColor: formula.autoColor,
           visible: formula.visible,
+          parameterValues: {
+            for (final name in MathExpression.fromInput(
+              formula.controller.text,
+            ).parameters)
+              if (_parameters.containsKey(name)) name: _parameters[name]!.value,
+          },
         ),
     ];
     final viewport =
@@ -290,6 +301,10 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       camera3D: _canvas3DKey.currentState?.camera ?? const Camera3D(),
       projection3D:
           _canvas3DKey.currentState?.projectionType ?? ProjectionType.parallel,
+      showAxes3D: _canvas3DKey.currentState?.showAxes ?? true,
+      showPlane3D: _canvas3DKey.currentState?.showPlane ?? true,
+      showGrid3D: _canvas3DKey.currentState?.showGrid ?? false,
+      showLabels3D: _canvas3DKey.currentState?.showLabels ?? true,
       scene3D: _canvas3DKey.currentState?.objects ?? const [],
     );
   }
@@ -361,6 +376,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
           for (final entry in formulas)
             _FormulaState(
               controller: TextEditingController(text: entry.rawExpression),
+              id: entry.id.isEmpty ? null : entry.id,
               color: entry.color,
               autoColor: entry.autoColor,
               visible: entry.visible,
@@ -408,6 +424,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
           for (final entry in snapshot.formulas)
             _FormulaState(
               controller: TextEditingController(text: entry.rawExpression),
+              id: entry.id.isEmpty ? null : entry.id,
               color: entry.color,
               autoColor: entry.autoColor,
               visible: entry.visible,
@@ -440,14 +457,116 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       );
       _canvas3DKey.currentState?.setCamera(snapshot.camera3D);
       _canvas3DKey.currentState?.setProjectionType(snapshot.projection3D);
+      _canvas3DKey.currentState?.setDisplaySettings(
+        showAxes: snapshot.showAxes3D,
+        showPlane: snapshot.showPlane3D,
+        showGrid: snapshot.showGrid3D,
+        showLabels: snapshot.showLabels3D,
+      );
       _canvas3DKey.currentState?.setObjects(snapshot.scene3D);
       _canvas3DKey.currentState?.setTool(snapshot.activeTool);
       _publish3DChange();
       _tabController.animateTo(restoredView == ViewMode.mode2D ? 0 : 1);
-      if (restoredView == ViewMode.mode2D) unawaited(_plotAll());
+      if (restoredView == ViewMode.mode2D) {
+        _plottedFormulas = [];
+        unawaited(_canvasKey.currentState?.setFormulas([]) ?? Future.value());
+        unawaited(_plotAll());
+      }
     });
     _syncController();
     controller?.publish(_makeSnapshot());
+  }
+
+  Future<String?> _askDocumentName() async {
+    var value = '';
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('保存绘图'),
+        content: TextField(
+          autofocus: true,
+          onChanged: (text) => value = text,
+          decoration: InputDecoration(
+            labelText: '名称',
+            hintText: _currentDocumentName,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, value.trim()),
+            child: const Text('继续'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _saveDrawing() async {
+    await _flushEditors();
+    if (!mounted) return;
+    var name = await _askDocumentName();
+    if (!mounted || name == null || name.isEmpty) return;
+    final document = MathDrawingDocument(name: name, drawing: _makeSnapshot());
+    try {
+      await _drawingStorage.save(document);
+    } on StateError {
+      if (!mounted) return;
+      final overwrite = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('同名绘图已存在'),
+          content: Text('要覆盖“$name”吗？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('覆盖'),
+            ),
+          ],
+        ),
+      );
+      if (overwrite != true) return;
+      await _drawingStorage.save(document, overwrite: true);
+    }
+    if (mounted) setState(() => _currentDocumentName = name);
+  }
+
+  Future<void> _openDrawingList() async {
+    final names = await _drawingStorage.listNames();
+    if (!mounted) return;
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('打开绘图'),
+        children: names.isEmpty
+            ? const [
+                Padding(padding: EdgeInsets.all(20), child: Text('没有已保存的绘图')),
+              ]
+            : [
+                for (final name in names)
+                  SimpleDialogOption(
+                    onPressed: () => Navigator.pop(context, name),
+                    child: Text(name),
+                  ),
+              ],
+      ),
+    );
+    if (!mounted || selected == null) return;
+    try {
+      final document = await _drawingStorage.load(selected);
+      if (document == null) return;
+      _restoreSnapshot(document.drawing);
+      setState(() => _currentDocumentName = document.name);
+    } catch (error) {
+      _showError('无法打开绘图：$error');
+    }
   }
 
   void _dismissKeyboard() {
@@ -963,6 +1082,16 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     final defaultAppBar = AppBar(
       title: Text(labels.resolve(labels.pageTitle)),
       actions: [
+        IconButton(
+          icon: const Icon(Icons.folder_open),
+          tooltip: '打开绘图',
+          onPressed: _openDrawingList,
+        ),
+        IconButton(
+          icon: const Icon(Icons.save_outlined),
+          tooltip: '保存绘图',
+          onPressed: _saveDrawing,
+        ),
         IconButton(
           icon: Icon(Icons.add, size: 24, color: cs.primary),
           tooltip: labels.resolve(labels.addFormula),
@@ -1740,6 +1869,9 @@ class _MathDrawingPageState extends State<MathDrawingPage>
 
 /// State for a single formula row.
 class _FormulaState {
+  static int _nextId = 0;
+  static final Set<String> _knownIds = {};
+  final String id;
   final TextEditingController controller;
   final GlobalKey rowKey = GlobalKey();
   final GlobalKey<MathFormulaFieldState> editorKey = GlobalKey();
@@ -1751,7 +1883,19 @@ class _FormulaState {
   _FormulaState({
     required this.controller,
     required this.color,
+    String? id,
     this.autoColor = true,
     this.visible = true,
-  }) : committedText = '';
+  }) : id = id ?? _newId(),
+       committedText = '' {
+    _knownIds.add(this.id);
+  }
+
+  static String _newId() {
+    String candidate;
+    do {
+      candidate = 'row-${_nextId++}';
+    } while (_knownIds.contains(candidate));
+    return candidate;
+  }
 }

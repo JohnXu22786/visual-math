@@ -478,6 +478,21 @@ class MathCanvas3DState extends State<MathCanvas3D> {
 
   bool get showLabels => _showLabels;
 
+  /// Restore persisted canvas display toggles.
+  void setDisplaySettings({
+    required bool showAxes,
+    required bool showPlane,
+    required bool showGrid,
+    required bool showLabels,
+  }) {
+    setState(() {
+      _showAxes = showAxes;
+      _showPlane = showPlane;
+      _showGrid = showGrid;
+      _showLabels = showLabels;
+    });
+  }
+
   /// Number of objects in the scene.
   int get objectCount => _objects.length;
 
