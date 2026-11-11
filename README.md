@@ -133,10 +133,47 @@ Scaffold(
 )
 ```
 
+A host can update a graph from its own numeric controls. `setExpression`
+accepts parameter values, while `setViewport` controls the visible bounds:
+
+```dart
+final graphKey = GlobalKey<MathCanvasState>();
+
+MathCanvas(key: graphKey, initialExpression: '2*x + 1');
+
+// Call from the host's slider or form callback:
+graphKey.currentState?.setExpression('a*x + b', {
+  'a': slope,
+  'b': intercept,
+});
+```
+
 For a 3D-only screen, use `MathCanvas3D()` in the same way. Its canvas
 supports the package's built-in pointer interactions; add `Math3DToolbar` or
 your own controls when the user needs construction tools. The two examples are
 also runnable from the repository's `example/` app.
+
+The host can provide its own starting scene and camera, then update them
+through the canvas state while it is mounted. `onSceneUpdated` returns an
+immutable copy of the scene after user edits; the existing no-argument
+`onSceneChanged` callback remains available:
+
+```dart
+final canvasKey = GlobalKey<MathCanvas3DState>();
+
+MathCanvas3D(
+  key: canvasKey,
+  initialObjects: const [
+    Object3D.point(Point3D(1, 2, 3), label: 'P'),
+  ],
+  initialCamera: const Camera3D(distance: 12),
+  onSceneUpdated: (objects) => saveScene(objects),
+);
+
+// In response to values from the host's own controls:
+canvasKey.currentState?.setObjects(nextObjects);
+canvasKey.currentState?.setCamera(nextCamera);
+```
 
 ### Customize the complete workspace
 
