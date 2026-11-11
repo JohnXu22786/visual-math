@@ -348,33 +348,34 @@ void main() {
       expect(sceneUpdateCount, 0);
     });
 
-    testWidgets('tool commands preserve legacy callback without scene payload', (
-      tester,
-    ) async {
-      var legacyCallbackCount = 0;
-      var sceneUpdateCount = 0;
-      final key = GlobalKey<MathCanvas3DState>();
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 400,
-              height: 400,
-              child: MathCanvas3D(
-                key: key,
-                onSceneChanged: () => legacyCallbackCount++,
-                onSceneUpdated: (_) => sceneUpdateCount++,
+    testWidgets(
+      'tool commands preserve legacy callback without scene payload',
+      (tester) async {
+        var legacyCallbackCount = 0;
+        var sceneUpdateCount = 0;
+        final key = GlobalKey<MathCanvas3DState>();
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SizedBox(
+                width: 400,
+                height: 400,
+                child: MathCanvas3D(
+                  key: key,
+                  onSceneChanged: () => legacyCallbackCount++,
+                  onSceneUpdated: (_) => sceneUpdateCount++,
+                ),
               ),
             ),
           ),
-        ),
-      );
-      await tester.pump();
+        );
+        await tester.pump();
 
-      key.currentState!.performToolCommand(ConstructionTool.showHideLabels);
-      expect(legacyCallbackCount, 1);
-      expect(sceneUpdateCount, 0);
-    });
+        key.currentState!.performToolCommand(ConstructionTool.showHideLabels);
+        expect(legacyCallbackCount, 1);
+        expect(sceneUpdateCount, 0);
+      },
+    );
 
     testWidgets('onViewportChange fires after resetView', (tester) async {
       bool viewportChanged = false;
