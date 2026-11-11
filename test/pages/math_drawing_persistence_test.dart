@@ -23,7 +23,7 @@ class _MemoryDrawingStorage extends MathDrawingStorage {
   }) async {
     if (saveFailure case final failure?) throw failure;
     if (documents.containsKey(document.name) && !overwrite) {
-      throw StateError('A document with this name already exists.');
+      throw DuplicateDrawingException(document.name);
     }
     documents[document.name] = document;
   }
@@ -67,12 +67,28 @@ void main() {
       'x^2',
     );
 
+    storage.documents['Quadratic'] = MathDrawingDocument(
+      name: 'Quadratic',
+      drawing: storage.documents['Quadratic']!.drawing,
+      extensions: const {'vendor': {'flag': true}},
+    );
     await tester.tap(find.byTooltip('打开绘图'));
     await _pumpWorkspace(tester);
     expect(find.text('Quadratic'), findsOneWidget);
     await tester.tap(find.text('Quadratic'));
     await _pumpWorkspace(tester);
     expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byTooltip('保存绘图'));
+    await _pumpWorkspace(tester);
+    await tester.enterText(find.byType(TextField), 'Quadratic');
+    await tester.tap(find.text('继续'));
+    await _pumpWorkspace(tester);
+    await tester.tap(find.text('覆盖'));
+    await _pumpWorkspace(tester);
+    expect(storage.documents['Quadratic']!.extensions, {
+      'vendor': {'flag': true},
+    });
 
     await tester.tap(find.byTooltip('添加公式'));
     await _pumpWorkspace(tester);
@@ -82,7 +98,10 @@ void main() {
     await tester.tap(find.text('继续'));
     await _pumpWorkspace(tester);
     final updated = storage.documents['Quadratic updated'];
-    final ids = updated!.drawing.formulas.map((formula) => formula.id).toSet();
+    expect(updated!.extensions, {
+      'vendor': {'flag': true},
+    });
+    final ids = updated.drawing.formulas.map((formula) => formula.id).toSet();
     expect(ids.length, updated.drawing.formulas.length);
   });
 
