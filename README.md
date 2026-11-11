@@ -175,6 +175,26 @@ canvasKey.currentState?.setObjects(nextObjects);
 canvasKey.currentState?.setCamera(nextCamera);
 ```
 
+### Compose host-owned formula controls
+
+The `example/` app includes a **Host-owned controls demo** reachable from its
+Graphs screen. It combines `MathFormulaField`, `MathKeyboard`,
+`MathParameterControls`, and `MathCanvas` without `MathDrawingPage`. The host
+owns and disposes the formula `TextEditingController`, owns parameter values,
+and connects widget callbacks to `MathFormulaFieldState.command` and
+`MathCanvasState.setFormulas`. `MathFormulaField.onChanged` and the parameter
+control callback replot from the current host values; the keyboard's `onPlot`
+callback uses the same path. The example disables the keyboard's optional
+category-order persistence.
+
+For the same wiring, keep the controller and parameter map in a host `State`,
+then pass those values into the controls. A formula field's `onChanged` reports
+editing changes; `MathKeyboard.onCommand` forwards its `(kind, value)` pair to
+the mounted formula field state; `MathParameterControls.onChanged` returns the
+updated named `MathParameter`; and `MathCanvasState.setFormulas` replaces the
+plotted entries. The host should dispose controllers it created; Flutter
+manages the lifecycle of widget state associated with its `GlobalKey`s.
+
 ### Customize the complete workspace
 
 `MathWorkspaceOptions` keeps every existing region enabled by default. It can
