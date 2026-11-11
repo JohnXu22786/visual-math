@@ -168,7 +168,7 @@ MathCanvas3D(
   ],
   initialCamera: const Camera3D(distance: 12),
   onSceneUpdated: (objects) => saveScene(objects),
-)
+);
 
 // In response to values from the host's own controls:
 canvasKey.currentState?.setObjects(nextObjects);

@@ -373,9 +373,13 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   /// Get the list of objects (unmodifiable).
   List<Object3D> get objects => List.unmodifiable(_objects);
 
-  void _notifySceneChanged() {
+  void _notifySceneChanged({bool includeSceneSnapshot = true}) {
     widget.onSceneChanged?.call();
-    widget.onSceneUpdated?.call(List.unmodifiable(_objects));
+    if (includeSceneSnapshot) {
+      widget.onSceneUpdated?.call(
+        List.unmodifiable(_objects.map((object) => object.immutableCopy())),
+      );
+    }
   }
 
   // Construction state
@@ -538,7 +542,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       default:
         break;
     }
-    _notifySceneChanged();
+    _notifySceneChanged(includeSceneSnapshot: false);
   }
 
   Future<void> _chooseViewDirection() async {
@@ -1931,9 +1935,11 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           tool == ConstructionTool.deleteObject,
     );
     if (index == null) return;
+    var sceneChanged = false;
     switch (tool) {
       case ConstructionTool.deleteObject:
-        _removeObjectAt(index);
+        _removeObjectAt(index, notify: false);
+        sceneChanged = true;
       case ConstructionTool.showHideObject:
         setState(() {
           _objects[index] = _objects[index].copyWith(
@@ -1941,7 +1947,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           );
           _objectsVersion++;
         });
-        _notifySceneChanged();
+        sceneChanged = true;
       case ConstructionTool.volume:
         final volume = _objectVolume(_objects[index]);
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
@@ -1967,14 +1973,19 @@ class MathCanvas3DState extends State<MathCanvas3D> {
                 ?.showSnackBar(SnackBar(content: _error('这两个对象没有可显示的离散交点')));
           } else {
             for (final point in points) {
-              _appendCreatedObject(Object3D.point(point, color: 0xFFD81B60));
+              sceneChanged =
+                  _appendCreatedObject(
+                    Object3D.point(point, color: 0xFFD81B60),
+                    notify: false,
+                  ) ||
+                  sceneChanged;
             }
           }
           widget.onToolInstruction?.call(ToolInfo.all[tool]!.tooltip);
         }
       case ConstructionTool.tangentLine:
       case ConstructionTool.polarDiameter:
-        _performConicLineAction(
+        sceneChanged = _performConicLineAction(
           index,
           tangent: tool == ConstructionTool.tangentLine,
         );
@@ -1986,7 +1997,9 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           final first = _objects[_intersectionSourceIndex!];
           final intersection = _createIntersectionCurve(first, _objects[index]);
           _intersectionSourceIndex = null;
-          if (intersection != null) _appendCreatedObject(intersection);
+          if (intersection != null) {
+            sceneChanged = _appendCreatedObject(intersection, notify: false);
+          }
           widget.onToolInstruction?.call(ToolInfo.all[tool]!.tooltip);
         }
       case ConstructionTool.copyStyle:
@@ -1995,13 +2008,18 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           widget.onToolInstruction?.call('再点击目标对象');
         } else {
           final source = _objects[_styleSourceIndex!];
+          final target = _objects[index];
+          sceneChanged =
+              target.color != source.color || target.opacity != source.opacity;
           setState(() {
-            _objects[index] = _objects[index].copyWith(
-              color: source.color,
-              opacity: source.opacity,
-            );
+            if (sceneChanged) {
+              _objects[index] = target.copyWith(
+                color: source.color,
+                opacity: source.opacity,
+              );
+              _objectsVersion++;
+            }
             _styleSourceIndex = null;
-            _objectsVersion++;
           });
           widget.onToolInstruction?.call(ToolInfo.all[tool]!.tooltip);
         }
@@ -2028,6 +2046,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
               _attachmentPointIndex = null;
               _objectsVersion++;
             });
+            sceneChanged = true;
             widget.onToolInstruction?.call('点已附着到对象');
           }
         } else if (_objects[index].type == Object3DType.point) {
@@ -2036,6 +2055,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
               _pointAttachments.remove(index);
               _objectsVersion++;
             });
+            sceneChanged = true;
             widget.onToolInstruction?.call('点已脱离对象');
           } else if (_attachmentPointIndex == null) {
             _attachmentPointIndex = index;
@@ -2044,14 +2064,20 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         }
       case ConstructionTool.unfoldNet:
         final unfolded = _unfoldPolyhedron(_objects[index]);
-        if (unfolded != null) _appendCreatedObject(unfolded);
+        if (unfolded != null) {
+          sceneChanged = _appendCreatedObject(unfolded, notify: false);
+        }
       default:
         break;
     }
-    _notifySceneChanged();
+    if (sceneChanged) {
+      _notifySceneChanged();
+    } else {
+      widget.onSceneChanged?.call();
+    }
   }
 
-  void _appendCreatedObject(Object3D object) {
+  bool _appendCreatedObject(Object3D object, {bool notify = true}) {
     final toolName = ToolInfo.all[_currentTool]!.name;
     var number = 1;
     while (_objects.any((existing) => existing.label == '$toolName$number')) {
@@ -2062,16 +2088,18 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         : object;
     if (widget.onObjectCreated != null) {
       widget.onObjectCreated!(labelled);
+      return false;
     } else {
       setState(() {
         _objects.add(labelled);
         _objectsVersion++;
       });
-      _notifySceneChanged();
+      if (notify) _notifySceneChanged();
+      return true;
     }
   }
 
-  void _performConicLineAction(int index, {required bool tangent}) {
+  bool _performConicLineAction(int index, {required bool tangent}) {
     final sourceIndex = _conicSourceIndex;
     final isPolarDiameter = _currentTool == ConstructionTool.polarDiameter;
     if (sourceIndex == null) {
@@ -2093,7 +2121,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
               : '再点击圆锥曲线生成极线',
         );
       }
-      return;
+      return false;
     }
 
     final source = _objects[sourceIndex];
@@ -2126,10 +2154,12 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           : '请选择曲线平面内能确定有限极线的点';
       ScaffoldMessenger.maybeOf(context)
           ?.showSnackBar(SnackBar(content: _error(message)));
-    } else {
-      _appendCreatedObject(line);
+      widget.onToolInstruction?.call(ToolInfo.all[_currentTool]!.tooltip);
+      return false;
     }
+    final sceneChanged = _appendCreatedObject(line, notify: false);
     widget.onToolInstruction?.call(ToolInfo.all[_currentTool]!.tooltip);
+    return sceneChanged;
   }
 
   bool _pointInConicPlane(Conic3D conic, Point3D point) {
@@ -3505,7 +3535,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     );
   }
 
-  void _removeObjectAt(int index) {
+  void _removeObjectAt(int index, {bool notify = true}) {
     final hadSelection =
         _selectedObjectIndex != null || _selectedPointIndex != null;
     setState(() {
@@ -3586,7 +3616,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         selectedIndex == null ? null : _objects[selectedIndex],
       );
     }
-    _notifySceneChanged();
+    if (notify) _notifySceneChanged();
   }
 
   bool _wouldCreateAttachmentCycle(int pointIndex, int targetIndex) {
@@ -4154,6 +4184,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   void _onPointerUp(PointerEvent event) {
     _activePointers.remove(event.pointer);
     if (event.pointer == _pointEditPointer) {
+      final sceneChanged = _pointMoved;
       setState(() {
         if (!_pointMoved && _pointWasSelected) {
           _pointDragMode = _pointDragMode == PointDragMode.plane
@@ -4163,6 +4194,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         _pointBeforeDrag = null;
         _pointEditPointer = null;
       });
+      if (sceneChanged) _notifySceneChanged();
       widget.onViewportChange?.call();
     }
     if (event.pointer != _mousePointer) return;
@@ -4875,6 +4907,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
               _objects.add(obj);
               _objectsVersion++;
             });
+            _notifySceneChanged();
           }
           final objectIndex = _objects.indexOf(obj);
           if (objectIndex >= 0 &&
