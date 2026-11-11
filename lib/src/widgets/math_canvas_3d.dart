@@ -3762,7 +3762,11 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       if (updated == null) continue;
       _objects[solidIndex] = updated.copyWith(
         documentId: original.documentId,
-        label: original.label,
+        label:
+            dependency.tool == ConstructionTool.distance ||
+                dependency.tool == ConstructionTool.angle
+            ? updated.label
+            : original.label,
         color: original.color,
         opacity: original.opacity,
         edgeWidth: original.edgeWidth,
