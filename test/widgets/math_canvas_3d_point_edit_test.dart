@@ -264,6 +264,104 @@ void main() {
     );
   });
 
+  testWidgets(
+    'restored construction and attachment chains follow a moved point',
+    (tester) async {
+      final state = await setup(tester);
+      const a = Point3D(-2, 0, 0);
+      const b = Point3D(2, 0, 0);
+      const midpoint = Point3D(0, 0, 0);
+      const attached = Point3D(1, 0, 0);
+      state.setObjects([
+        Object3D.point(a).copyWith(documentId: 'a'),
+        Object3D.point(b).copyWith(documentId: 'b'),
+        Object3D.point(midpoint).copyWith(documentId: 'm'),
+        Object3D.line(midpoint, b).copyWith(documentId: 'segment'),
+        Object3D.point(attached).copyWith(documentId: 'p'),
+        Object3D.line(a, attached).copyWith(documentId: 'downstream'),
+        Object3D.point(
+          const Point3D(0, 1, 0),
+          label: 'area',
+        ).copyWith(documentId: 'area'),
+        Object3D.point(const Point3D(0, 3, 0)).copyWith(documentId: 'c'),
+        Object3D.curve(points: const [a, b, Point3D(0, 3, 0), a])
+            .copyWith(documentId: 'curve'),
+        Object3D.point(attached).copyWith(documentId: 'invalid-midpoint'),
+      ]);
+      ConstructionDependency dependency(
+        String id,
+        ConstructionTool tool,
+        List<Point3D> points,
+        List<String?> sources,
+      ) => ConstructionDependency(
+        objectId: id,
+        tool: tool,
+        inputPoints: points,
+        sourcePointIds: sources,
+        workingPlaneNormal: Vector3D.unitZ,
+        polygonSides: 3,
+      );
+      state.restoreDocumentRelationships(
+        pointAttachments: const [
+          PointAttachment(pointId: 'p', targetId: 'segment'),
+          PointAttachment(pointId: 'invalid-midpoint', targetId: 'segment'),
+        ],
+        // Intentionally reverse dependency order to exercise graph ordering.
+        constructionDependencies: [
+          dependency(
+            'downstream',
+            ConstructionTool.segment,
+            [a, attached],
+            ['a', 'p'],
+          ),
+          dependency(
+            'segment',
+            ConstructionTool.segment,
+            [midpoint, b],
+            ['m', 'b'],
+          ),
+          dependency('m', ConstructionTool.midpoint, [a, b], ['a', 'b']),
+          dependency(
+            'invalid-midpoint',
+            ConstructionTool.midpoint,
+            [a, a],
+            ['a', 'a'],
+          ),
+          dependency(
+            'curve',
+            ConstructionTool.polyline,
+            [a, b, const Point3D(0, 3, 0), a],
+            ['a', 'b', 'c', null],
+          ),
+          dependency(
+            'area',
+            ConstructionTool.area,
+            [a, b, const Point3D(0, 3, 0)],
+            ['a', 'b', 'c'],
+          ),
+        ],
+      );
+      state.setTool(ConstructionTool.move);
+      await tester.pump();
+      await tester.dragFrom(screen(state, a), const Offset(-45, 24));
+      await tester.pump();
+
+      final movedA = state.objects[0].point;
+      final movedMidpoint = state.objects[2].point;
+      final movedAttached = state.objects[4].point;
+      expect(movedA.distanceTo(a), greaterThan(0.1));
+      expect(movedMidpoint, movedA.midpoint(b));
+      expect(state.objects[3].pointA, movedMidpoint);
+      expect(movedAttached.distanceTo(attached), greaterThan(0.001));
+      expect(state.objects[5].pointA, movedA);
+      expect(state.objects[5].pointB, movedAttached);
+      expect(state.objects[6].label, startsWith('面积 '));
+      expect(state.objects[8].vertices.first, movedA);
+      expect(state.objects[8].vertices.last, movedA);
+      expect(state.objects[9].point, movedAttached);
+    },
+  );
+
   testWidgets('a snapped solid vertex can begin a later construction', (
     tester,
   ) async {
