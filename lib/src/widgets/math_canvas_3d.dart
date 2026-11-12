@@ -4759,7 +4759,11 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       }
       switch (object.type) {
         case Object3DType.point:
-          candidates.add(object.point);
+          final depth = worldToScreen(object.point, camera, projection).z;
+          if (projection.type == ProjectionType.parallel ||
+              (depth >= projection.near && depth <= projection.far)) {
+            candidates.add(object.point);
+          }
         case Object3DType.line:
           candidates.addAll([object.pointA, object.pointB]);
           final endpoints = clipLineToView(object, camera, projection);
@@ -4830,10 +4834,6 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       var nearestDistance = 14.0;
       for (final candidate in points) {
         final screen = worldToScreen(candidate, camera, projection);
-        if (projection.type == ProjectionType.perspective &&
-            (screen.z < projection.near || screen.z > projection.far)) {
-          continue;
-        }
         final dx = screen.x - screenX;
         final dy = screen.y - screenY;
         final pixelDistance = dart_math.sqrt(dx * dx + dy * dy);
