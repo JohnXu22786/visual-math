@@ -3764,13 +3764,25 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       }
       if (!acceptedAllPoints) continue;
 
+      // Area completion removes the closing click, so the stored inputs are
+      // only the polygon vertices. Replay closure after adding those vertices.
+      if (dependency.tool == ConstructionTool.area &&
+          dependency.points.length >= 3) {
+        construction.addPoint(
+          dependency.points.first,
+          workingPlaneNormal: dependency.workingPlaneNormal,
+          closeToFirstPoint: true,
+        );
+      }
+
       final updated = construction.result;
       if (updated == null) continue;
       _objects[solidIndex] = updated.copyWith(
         documentId: original.documentId,
         label:
             dependency.tool == ConstructionTool.distance ||
-                dependency.tool == ConstructionTool.angle
+                dependency.tool == ConstructionTool.angle ||
+                dependency.tool == ConstructionTool.area
             ? updated.label
             : original.label,
         color: original.color,

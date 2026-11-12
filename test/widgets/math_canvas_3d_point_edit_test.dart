@@ -370,6 +370,62 @@ void main() {
     );
   });
 
+  testWidgets('area follows its source vertices before and after reopening', (
+    tester,
+  ) async {
+    final original = await setup(tester);
+    const vertices = [Point3D(-2, 0, 0), Point3D(0, 0, 0), Point3D(0, 2, 0)];
+    original.setObjects([for (final point in vertices) Object3D.point(point)]);
+    original.setTool(ConstructionTool.area);
+    await tester.pump();
+    for (final point in [...vertices, vertices.first]) {
+      await tester.tapAt(screen(original, point));
+      await tester.pump();
+    }
+    expect(original.objects, hasLength(4));
+    expect(original.objects.last.label, '面积 2.000');
+
+    Future<void> moveAndCheck(MathCanvas3DState state) async {
+      state.setTool(ConstructionTool.move);
+      await tester.pump();
+      final oldPoint = state.objects.first.point;
+      final oldArea = state.objects.last;
+      await tester.dragFrom(screen(state, oldPoint), const Offset(-45, 24));
+      await tester.pump();
+      expect(state.objects.first.point.distanceTo(oldPoint), greaterThan(0.1));
+      expect(
+        state.objects.last.point.distanceTo(oldArea.point),
+        greaterThan(0.01),
+      );
+      expect(state.objects.last.label, isNot(oldArea.label));
+    }
+
+    await moveAndCheck(original);
+    original.ensureDocumentIds();
+    final document = MathDrawingDocument(
+      name: 'area',
+      drawing: MathDrawingSnapshot(
+        formulas: const [],
+        parameters: const {},
+        activeView: ViewMode.mode3D,
+        activeTool: ConstructionTool.move,
+        viewport2D: Viewport.defaultViewport(),
+        camera3D: original.camera,
+        projection3D: original.projectionType,
+        scene3D: original.objects,
+        constructionDependencies3D: original.documentConstructionDependencies,
+      ),
+    );
+    final snapshot = MathDrawingDocument.decode(document.encode()).drawing;
+    final reopened = await setup(tester);
+    reopened.setObjects(snapshot.scene3D);
+    reopened.restoreDocumentRelationships(
+      pointAttachments: snapshot.pointAttachments3D,
+      constructionDependencies: snapshot.constructionDependencies3D,
+    );
+    await moveAndCheck(reopened);
+  });
+
   testWidgets('a snapped solid vertex can begin a later construction', (
     tester,
   ) async {
