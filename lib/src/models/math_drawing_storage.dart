@@ -62,6 +62,26 @@ class MathDrawingStorage {
     final remaining = await backend.importLegacyDocuments(
       decoded.cast<String, String>(),
     );
+    // Reserve all original keys so a recovery cannot take another legacy name.
+    for (final entry in remaining.entries.toList()) {
+      if (await backend.loadDocumentSource(entry.key) == entry.value) {
+        remaining.remove(entry.key);
+        continue;
+      }
+      var index = 1;
+      while (true) {
+        final name = '${entry.key} (recovered $index)';
+        index++;
+        if (decoded.containsKey(name)) continue;
+        final source = entry.value;
+        final existing = await backend.loadDocumentSource(name);
+        if (existing == source) break;
+        if (existing != null) continue;
+        final rejected = await backend.importLegacyDocuments({name: source});
+        if (rejected.isEmpty) break;
+      }
+      remaining.remove(entry.key);
+    }
     final saved = remaining.isEmpty
         ? await preferences.remove(_legacyDocumentsKey)
         : await preferences.setString(
