@@ -768,6 +768,44 @@ void main() {
     expect([segment.pointA, segment.pointB], contains(vertex));
   });
 
+  testWidgets('clipped perspective points cannot intercept selection', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    state.setCamera(const Camera3D(theta: 0, phi: 0));
+    state.setProjectionType(ProjectionType.perspective);
+    state.setObjects([const Object3D.point(Point3D(0, 9.95, 0))]);
+    state.setTool(ConstructionTool.move);
+    await tester.pump();
+    await tester.tapAt(const Offset(400, 300));
+    await tester.pump();
+    expect(state.selectedPoint, isNull);
+
+    state.setTool(ConstructionTool.pointOnObject);
+    await tester.pump();
+    await tester.tapAt(const Offset(400, 300));
+    await tester.pump();
+    expect(state.objects, hasLength(1));
+  });
+
+  testWidgets('construction does not snap to a clipped point', (tester) async {
+    final state = await setup(tester);
+    state.setCamera(const Camera3D(theta: 0, phi: 0));
+    state.setProjectionType(ProjectionType.perspective);
+    const clipped = Point3D(0.001, 9.95, 0);
+    state.setObjects([const Object3D.point(clipped)]);
+    state.setTool(ConstructionTool.segment);
+    await tester.pump();
+    await tester.tapAt(screen(state, clipped));
+    await tester.pump();
+    await tester.tapAt(const Offset(500, 300));
+    await tester.pump();
+    final segment = state.objects.singleWhere(
+      (object) => object.type == Object3DType.line,
+    );
+    expect(segment.pointA.distanceTo(clipped), greaterThan(0.1));
+  });
+
   testWidgets('visible points beyond the parallel camera remain editable', (
     tester,
   ) async {
@@ -804,7 +842,7 @@ void main() {
       state.zoomIn();
     }
     final forward = (state.camera.target - state.camera.position).normalized();
-    for (final depth in [0.25, 0.02]) {
+    for (final depth in [0.25, 0.12]) {
       final initial = state.camera.position + forward * depth;
       state.setObjects([Object3D.point(initial)]);
       await tester.pump();

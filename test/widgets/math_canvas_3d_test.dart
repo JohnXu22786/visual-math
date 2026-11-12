@@ -4,6 +4,13 @@ import 'package:visual_math/visual_math.dart';
 
 class _CountingCanvas extends Fake implements Canvas {
   int lines = 0;
+  int circles = 0;
+
+  @override
+  void drawCircle(Offset center, double radius, Paint paint) {
+    circles++;
+  }
+
   final segments = <(Offset, Offset)>[];
 
   @override
@@ -153,6 +160,45 @@ void main() {
   });
 
   group('MathCanvas3DPainter', () {
+    test('perspective points respect the near plane', () {
+      int paintPoint(double y, ProjectionType projectionType) {
+        final canvas = _CountingCanvas();
+        MathCanvas3DPainter(
+          cameraTheta: 0,
+          cameraPhi: 0,
+          projectionType: projectionType,
+          showAxes: false,
+          showPlane: false,
+          showGrid: false,
+          showLabels: false,
+          objects: [Object3D.point(Point3D(0, y, 0))],
+        ).paint(canvas, const Size(400, 400));
+        return canvas.circles;
+      }
+
+      expect(paintPoint(9.95, ProjectionType.perspective), 0);
+      expect(paintPoint(9.8, ProjectionType.perspective), 1);
+      expect(paintPoint(9.95, ProjectionType.parallel), 1);
+    });
+
+    test('clipped selected points do not draw guides', () {
+      final canvas = _CountingCanvas();
+      const point = Object3D.point(Point3D(0, 9.95, 0));
+      MathCanvas3DPainter(
+        cameraTheta: 0,
+        cameraPhi: 0,
+        projectionType: ProjectionType.perspective,
+        showAxes: false,
+        showPlane: false,
+        showGrid: false,
+        showLabels: false,
+        objects: const [point],
+        selectedPoint: point,
+      ).paint(canvas, const Size(400, 400));
+      expect(canvas.circles, 0);
+      expect(canvas.lines, 0);
+    });
+
     test('grid lines stay on world coordinates after fractional pans', () {
       for (final distance in [10.0, 10.2, 100.0]) {
         for (final target in [
