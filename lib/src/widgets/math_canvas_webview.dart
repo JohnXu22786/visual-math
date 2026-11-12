@@ -250,6 +250,7 @@ class MathCanvasWebView extends StatefulWidget {
         }
 
         if (!expression || expression.trim() === '') {
+          currentExpression = expression;
           stopCoordinateTracking();
           hideError();
           return;
