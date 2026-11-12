@@ -4983,6 +4983,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       }
     }
     final surfaceCandidates = <Point3D>[];
+    final parallelSphereHits = Set<Point3D>.identity();
     final segmentCandidates = Set<Point3D>.identity();
 
     void addSegmentCandidate(Point3D a, Point3D b) {
@@ -5079,20 +5080,29 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           final centerToRay = object.sphereCenter - ray.origin;
           final alongRay = centerToRay.dot(ray.direction);
           final closest = ray.origin + ray.direction * alongRay;
-          final distanceToRay = closest.distanceTo(object.sphereCenter);
+          final perpendicular = closest - object.sphereCenter;
+          final scale = dart_math.max(
+            perpendicular.x.abs(),
+            dart_math.max(perpendicular.y.abs(), perpendicular.z.abs()),
+          );
+          final distanceToRay = scale == 0
+              ? 0.0
+              : Vector3D(
+                      perpendicular.x / scale,
+                      perpendicular.y / scale,
+                      perpendicular.z / scale,
+                    ).magnitude *
+                    scale;
           final radius = object.sphereRadius.abs();
           if (distanceToRay <= radius) {
-            final offset = dart_math.sqrt(
-              dart_math.max(
-                0.0,
-                radius * radius - distanceToRay * distanceToRay,
-              ),
-            );
+            final ratio = radius == 0 ? 0.0 : distanceToRay / radius;
+            final offset =
+                radius * dart_math.sqrt(dart_math.max(0.0, 1 - ratio * ratio));
             if (projection.type != ProjectionType.perspective) {
-              if (alongRay >= 0) {
-                surfaceCandidates.add(
-                  ray.pointAt(dart_math.max(0.0, alongRay - offset)),
-                );
+              final hit = ray.pointAt(alongRay - offset);
+              if (hit.x.isFinite && hit.y.isFinite && hit.z.isFinite) {
+                surfaceCandidates.add(hit);
+                parallelSphereHits.add(hit);
               }
               break;
             }
@@ -5125,9 +5135,10 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       }
     }
 
-    Point3D? nearestIn(List<Point3D> points) {
+    Point3D? nearestIn(List<Point3D> points, {bool resolveDepth = false}) {
       Point3D? nearest;
       var nearestDistance = 14.0;
+      var nearestDepth = double.infinity;
       for (final candidate in points) {
         final screen = worldToScreen(candidate, camera, projection);
         final nearTolerance = segmentCandidates.contains(candidate)
@@ -5144,16 +5155,26 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         }
         final dx = screen.x - screenX;
         final dy = screen.y - screenY;
-        final pixelDistance = dart_math.sqrt(dx * dx + dy * dy);
-        if (pixelDistance < nearestDistance) {
+        // Parallel sphere hits lie on the screen ray even when large world
+        // coordinates lose their small perpendicular offset on reprojection.
+        final pixelDistance = parallelSphereHits.contains(candidate)
+            ? 0.0
+            : dart_math.sqrt(dx * dx + dy * dy);
+        if (pixelDistance < 14.0 &&
+            (pixelDistance < nearestDistance - (resolveDepth ? 1e-7 : 0) ||
+                (resolveDepth &&
+                    (pixelDistance - nearestDistance).abs() <= 1e-7 &&
+                    screen.z < nearestDepth))) {
           nearestDistance = pixelDistance;
+          nearestDepth = screen.z;
           nearest = candidate;
         }
       }
       return nearest;
     }
 
-    return nearestIn(candidates) ?? nearestIn(surfaceCandidates);
+    return nearestIn(candidates) ??
+        nearestIn(surfaceCandidates, resolveDepth: true);
   }
 
   Point3D _screenToConstructionPlane(
