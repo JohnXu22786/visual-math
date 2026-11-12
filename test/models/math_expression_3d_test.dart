@@ -43,6 +43,23 @@ void main() {
       expect(surfacePoint.z, closeTo(5, 1e-10));
     });
 
+    test('constant products before parentheses accept uppercase names', () {
+      for (final name in ['pi', 'PI']) {
+        final surface = Expression3D.surface('$name(x+1) + sin(x)');
+        expect(surface.isValid, isTrue, reason: surface.parseError);
+        expect(surface.parameters, isEmpty);
+        expect(
+          surface.evaluateSurface(1, 0),
+          closeTo(2 * dart_math.pi + dart_math.sin(1), 1e-10),
+        );
+      }
+      final curve = Expression3D.parametricCurve('(LN2(t+1), SQRT2(t), t)');
+      expect(curve.isValid, isTrue, reason: curve.parseError);
+      final point = curve.evaluateCurve(2);
+      expect(point.x, closeTo(3 * dart_math.ln2, 1e-10));
+      expect(point.y, closeTo(2 * dart_math.sqrt2, 1e-10));
+    });
+
     test('scientific literals retain exponents and implicit products', () {
       final surface = Expression3D.surface('1e-3x + 2E+2y + .5e1');
       expect(surface.isValid, isTrue);

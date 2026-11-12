@@ -737,7 +737,9 @@ class Expression3D {
     result = result.replaceAllMapped(RegExp(r'\b([a-zA-Z]\w*)\('), (match) {
       final name = match[1]!;
       if (mathGreekNames.contains(name) ||
-          mathConstantInputs.any((input) => input.name == name) ||
+          mathConstantInputs.any(
+            (input) => input.name == name || input.name.toUpperCase() == name,
+          ) ||
           name.contains('_')) {
         return '$name*(';
       }
