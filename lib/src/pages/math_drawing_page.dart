@@ -96,7 +96,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   String? _plotError;
   List<Object3D> _lastReportedScene = const [];
   String? _currentDocumentName;
-  Map<String, dynamic> _documentExtensions = const {};
+  Map<String, dynamic> _currentDocumentExtensions = const {};
 
   @override
   void initState() {
@@ -154,7 +154,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     final document = widget.initialDocument;
     if (document != null) {
       _currentDocumentName = document.name;
-      _documentExtensions = document.extensions;
+      _currentDocumentExtensions = document.extensions;
       _restoreSnapshot(document.drawing);
     }
     _syncController();
@@ -585,7 +585,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     final document = MathDrawingDocument(
       name: name,
       drawing: _makeSnapshot(),
-      extensions: _documentExtensions,
+      extensions: _currentDocumentExtensions,
     );
     try {
       await widget.documentStorage.save(document);
@@ -655,7 +655,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       _restoreSnapshot(document.drawing);
       setState(() {
         _currentDocumentName = document.name;
-        _documentExtensions = document.extensions;
+        _currentDocumentExtensions = document.extensions;
       });
     } catch (error) {
       _showError('无法打开绘图：$error');
