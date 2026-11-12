@@ -145,10 +145,8 @@ class MathExpressionParser {
       'sec' => '(1/Math.cos($a))',
       'sinh' => '((v)=>(Math.exp(v)-Math.exp(-v))/2)($a)',
       'cosh' => '((v)=>(Math.exp(v)+Math.exp(-v))/2)($a)',
-      'tanh' =>
-        '((v)=>(Math.exp(v)-Math.exp(-v))/(Math.exp(v)+Math.exp(-v)))($a)',
-      'coth' =>
-        '((v)=>(Math.exp(v)+Math.exp(-v))/(Math.exp(v)-Math.exp(-v)))($a)',
+      'tanh' => 'Math.tanh($a)',
+      'coth' => '(1/Math.tanh($a))',
       'csch' => '((v)=>2/(Math.exp(v)-Math.exp(-v)))($a)',
       'sech' => '((v)=>2/(Math.exp(v)+Math.exp(-v)))($a)',
       'round' => '((v)=>Math.sign(v)*Math.round(Math.abs(v)))($a)',
@@ -409,9 +407,7 @@ class MathExpressionParser {
     'cos': math.cos,
     'cosh': (value) => (math.exp(value) + math.exp(-value)) / 2,
     'cot': (value) => 1 / math.tan(value),
-    'coth': (value) =>
-        (math.exp(value) + math.exp(-value)) /
-        (math.exp(value) - math.exp(-value)),
+    'coth': (value) => 1 / _tanh(value),
     'csc': (value) => 1 / math.sin(value),
     'csch': (value) => 2 / (math.exp(value) - math.exp(-value)),
     'exp': math.exp,
@@ -426,9 +422,7 @@ class MathExpressionParser {
     'sinh': (value) => (math.exp(value) - math.exp(-value)) / 2,
     'sqrt': math.sqrt,
     'tan': math.tan,
-    'tanh': (value) =>
-        (math.exp(value) - math.exp(-value)) /
-        (math.exp(value) + math.exp(-value)),
+    'tanh': _tanh,
   };
 
   static final Map<String, double Function(double, double)> _binaryFunctions = {
@@ -438,6 +432,17 @@ class MathExpressionParser {
         : math.pow(value, 1 / root).toDouble(),
     'pow': (base, exponent) => math.pow(base, exponent).toDouble(),
   };
+
+  static double _tanh(double value) {
+    if (value == 0) return value;
+    // Avoid cancellation of the exponentials near zero.
+    if (value.abs() < 1e-4) return value - value * value * value / 3;
+    // Beyond this point tanh rounds to the sign of its argument.
+    if (value.abs() > 20) return value.sign;
+    final positive = math.exp(value);
+    final negative = math.exp(-value);
+    return (positive - negative) / (positive + negative);
+  }
 
   static double _factorial(double value) {
     if (!value.isFinite || value < 0 || value.truncateToDouble() != value) {
