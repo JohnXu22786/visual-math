@@ -3850,6 +3850,24 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       final dependency = _constructionDependencies[solidIndex];
       if (dependency != null &&
           dependency.sourcePointIndices.any(changed.contains)) {
+        final polygonHasClosingInput =
+            dependency.tool == ConstructionTool.polygon &&
+            dependency.points.length > _objects[solidIndex].vertices.length &&
+            dependency.sourcePointIndices.first != null &&
+            dependency.sourcePointIndices.first ==
+                dependency.sourcePointIndices.last;
+        // A legacy extra input could be either a closing click or a vertex
+        // lost by an earlier reconstruction. Keep the current geometry when
+        // those cases cannot be distinguished.
+        if (dependency.tool == ConstructionTool.polygon &&
+            !polygonHasClosingInput &&
+            dependency.points.length > _objects[solidIndex].vertices.length) {
+          continue;
+        }
+        if (polygonHasClosingInput) {
+          dependency.points.removeLast();
+          dependency.sourcePointIndices.removeLast();
+        }
         for (var i = 0; i < dependency.sourcePointIndices.length; i++) {
           final sourceIndex = dependency.sourcePointIndices[i];
           if (sourceIndex == null ||
@@ -3870,12 +3888,12 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           polygonSides: dependency.polygonSides,
         );
         var acceptedAllPoints = true;
-        for (var i = 0; i < dependency.points.length; i++) {
+        final inputCount = dependency.points.length;
+        for (var i = 0; i < inputCount; i++) {
           final previousCount = construction.points.length;
           final closesCurve =
               i == dependency.points.length - 1 &&
               const {
-                ConstructionTool.polygon,
                 ConstructionTool.locus,
                 ConstructionTool.polyline,
               }.contains(dependency.tool);
@@ -3884,14 +3902,17 @@ class MathCanvas3DState extends State<MathCanvas3D> {
             workingPlaneNormal: dependency.workingPlaneNormal,
             closeToFirstPoint: closesCurve,
           );
-          if (construction.points.length != previousCount + 1) {
+          if (construction.points.length != previousCount + 1 ||
+              (dependency.tool == ConstructionTool.polygon &&
+                  construction.result != null)) {
             acceptedAllPoints = false;
             break;
           }
         }
         if (acceptedAllPoints &&
-            dependency.tool == ConstructionTool.area &&
-            dependency.points.length >= 3) {
+            (dependency.tool == ConstructionTool.area ||
+                dependency.tool == ConstructionTool.polygon) &&
+            inputCount >= 3) {
           construction.addPoint(
             dependency.points.first,
             workingPlaneNormal: dependency.workingPlaneNormal,
@@ -5178,8 +5199,16 @@ class MathCanvas3DState extends State<MathCanvas3D> {
               _constructionPointSources.any((index) => index != null)) {
             _constructionDependencies[objectIndex] = _SolidSourceDependency(
               tool: _currentTool,
-              points: construction.points,
-              sourcePointIndices: _constructionPointSources,
+              points: _currentTool == ConstructionTool.polygon
+                  ? construction.points
+                        .take(construction.points.length - 1)
+                        .toList()
+                  : construction.points,
+              sourcePointIndices: _currentTool == ConstructionTool.polygon
+                  ? _constructionPointSources
+                        .take(_constructionPointSources.length - 1)
+                        .toList()
+                  : _constructionPointSources,
               workingPlaneNormal: _constPlaneNormal ?? Vector3D.unitZ,
               polygonSides: widget.polygonSides,
             );

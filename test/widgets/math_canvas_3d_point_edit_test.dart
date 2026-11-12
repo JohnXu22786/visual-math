@@ -560,6 +560,203 @@ void main() {
     expect(state.objects[2].point, state.objects[0].point.midpoint(b));
   });
 
+  testWidgets(
+    'polygon reconstruction retains every vertex after a source moves',
+    (tester) async {
+      for (final count in [3, 4]) {
+        for (final hasClosingInput in [false, true]) {
+          for (final truncated in [false, true]) {
+            if (truncated && (count != 4 || hasClosingInput)) continue;
+            final state = await setup(tester);
+            const points = [
+              Point3D(-2, -1, 0),
+              Point3D(1, -1, 0),
+              Point3D(1, 2, 0),
+              Point3D(-2, 2, 0),
+            ];
+            final vertices = points.take(count).toList();
+            final construction = ConstructionState(
+              tool: ConstructionTool.polygon,
+            );
+            for (final point in [...vertices, vertices.first]) {
+              construction.addPoint(point);
+            }
+            state.setObjects([
+              for (final point in vertices) Object3D.point(point),
+              if (truncated)
+                Object3D.polyhedron(
+                  vertices: vertices.take(3).toList(),
+                  indices: const [0, 1, 2],
+                )
+              else
+                construction.result!,
+            ]);
+            state.ensureDocumentIds();
+            final objects = state.objects;
+            state.restoreDocumentRelationships(
+              pointAttachments: const [],
+              constructionDependencies: [
+                ConstructionDependency(
+                  objectId: objects.last.documentId,
+                  tool: ConstructionTool.polygon,
+                  inputPoints: [
+                    ...vertices,
+                    if (hasClosingInput) vertices.first,
+                  ],
+                  sourcePointIds: [
+                    for (var i = 0; i < count; i++) objects[i].documentId,
+                    if (hasClosingInput) objects.first.documentId,
+                  ],
+                  workingPlaneNormal: Vector3D.unitZ,
+                  polygonSides: 6,
+                ),
+              ],
+            );
+            state.setTool(ConstructionTool.move);
+            await tester.pump();
+            await tester.dragFrom(
+              screen(state, vertices.first),
+              const Offset(-45, 24),
+            );
+            await tester.pump();
+            final moved = state.objects.first.point;
+            expect(moved.distanceTo(vertices.first), greaterThan(0.1));
+            expect(
+              state.objects.last.vertices,
+              truncated
+                  ? vertices.take(3).toList()
+                  : [moved, ...vertices.skip(1)],
+            );
+          }
+        }
+      }
+    },
+  );
+
+  testWidgets('nearby closing clicks retain polygon geometry', (tester) async {
+    final state = await setup(tester);
+    const vertices = [Point3D(-2, 0, 0), Point3D(0, 0, 0), Point3D(0, 2, 0)];
+    state.setObjects([
+      for (final point in vertices.skip(1)) Object3D.point(point),
+    ]);
+    state.setTool(ConstructionTool.polygon);
+    await tester.pump();
+    for (final point in vertices) {
+      await tester.tapAt(screen(state, point));
+      await tester.pump();
+    }
+    await tester.tapAt(screen(state, vertices.first) + const Offset(10, 0));
+    await tester.pump();
+    expect(state.objects, hasLength(3));
+    final inputs = state.documentConstructionDependencies.single.inputPoints;
+    expect(inputs, hasLength(3));
+    state.setTool(ConstructionTool.move);
+    await tester.pump();
+    await tester.dragFrom(screen(state, vertices[1]), const Offset(-45, 24));
+    await tester.pump();
+    expect(state.objects.last.vertices, [
+      inputs.first,
+      state.objects.first.point,
+      vertices.last,
+    ]);
+  });
+
+  testWidgets('ambiguous old closing inputs preserve polygon geometry', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    const vertices = [Point3D(-2, 0, 0), Point3D(0, 0, 0), Point3D(0, 2, 0)];
+    final construction = ConstructionState(tool: ConstructionTool.polygon);
+    for (final point in [...vertices, vertices.first]) {
+      construction.addPoint(point);
+    }
+    state.setObjects([
+      for (final point in vertices) Object3D.point(point),
+      construction.result!,
+    ]);
+    state.ensureDocumentIds();
+    final objects = state.objects;
+    state.restoreDocumentRelationships(
+      pointAttachments: const [],
+      constructionDependencies: [
+        ConstructionDependency(
+          objectId: objects.last.documentId,
+          tool: ConstructionTool.polygon,
+          inputPoints: [...vertices, const Point3D(-1.9, 0, 0)],
+          sourcePointIds: [
+            ...objects.take(3).map((point) => point.documentId),
+            null,
+          ],
+          workingPlaneNormal: Vector3D.unitZ,
+          polygonSides: 6,
+        ),
+      ],
+    );
+    state.setTool(ConstructionTool.move);
+    await tester.pump();
+    await tester.dragFrom(screen(state, vertices.first), const Offset(-45, 24));
+    await tester.pump();
+    expect(
+      state.objects.first.point.distanceTo(vertices.first),
+      greaterThan(0.1),
+    );
+    expect(state.objects.last.vertices, vertices);
+  });
+
+  testWidgets('coincident polygon inputs retain their source relationships', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    const vertices = [
+      Point3D(-2, -1, 0),
+      Point3D(1, -1, 0),
+      Point3D(1, 2, 0),
+      Point3D(-2, 2, 0),
+    ];
+    final construction = ConstructionState(tool: ConstructionTool.polygon);
+    for (final point in [...vertices, vertices.first]) {
+      construction.addPoint(point);
+    }
+    state.setObjects([
+      Object3D.point(vertices.first),
+      Object3D.point(vertices[1]),
+      Object3D.point(vertices[2]),
+      Object3D.point(vertices.first),
+      construction.result!,
+    ]);
+    state.ensureDocumentIds();
+    final objects = state.objects;
+    state.restoreDocumentRelationships(
+      pointAttachments: const [],
+      constructionDependencies: [
+        ConstructionDependency(
+          objectId: objects.last.documentId,
+          tool: ConstructionTool.polygon,
+          inputPoints: [
+            vertices.first,
+            vertices[1],
+            vertices[2],
+            vertices.first,
+          ],
+          sourcePointIds: [
+            for (final point in objects.take(4)) point.documentId,
+          ],
+          workingPlaneNormal: Vector3D.unitZ,
+          polygonSides: 6,
+        ),
+      ],
+    );
+    state.setTool(ConstructionTool.move);
+    await tester.pump();
+    await tester.dragFrom(screen(state, vertices[1]), const Offset(-30, 10));
+    await tester.pump();
+    expect(
+      state.documentConstructionDependencies.single.sourcePointIds,
+      hasLength(4),
+    );
+    expect(state.objects.last.vertices, vertices);
+  });
+
   testWidgets('area follows its source vertices before and after reopening', (
     tester,
   ) async {
