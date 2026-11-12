@@ -263,6 +263,13 @@ void main() {
       expect(await zeros('(x^2-2)*(x^2-2)'), hasLength(2));
       expect(await zeros('(x^2-2)^2*(x^2+1)'), hasLength(2));
       expect(await zeros('(x^2-2)^2*(x^2-3)^2'), hasLength(4));
+      final closeRoots = await zeros('(x-0.1)^2*(x-0.104)^2');
+      expect(closeRoots, hasLength(2));
+      expect(closeRoots.any((point) => (point.$1 - 0.1).abs() < 1e-5), isTrue);
+      expect(
+        closeRoots.any((point) => (point.$1 - 0.104).abs() < 1e-5),
+        isTrue,
+      );
       final adjacent = await zeros('((x-0.1)^2+1e-30)*(x-0.104)^2');
       expect(adjacent, isNotEmpty);
       expect(

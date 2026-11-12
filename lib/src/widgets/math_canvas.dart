@@ -417,7 +417,7 @@ class MathCanvasState extends State<MathCanvas> {
         if (base.isValid) powerBases.add(base.evaluator);
       }
       for (final points in curve.polylines) {
-        double? lastTouchingZero;
+        final touchingZeros = <double>[];
         for (var i = 1; i < points.length; i++) {
           final p0 = points[i - 1];
           final p1 = points[i];
@@ -497,15 +497,23 @@ class MathCanvasState extends State<MathCanvas> {
                       x = lo + (hi - lo) / 2;
                     }
                     baseCrosses = true;
-                    break;
+                    if (touchingZeros.every(
+                      (previous) =>
+                          (x - previous).abs() > (x1 - x0).abs() * 1e-6,
+                    )) {
+                      result.add((x, 0, curve.formula.color));
+                      touchingZeros.add(x);
+                    }
                   }
                 }
-                if ((residual == 0 || baseCrosses) &&
-                    (lastTouchingZero == null ||
-                        (x - lastTouchingZero).abs() >
-                            (x1 - x0).abs() * 1e-6)) {
+                if (residual == 0 &&
+                    !baseCrosses &&
+                    touchingZeros.every(
+                      (previous) =>
+                          (x - previous).abs() > (x1 - x0).abs() * 1e-6,
+                    )) {
                   result.add((x, 0, curve.formula.color));
-                  lastTouchingZero = x;
+                  touchingZeros.add(x);
                 }
               } catch (_) {
                 // An invalid probe leaves this extremum uncertain.
