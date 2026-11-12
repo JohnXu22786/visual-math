@@ -625,6 +625,7 @@ class SurfaceMesh {
   /// Samples [f] on a [gridX] × [gridY] grid spanning
   /// [xMin]..[xMax] × [yMin]..[yMax].
   /// Returns a triangulated mesh with vertex normals.
+  /// Bounds must be finite and increasing, with finite spans.
   static SurfaceMesh fromFunction({
     required double xMin,
     required double xMax,
@@ -639,8 +640,12 @@ class SurfaceMesh {
     }
     if (![xMin, xMax, yMin, yMax].every((value) => value.isFinite) ||
         xMin >= xMax ||
-        yMin >= yMax) {
-      throw ArgumentError('mesh bounds must be finite and increasing');
+        yMin >= yMax ||
+        !(xMax - xMin).isFinite ||
+        !(yMax - yMin).isFinite) {
+      throw ArgumentError(
+        'mesh bounds must be finite, increasing, and have finite spans',
+      );
     }
 
     final cols = gridX + 1;
