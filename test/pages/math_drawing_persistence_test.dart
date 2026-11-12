@@ -70,7 +70,9 @@ void main() {
     storage.documents['Quadratic'] = MathDrawingDocument(
       name: 'Quadratic',
       drawing: storage.documents['Quadratic']!.drawing,
-      extensions: const {'vendor': {'flag': true}},
+      extensions: const {
+        'vendor': {'flag': true},
+      },
     );
     await tester.tap(find.byTooltip('打开绘图'));
     await _pumpWorkspace(tester);
