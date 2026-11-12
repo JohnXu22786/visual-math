@@ -117,6 +117,23 @@ void main() {
       expect(scene.sceneCenter, equals(Point3D(0, 0, 0)));
     });
 
+    test('parallel fit keeps asymmetric projected bounds in the viewport', () {
+      final scene = Scene3D();
+      const points = [Point3D(0, 0, 0), Point3D(10, 0, 0), Point3D(0, 10, 0)];
+      for (final point in points) {
+        scene.add(Object3D.point(point));
+      }
+      final projection = scene.fitToView(
+        projection: Projection3D.parallel(width: 600, height: 600),
+      )!;
+
+      for (final point in points) {
+        final screen = worldToScreen(point, scene.camera, projection);
+        expect(screen.x, inInclusiveRange(0, 600));
+        expect(screen.y, inInclusiveRange(0, 600));
+      }
+    });
+
     test('fitToView updates the camera around finite objects', () {
       final scene = Scene3D();
       scene.add(Object3D.point(const Point3D(10, 20, 30)));
