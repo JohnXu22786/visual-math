@@ -76,7 +76,10 @@ class MathCanvasWebView extends StatefulWidget {
   }) {
     _boardIdCounter++;
     final boardId = 'jxgbox_$_boardIdCounter';
-    final escapedExpr = jsExpression.replaceAll("'", "\\'");
+    final encodedExpression = jsonEncode(jsExpression)
+        .replaceAll('<', r'\u003c')
+        .replaceAll('\u2028', r'\u2028')
+        .replaceAll('\u2029', r'\u2029');
     final safeInitialParameters = <String, double>{
       for (final entry in initialParameters.entries)
         if (RegExp(r'^[a-zA-Z][a-zA-Z0-9_]*$').hasMatch(entry.key) &&
@@ -186,7 +189,7 @@ class MathCanvasWebView extends StatefulWidget {
           for (var i = 0; i <= 50; i++) {
             var fraction = i / 50;
             var x = xMin * (1 - fraction) + xMax * fraction;
-            var func = new Function('x', paramStr + 'return ' + expression + ';');
+            var func = new Function('x', paramStr + 'return (' + expression + String.fromCharCode(10) + ');');
             try {
               var y = func(x);
               if (isFinite(y) && y >= yMin - 1 && y <= yMax + 1) {
@@ -238,7 +241,7 @@ class MathCanvasWebView extends StatefulWidget {
     // Plot Function
     // ==================================================================
 
-    var currentExpression = '$escapedExpr';
+    var currentExpression = $encodedExpression;
     var initialParameters = $encodedInitialParameters;
 
     function plotFunction(expression, parameters) {
@@ -275,7 +278,7 @@ class MathCanvasWebView extends StatefulWidget {
         // Create a function that evaluates the expression
         var func = null;
         try {
-          func = new Function('x', paramStr + 'return ' + expression + ';');
+          func = new Function('x', paramStr + 'return (' + expression + String.fromCharCode(10) + ');');
           // Test with a few values
           func(0);
           func(1);

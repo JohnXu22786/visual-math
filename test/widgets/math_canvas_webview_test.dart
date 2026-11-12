@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -64,6 +66,16 @@ void main() {
       final html = MathCanvasWebView.buildMathHtml('Math.pow(x,2)');
       expect(html, contains('Math.pow(x,2)'));
       expect(html, isNot(contains('EXPRESSION_PLACEHOLDER')));
+    });
+
+    test('preserves multiline expressions without ending the script', () {
+      const expression = "x +\n1 + '\\' + \"</ScRiPt>\"";
+      final html = MathCanvasWebView.buildMathHtml(expression);
+      final match = RegExp(r'var currentExpression = (.*);').firstMatch(html);
+
+      expect(match, isNotNull);
+      expect(jsonDecode(match!.group(1)!), expression);
+      expect(html.toLowerCase().split('</script>'), hasLength(3));
     });
 
     test('creates unique board ID', () {

@@ -9,7 +9,7 @@ test('JSXGraph bounds drive coordinates and round-trip viewport changes', () => 
     '../../lib/src/widgets/math_canvas_webview.dart'), 'utf8');
   const script = source.match(/<script>\s*([\s\S]*?)<\/script>/)[1]
     .replaceAll('$boardId', 'board')
-    .replaceAll('$escapedExpr', 'x')
+    .replaceAll('$encodedExpression', JSON.stringify('x'))
     .replaceAll('$encodedInitialParameters', '{}');
   const messages = [];
   let timer;
@@ -48,7 +48,7 @@ test('clearing an invalid expression hides its error', () => {
     '../../lib/src/widgets/math_canvas_webview.dart'), 'utf8');
   const script = source.match(/<script>\s*([\s\S]*?)<\/script>/)[1]
     .replaceAll('$boardId', 'board')
-    .replaceAll('$escapedExpr', '')
+    .replaceAll('$encodedExpression', JSON.stringify(''))
     .replaceAll('$encodedInitialParameters', '{}');
   const error = {style: {display: 'none'}, textContent: ''};
   const board = {on: () => {}, removeObject: () => {}, create: () => ({})};
@@ -72,7 +72,7 @@ test('coordinate sampling terminates for narrow and normal bounds', () => {
     '../../lib/src/widgets/math_canvas_webview.dart'), 'utf8');
   const script = source.match(/<script>\s*([\s\S]*?)<\/script>/)[1]
     .replaceAll('$boardId', 'board')
-    .replaceAll('$escapedExpr', 'x')
+    .replaceAll('$encodedExpression', JSON.stringify('x'))
     .replaceAll('$encodedInitialParameters', '{}');
   const messages = [];
   let bounds;
@@ -106,7 +106,7 @@ test('parameter updates do not restore a cleared expression', () => {
     '../../lib/src/widgets/math_canvas_webview.dart'), 'utf8');
   const script = source.match(/<script>\s*([\s\S]*?)<\/script>/)[1]
     .replaceAll('$boardId', 'board')
-    .replaceAll('$escapedExpr', '')
+    .replaceAll('$encodedExpression', JSON.stringify(''))
     .replaceAll('$encodedInitialParameters', '{}');
   let activeCurve = null;
   const board = {
@@ -131,4 +131,30 @@ test('parameter updates do not restore a cleared expression', () => {
     context.window.updateParameters(JSON.stringify({a: 2}));
     assert.equal(activeCurve, null);
   }
+});
+
+test('leading newlines evaluate in plots and coordinate samples', () => {
+  const source = fs.readFileSync(path.join(__dirname,
+    '../../lib/src/widgets/math_canvas_webview.dart'), 'utf8');
+  const script = source.match(/<script>\s*([\s\S]*?)<\/script>/)[1]
+    .replaceAll('$boardId', 'board')
+    .replaceAll('$encodedExpression', JSON.stringify('\nx + 1'))
+    .replaceAll('$encodedInitialParameters', '{}');
+  let evaluate, timer;
+  const messages = [];
+  const board = {
+    getBoundingBox: () => [-1, 5, 1, -5], on: () => {},
+    create: (_, args) => { evaluate = args[0]; return {}; },
+  };
+  vm.runInNewContext(script, {
+    JXG: {JSXGraph: {initBoard: () => board}},
+    window: {flutter_inappwebview: {callHandler: (_, message) => messages.push(JSON.parse(message))}},
+    document: {getElementById: () => null},
+    setInterval: callback => { timer = callback; return 1; }, clearInterval: () => {}, console,
+  });
+  assert.equal(evaluate(2), 3);
+  timer();
+  const points = messages.find(message => message.type === 'coordinateUpdate').points;
+  assert.equal(points.length, 51);
+  assert.equal(points[0].y, 0);
 });
