@@ -1028,6 +1028,32 @@ void main() {
     }
   });
 
+  testWidgets('replot retains selection of a constructed point', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    const point = Point3D(-2, 0, 0);
+    state.setObjects([
+      Object3D.surface(
+        vertices: const [],
+        indices: const [],
+      ).copyWith(documentId: 'plot:1', formulaRowId: 'row'),
+      Object3D.point(point).copyWith(documentId: 'p'),
+    ]);
+    await tester.pump();
+    await tester.tapAt(screen(state, point));
+    await tester.pump();
+    expect(state.selectedPoint?.documentId, 'p');
+    state.replaceFormulaObjects([
+      Object3D.surface(
+        vertices: const [],
+        indices: const [],
+      ).copyWith(documentId: 'plot:1', formulaRowId: 'row'),
+    ]);
+    await tester.pump();
+    expect(state.selectedPoint?.documentId, 'p');
+  });
+
   testWidgets('replot keeps the source of a construction in progress', (
     tester,
   ) async {

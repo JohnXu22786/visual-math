@@ -507,6 +507,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       _activeParameterNames = parameters.keys.toSet();
     });
     _refreshParameterCurves();
+    _refreshParameterPlots3D();
     _syncController();
   }
 
@@ -932,6 +933,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     // Mark all rows as committed
     setState(() {
       _activeParameterNames = {
+        ..._current3DParameterNames(),
         for (final entry in entries) ...{
           ...entry.parsed!.parameters.where(
             (name) => name != 'x' && name != 'y',
@@ -987,17 +989,6 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     if (retained.length != _plottedFormulas.length) {
       setState(() {
         _plottedFormulas = retained;
-        _activeParameterNames = {
-          for (final entry in retained) ...{
-            ...entry.parsed!.parameters.where(
-              (name) => name != 'x' && name != 'y',
-            ),
-            ..._domainParameterNames(
-              entry.domainStartExpression,
-              entry.domainEndExpression,
-            ),
-          },
-        };
       });
       _refreshParameterCurves();
     }
@@ -1010,12 +1001,25 @@ class _MathDrawingPageState extends State<MathDrawingPage>
             object,
       ]);
     }
+    setState(() {
+      _activeParameterNames = {
+        ..._current3DParameterNames(),
+        for (final entry in _plottedFormulas) ...{
+          ...entry.parsed!.parameters,
+          ..._domainParameterNames(
+            entry.domainStartExpression,
+            entry.domainEndExpression,
+          ),
+        },
+      };
+    });
   }
 
   void _updateParameter(String name, MathParameter parameter) {
     if (!mounted || !_activeParameterNames.contains(name)) return;
     setState(() => _parameters[name] = parameter);
     _refreshParameterCurves();
+    _refreshParameterPlots3D();
     _syncController();
     widget.controller?.onParameterChanged?.call(name, parameter);
   }
@@ -1027,8 +1031,15 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     return MathExpression.resolveDomainBound(source, parameterValues);
   }
 
-  Object3D? _sampleFormula3D(String text, int color) {
-    final surface = Expression3D.surface(text);
+  Object3D? _sampleFormula3D(
+    String text,
+    int color, {
+    bool allowEmpty = false,
+  }) {
+    final values = {
+      for (final entry in _parameters.entries) entry.key: entry.value.value,
+    };
+    final surface = Expression3D.surface(text, parameterValues: values);
     if (surface.isValid) {
       final mesh = surface.sampleSurfaceGrid(
         xMin: -5,
@@ -1049,7 +1060,11 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         );
       }
     }
-    final curve = Expression3D.parametricCurve(text, tMax: 2 * dart_math.pi);
+    final curve = Expression3D.parametricCurve(
+      text,
+      tMax: 2 * dart_math.pi,
+      parameterValues: values,
+    );
     if (curve.isValid) {
       final points = <Point3D>[];
       final starts = <int>[];
@@ -1058,7 +1073,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         if (points.isNotEmpty) starts.add(points.length);
         points.addAll(segment);
       }
-      if (points.isNotEmpty) {
+      if (points.isNotEmpty || allowEmpty) {
         return Object3D.curve(
           points: points,
           curveStarts: starts,
@@ -1067,7 +1082,56 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         );
       }
     }
+    if (allowEmpty && surface.isValid) {
+      return Object3D.surface(
+        vertices: const [],
+        indices: const [],
+        normals: const [],
+        color: color,
+        opacity: 0.85,
+        label: text,
+      );
+    }
     return null;
+  }
+
+  Set<String> _current3DParameterNames() => {
+    for (final object in _canvas3DKey.currentState?.objects ?? <Object3D>[])
+      if (object.formulaRowId != null && object.label != null)
+        ..._parametersFor3D(object.label!),
+  };
+
+  Set<String> _parametersFor3D(String text) {
+    final curve = Expression3D.parametricCurve(text);
+    return curve.isValid
+        ? curve.parameters
+        : Expression3D.surface(text).parameters;
+  }
+
+  // Use the committed object label, not the potentially unsubmitted editor text.
+  void _refreshParameterPlots3D() {
+    final canvas = _canvas3DKey.currentState;
+    if (canvas == null) return;
+    final plots = canvas.objects
+        .where((object) => object.formulaRowId != null)
+        .toList();
+    if (plots.isEmpty) return;
+    canvas.replaceFormulaObjects([
+      for (final old in plots)
+        if (old.label == null)
+          old
+        else
+          (_sampleFormula3D(old.label!, old.color, allowEmpty: true)?.copyWith(
+                documentId: old.documentId,
+                formulaRowId: old.formulaRowId,
+                opacity: old.opacity,
+                edgeWidth: old.edgeWidth,
+                showEdges: old.showEdges,
+                visible: old.visible,
+                transformOrigin: old.transformOrigin,
+              ) ??
+              old),
+    ]);
   }
 
   void _plotAll3D() {
@@ -1079,7 +1143,11 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       if (text.isEmpty) continue;
       if (!f.visible) continue;
 
-      final object = _sampleFormula3D(text, f.color.toARGB32());
+      final object = _sampleFormula3D(
+        text,
+        f.color.toARGB32(),
+        allowEmpty: true,
+      );
       if (object != null) {
         final previous = current.where((item) => item.formulaRowId == f.id);
         var id = previous.isEmpty
@@ -1101,6 +1169,19 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     }
 
     setState(() {
+      _activeParameterNames = {
+        for (final entry in _plottedFormulas) ...{
+          ...entry.parsed!.parameters,
+          ..._domainParameterNames(
+            entry.domainStartExpression,
+            entry.domainEndExpression,
+          ),
+        },
+        for (final object in objects) ..._parametersFor3D(object.label!),
+      };
+      for (final name in _activeParameterNames) {
+        _parameters.putIfAbsent(name, MathParameter.new);
+      }
       _plot3DDirty = false;
       for (final f in _formulas) {
         f.committedText3D = f.controller.text.trim();
@@ -1689,7 +1770,6 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         includeParameters &&
         (widget.options.showParameterControls ||
             widget.options.parameterControlsBuilder != null) &&
-        _currentView == ViewMode.mode2D &&
         parameterNames.isNotEmpty;
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(8, 4, 8, 2),
@@ -1726,7 +1806,6 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     final showParameters =
         (widget.options.showParameterControls ||
             widget.options.parameterControlsBuilder != null) &&
-        _currentView == ViewMode.mode2D &&
         parameterNames.isNotEmpty;
     if (!showParameters) return null;
 

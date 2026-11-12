@@ -471,8 +471,15 @@ Object3D _objectFromJson(Map<String, dynamic> j, String fallbackId) {
   final showEdges = _required<bool>(j, 'showEdges');
   final rawVertices = j['vertices'];
   final rawIndices = j['indices'];
+  final emptyFormulaPlot =
+      j['formulaRowId'] is String &&
+      label != null &&
+      rawVertices is List &&
+      rawVertices.isEmpty &&
+      rawIndices is List &&
+      rawIndices.isEmpty;
   if (type == Object3DType.curve &&
-      (rawVertices is! List || rawVertices.isEmpty)) {
+      (rawVertices is! List || (rawVertices.isEmpty && !emptyFormulaPlot))) {
     throw const FormatException(
       'Curve geometry must contain at least one point.',
     );
@@ -480,8 +487,11 @@ Object3D _objectFromJson(Map<String, dynamic> j, String fallbackId) {
   if ((type == Object3DType.surface || type == Object3DType.polyhedron) &&
       (rawVertices is! List ||
           rawIndices is! List ||
-          rawVertices.length < 3 ||
-          rawIndices.length < 3)) {
+          ((rawVertices.length < 3 || rawIndices.length < 3) &&
+              !(type == Object3DType.surface &&
+                  j['formulaRowId'] is String &&
+                  label != null &&
+                  rawIndices.isEmpty)))) {
     throw const FormatException('Mesh geometry is missing required triangles.');
   }
   final vertices = (j['vertices'] as List? ?? const [])
