@@ -1472,8 +1472,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
                   projectedDepths[edge],
                   projectedDepths[next],
                 );
-                if (edgeDistance < distance &&
-                    isVisibleDepth(edgeDepth)) {
+                if (edgeDistance < distance && isVisibleDepth(edgeDepth)) {
                   distance = edgeDistance;
                   hitDepth = edgeDepth;
                 }
