@@ -517,6 +517,29 @@ void main() {
       expect(xs.every((x) => x > -1 && x < 1), isTrue);
     });
 
+    testWidgets('coordinate-dependent bounds do not plot curves', (
+      tester,
+    ) async {
+      final key = GlobalKey<MathCanvasState>();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: MathCanvas(key: key)),
+        ),
+      );
+      await tester.pump();
+      for (final bound in ['x+1', r'\frac{y}{2}']) {
+        await key.currentState!.setFormulas([
+          FormulaEntry(
+            rawExpression: 'x',
+            parsed: MathExpression.fromInput('x'),
+            domainStartExpression: bound,
+            parameterValues: {'y': 2},
+          ),
+        ]);
+        expect(key.currentState!.curvePoints, isEmpty);
+      }
+    });
+
     testWidgets('implicit open domains keep clipped contour segments intact', (
       tester,
     ) async {

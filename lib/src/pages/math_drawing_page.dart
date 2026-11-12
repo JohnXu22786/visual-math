@@ -1024,14 +1024,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     String source,
     Map<String, double> parameterValues,
   ) {
-    if (source.trim().isEmpty) return null;
-    final expression = MathExpression.fromInput(
-      source,
-      parameterValues: parameterValues,
-    );
-    if (!expression.isValid) return null;
-    final value = expression.evaluator(0);
-    return value.isFinite ? value : null;
+    return MathExpression.resolveDomainBound(source, parameterValues);
   }
 
   Object3D? _sampleFormula3D(String text, int color) {
