@@ -50,7 +50,7 @@ void main() {
       expect(surface.parameters, isEmpty);
 
       final parameter = Expression3D.surface(
-        'a1e-3',
+        'a1*e-3',
         parameterValues: {'a1': 2},
       );
       expect(
@@ -65,6 +65,28 @@ void main() {
       expect(point.y, closeTo(20, 1e-10));
       expect(point.z, closeTo(100, 1e-10));
     });
+
+    test(
+      'preserves complete parameter identifiers during implicit products',
+      () {
+        final surface = Expression3D.surface(
+          'xy_1 + a1b + 2xy + 3a1b',
+          parameterValues: {'xy_1': 4, 'a1b': 5},
+        );
+        expect(surface.isValid, isTrue, reason: surface.parseError);
+        expect(surface.parameters, {'xy_1', 'a1b'});
+        expect(surface.evaluateSurface(2, 3), 36);
+
+        final curve = Expression3D.parametricCurve(
+          '(xy_1, a1b, 2t)',
+          parameterValues: {'xy_1': 4, 'a1b': 5},
+        );
+        expect(curve.isValid, isTrue, reason: curve.parseError);
+        expect(curve.parameters, {'xy_1', 'a1b'});
+        final point = curve.evaluateCurve(3);
+        expect([point.x, point.y, point.z], [4, 5, 6]);
+      },
+    );
 
     test('surface with z= prefix works', () {
       final expr = Expression3D.surface('z = x^2 + y^2');

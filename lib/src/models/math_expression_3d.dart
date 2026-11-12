@@ -703,24 +703,29 @@ class Expression3D {
   }
 
   static String _addImplicitMultiplication(String expr) {
-    var result = expr;
-    result = result.replaceAllMapped(
-      RegExp(r'(?<![a-zA-Z])([xyzuvt]{2,})(?![a-zA-Z])'),
-      (match) => match[1]!.split('').join('*'),
-    );
-    final tokens = RegExp(
-      r'(?<![a-zA-Z0-9_])(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|(?:\d+(?:\.\d*)?|\.\d+)|.',
-    ).allMatches(result).map((match) => match[0]!).toList();
+    final tokens =
+        RegExp(r'(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|[a-zA-Z]\w*|[^\s]')
+            .allMatches(expr)
+            .expand((match) {
+              final token = match[0]!;
+              if (RegExp(r'^[xyzuvt]{2,}$').hasMatch(token)) {
+                return token.split('');
+              }
+              return [token];
+            })
+            .toList();
     final withProducts = StringBuffer();
     for (var i = 0; i < tokens.length; i++) {
       if (i > 0 &&
-          double.tryParse(tokens[i - 1]) != null &&
-          RegExp(r'^[a-zA-Z(]$').hasMatch(tokens[i])) {
+          ((double.tryParse(tokens[i - 1]) != null &&
+                  RegExp(r'^(?:[a-zA-Z]\w*|\()$').hasMatch(tokens[i])) ||
+              (RegExp(r'^[xyzuvt]$').hasMatch(tokens[i - 1]) &&
+                  RegExp(r'^[xyzuvt]$').hasMatch(tokens[i])))) {
         withProducts.write('*');
       }
       withProducts.write(tokens[i]);
     }
-    result = withProducts.toString();
+    var result = withProducts.toString();
     result = result.replaceAllMapped(
       RegExp(r'(\))\s*([a-zA-Z0-9.(])'),
       (m) => '${m[1]!}*${m[2]!}',
