@@ -255,11 +255,17 @@ class MathCanvasWebView extends StatefulWidget {
         }
 
         // Build the parameter scope
-        var paramStr = '';
+        var paramStr = 'var __vmParams = ' + JSON.stringify(parameters || {}) + '; ';
         if (parameters) {
           for (var key in parameters) {
-            if (parameters.hasOwnProperty(key)) {
-              paramStr += 'var ' + key + ' = ' + parameters[key] + '; ';
+            if (Object.prototype.hasOwnProperty.call(parameters, key) &&
+                key !== 'Math' && key !== 'Number' && key !== 'NaN' && key !== 'x') {
+              try {
+                new Function('var ' + key + ';');
+                paramStr += 'var ' + key + ' = ' + parameters[key] + '; ';
+              } catch (_) {
+                // Reserved JavaScript words are accessed through __vmParams.
+              }
             }
           }
         }

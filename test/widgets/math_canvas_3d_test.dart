@@ -4,6 +4,14 @@ import 'package:visual_math/visual_math.dart';
 
 class _CountingCanvas extends Fake implements Canvas {
   int lines = 0;
+  int circles = 0;
+
+  @override
+  void drawCircle(Offset center, double radius, Paint paint) {
+    circles++;
+  }
+
+  final segments = <(Offset, Offset)>[];
 
   @override
   void drawRect(Rect rect, Paint paint) {}
@@ -11,7 +19,8 @@ class _CountingCanvas extends Fake implements Canvas {
   @override
   void drawLine(Offset p1, Offset p2, Paint paint) {
     lines++;
-    if (lines > 200) throw StateError('Grid has too many lines');
+    segments.add((p1, p2));
+    if (lines > 202) throw StateError('Grid has too many lines');
   }
 }
 
@@ -151,6 +160,99 @@ void main() {
   });
 
   group('MathCanvas3DPainter', () {
+    test('perspective points respect the near plane', () {
+      int paintPoint(double y, ProjectionType projectionType) {
+        final canvas = _CountingCanvas();
+        MathCanvas3DPainter(
+          cameraTheta: 0,
+          cameraPhi: 0,
+          projectionType: projectionType,
+          showAxes: false,
+          showPlane: false,
+          showGrid: false,
+          showLabels: false,
+          objects: [Object3D.point(Point3D(0, y, 0))],
+        ).paint(canvas, const Size(400, 400));
+        return canvas.circles;
+      }
+
+      expect(paintPoint(9.95, ProjectionType.perspective), 0);
+      expect(paintPoint(9.8, ProjectionType.perspective), 1);
+      expect(paintPoint(9.95, ProjectionType.parallel), 1);
+    });
+
+    test('clipped selected points do not draw guides', () {
+      final canvas = _CountingCanvas();
+      const point = Object3D.point(Point3D(0, 9.95, 0));
+      MathCanvas3DPainter(
+        cameraTheta: 0,
+        cameraPhi: 0,
+        projectionType: ProjectionType.perspective,
+        showAxes: false,
+        showPlane: false,
+        showGrid: false,
+        showLabels: false,
+        objects: const [point],
+        selectedPoint: point,
+      ).paint(canvas, const Size(400, 400));
+      expect(canvas.circles, 0);
+      expect(canvas.lines, 0);
+    });
+
+    test('grid lines stay on world coordinates after fractional pans', () {
+      for (final distance in [10.0, 10.2, 100.0]) {
+        for (final target in [
+          Point3D.origin,
+          const Point3D(0.3, -0.7, 0),
+          const Point3D(-2.3, 1.7, 0),
+        ]) {
+          final canvas = _CountingCanvas();
+          MathCanvas3DPainter(
+            cameraDistance: distance,
+            cameraTarget: target,
+            projectionType: ProjectionType.perspective,
+            showGrid: true,
+            showPlane: false,
+            showAxes: false,
+          ).paint(canvas, const Size(400, 400));
+          final camera = Camera3D(target: target, distance: distance);
+          final projection = Projection3D.perspective(width: 400, height: 400);
+          final range = distance * 1.5;
+          final step = distance == 100 ? 3.0 : 1.0;
+          for (final coordinates in [
+            (0.0, 0.0),
+            (step, step),
+            (
+              ((target.y + range) / step).floor() * step,
+              ((target.x + range) / step).floor() * step,
+            ),
+          ]) {
+            for (final endpoints in [
+              (
+                Point3D(target.x - range, coordinates.$1, 0),
+                Point3D(target.x + range, coordinates.$1, 0),
+              ),
+              (
+                Point3D(coordinates.$2, target.y - range, 0),
+                Point3D(coordinates.$2, target.y + range, 0),
+              ),
+            ]) {
+              final a = worldToScreen(endpoints.$1, camera, projection);
+              final b = worldToScreen(endpoints.$2, camera, projection);
+              expect(
+                canvas.segments.any(
+                  (line) =>
+                      (line.$1 - Offset(a.x, a.y)).distance < 1e-6 &&
+                      (line.$2 - Offset(b.x, b.y)).distance < 1e-6,
+                ),
+                isTrue,
+              );
+            }
+          }
+        }
+      }
+    });
+
     test('grid rendering remains bounded at large camera distances', () {
       for (final distance in [10.0, 10000.0, 1e20, double.maxFinite]) {
         final canvas = _CountingCanvas();
@@ -161,7 +263,7 @@ void main() {
           showPlane: false,
           showAxes: false,
         ).paint(canvas, const Size(400, 400));
-        expect(canvas.lines, inInclusiveRange(1, 200));
+        expect(canvas.lines, inInclusiveRange(1, 202));
       }
     });
 

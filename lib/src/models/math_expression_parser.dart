@@ -28,6 +28,139 @@ class MathExpressionParser {
     return (values) => expression(values).toDouble();
   }
 
+  /// Compile the same expression grammar to a JavaScript expression.
+  static String toJavaScript(
+    String source, {
+    required Iterable<String> variables,
+  }) {
+    final names = variables.toSet();
+    // Validate identifiers and function arities using the numeric parser.
+    parse(source, variables: names);
+    final parser = MathExpressionParser._(_tokenize(source), names);
+    return parser._jsSum().code;
+  }
+
+  _JsExpression _jsSum() {
+    var left = _jsProduct();
+    while (_current.text == '+' || _current.text == '-') {
+      final op = _current.text;
+      _position++;
+      final right = _jsProduct();
+      left = _JsExpression(
+        '${left.wrap(1)}$op${right.wrap(op == '-' && right.code.startsWith('-') ? 4 : 2)}',
+        1,
+      );
+    }
+    return left;
+  }
+
+  _JsExpression _jsProduct() {
+    var left = _jsUnary();
+    while (_current.text == '*' ||
+        _current.text == '/' ||
+        _current.text == '%') {
+      final op = _current.text;
+      _position++;
+      final right = _jsUnary();
+      if (op == '%') {
+        // Dart's modulo is nonnegative even when the dividend is negative.
+        left = _JsExpression(
+          '((a,b)=>{const r=a%b;return r<0?r+Math.abs(b):r;})(${left.code},${right.code})',
+          4,
+        );
+      } else {
+        left = _JsExpression('${left.wrap(2)}$op${right.wrap(3)}', 2);
+      }
+    }
+    return left;
+  }
+
+  _JsExpression _jsUnary() {
+    if (_match('+')) return _jsUnary();
+    if (_match('-')) return _JsExpression('-${_jsUnary().wrap(4)}', 3);
+    return _jsPower();
+  }
+
+  _JsExpression _jsPower() {
+    final base = _jsPrimary();
+    if (!_match('^')) return base;
+    final exponent = _jsUnary();
+    return _JsExpression('Math.pow(${base.code},${exponent.code})', 4);
+  }
+
+  _JsExpression _jsPrimary() {
+    final token = _current;
+    if (token.kind == _TokenKind.number) {
+      _position++;
+      final number = token.text;
+      return _JsExpression(
+        RegExp(r'^0[0-9]').hasMatch(number) ? 'Number("$number")' : number,
+        4,
+      );
+    }
+    if (_match('(')) {
+      final expression = _jsSum();
+      _consume(')');
+      return expression;
+    }
+    _position++;
+    final name = token.text;
+    if (!_match('(')) {
+      if (_variables.contains(name)) {
+        return _JsExpression(name == 'x' ? name : '__vmParams["$name"]', 4);
+      }
+      const constants = {
+        'e': 'E',
+        'E': 'E',
+        'pi': 'PI',
+        'PI': 'PI',
+        'ln2': 'LN2',
+        'LN2': 'LN2',
+        'ln10': 'LN10',
+        'LN10': 'LN10',
+        'log2e': 'LOG2E',
+        'LOG2E': 'LOG2E',
+        'log10e': 'LOG10E',
+        'LOG10E': 'LOG10E',
+        'sqrt1_2': 'SQRT1_2',
+        'SQRT1_2': 'SQRT1_2',
+        'sqrt2': 'SQRT2',
+        'SQRT2': 'SQRT2',
+      };
+      return _JsExpression('Math.${constants[name]}', 4);
+    }
+    final args = <String>[];
+    if (!_match(')')) {
+      do {
+        args.add(_jsSum().code);
+      } while (_match(','));
+      _consume(')');
+    }
+    final a = args.first;
+    final code = switch (name) {
+      'ln' => 'Math.log($a)',
+      'log' when args.length == 2 => '(Math.log(${args[1]})/Math.log($a))',
+      'cot' => '(1/Math.tan($a))',
+      'csc' => '(1/Math.sin($a))',
+      'sec' => '(1/Math.cos($a))',
+      'sinh' => '((v)=>(Math.exp(v)-Math.exp(-v))/2)($a)',
+      'cosh' => '((v)=>(Math.exp(v)+Math.exp(-v))/2)($a)',
+      'tanh' =>
+        '((v)=>(Math.exp(v)-Math.exp(-v))/(Math.exp(v)+Math.exp(-v)))($a)',
+      'coth' =>
+        '((v)=>(Math.exp(v)+Math.exp(-v))/(Math.exp(v)-Math.exp(-v)))($a)',
+      'csch' => '((v)=>2/(Math.exp(v)-Math.exp(-v)))($a)',
+      'sech' => '((v)=>2/(Math.exp(v)+Math.exp(-v)))($a)',
+      'round' => '((v)=>Math.sign(v)*Math.round(Math.abs(v)))($a)',
+      'fact' =>
+        '((v)=>{if(!Number.isFinite(v)||v<0||Math.trunc(v)!=v)return NaN;let r=1;for(let i=2;i<=v;i++){r*=i;if(!Number.isFinite(r))return r;}return r;})($a)',
+      'nrt' =>
+        '((r,v)=>v<0&&Number.isFinite(r)&&Math.abs(r%2)==1?-Math.pow(-v,1/r):Math.pow(v,1/r))($a,${args[1]})',
+      _ => 'Math.$name(${args.join(',')})',
+    };
+    return _JsExpression(code, 4);
+  }
+
   bool get _isAtEnd => _current.kind == _TokenKind.end;
   _Token get _current => _tokens[_position];
 
@@ -333,4 +466,11 @@ class _Token {
   final _TokenKind kind;
   final String text;
   final int offset;
+}
+
+class _JsExpression {
+  const _JsExpression(this.code, this.precedence);
+  final String code;
+  final int precedence;
+  String wrap(int required) => precedence < required ? '($code)' : code;
 }

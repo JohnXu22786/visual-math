@@ -262,6 +262,26 @@ void main() {
     });
   });
 
+  testWidgets('3D display toggles immediately publish their snapshot', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    await tester.pumpWidget(_buildTestApp(controller: controller));
+    await tester.pump();
+    await tester.tap(find.text('3D'));
+    await tester.pumpAndSettle();
+    final canvas = tester.state<MathCanvas3DState>(find.byType(MathCanvas3D));
+
+    for (var i = 0; i < 2; i++) {
+      canvas.toggleAxes();
+      expect(controller.snapshot!.showAxes3D, canvas.showAxes);
+      canvas.toggleGrid();
+      expect(controller.snapshot!.showGrid3D, canvas.showGrid);
+      canvas.togglePlane();
+      expect(controller.snapshot!.showPlane3D, canvas.showPlane);
+    }
+  });
+
   testWidgets('3D replots preserve constructed objects and relationships', (
     tester,
   ) async {
