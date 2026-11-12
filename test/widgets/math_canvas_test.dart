@@ -295,9 +295,9 @@ void main() {
       expect(segments, isNotEmpty);
       expect(segments.every((segment) => segment.length >= 2), isTrue);
       expect(
-        segments.expand((segment) => segment).every(
-          (point) => point['x']! > 0 && point['x']! < 1,
-        ),
+        segments
+            .expand((segment) => segment)
+            .every((point) => point['x']! > 0 && point['x']! < 1),
         isTrue,
       );
     });
