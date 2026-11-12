@@ -495,6 +495,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   // Construction state
   ConstructionState? _construction;
   Object3D? _constructionPreview;
+  Point3D? _constructionPreviewPoint;
   final List<int?> _constructionPointSources = [];
   ConstructionTool _currentTool = ConstructionTool.move;
 
@@ -945,6 +946,15 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   /// Replace plotted objects while retaining constructed objects and their
   /// relationships. Remove from the end so construction indices stay valid.
   void replaceFormulaObjects(List<Object3D> objects) {
+    ensureDocumentIds();
+    final previousPoint = selectedPoint;
+    final previousObject = selectedObject;
+    Object3D? at(int? index) => index == null ? null : _objects[index];
+    final previousAttachment = at(_attachmentPointIndex);
+    final previousStyle = at(_styleSourceIndex);
+    final previousIntersection = at(_intersectionSourceIndex);
+    final previousPointIntersection = at(_pointIntersectionSourceIndex);
+    final previousConic = at(_conicSourceIndex);
     final hadSelection =
         _selectedObjectIndex != null || _selectedPointIndex != null;
     final attachments = documentPointAttachments;
@@ -955,6 +965,26 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       }
     }
     setObjects([..._objects, ...objects], notify: false);
+    int? selectedIndex(Object3D? previous) {
+      if (previous == null) return null;
+      final index = _objects.indexWhere(
+        (object) =>
+            identical(object, previous) ||
+            (previous.documentId.isNotEmpty &&
+                object.documentId == previous.documentId),
+      );
+      return index < 0 ? null : index;
+    }
+
+    setState(() {
+      _selectedPointIndex = selectedIndex(previousPoint);
+      _selectedObjectIndex = selectedIndex(previousObject);
+      _attachmentPointIndex = selectedIndex(previousAttachment);
+      _styleSourceIndex = selectedIndex(previousStyle);
+      _intersectionSourceIndex = selectedIndex(previousIntersection);
+      _pointIntersectionSourceIndex = selectedIndex(previousPointIntersection);
+      _conicSourceIndex = selectedIndex(previousConic);
+    });
     final ids = _objects.map((object) => object.documentId).toSet();
     restoreDocumentRelationships(
       pointAttachments: attachments
@@ -989,6 +1019,9 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     }
     final construction = _construction;
     if (construction != null) {
+      final previewPoint = _constructionPreview != null
+          ? _constructionPreviewPoint
+          : null;
       for (var i = 0; i < _constructionPointSources.length; i++) {
         final source = _constructionPointSources[i];
         if (source != null &&
@@ -998,12 +1031,18 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           construction.updatePoint(i, _objects[source].point);
         }
       }
-      _constructionPreview = null;
+      if (previewPoint != null) {
+        construction.updatePreviewPoint(
+          previewPoint,
+          workingPlaneNormal: _constPlaneNormal,
+        );
+      }
+      _constructionPreview = construction.previewObject;
     }
+    final currentSelection = selectedPoint ?? selectedObject;
     if (hadSelection &&
-        _selectedPointIndex == null &&
-        _selectedObjectIndex == null) {
-      widget.onSelectionChanged?.call(null);
+        !identical(currentSelection, previousPoint ?? previousObject)) {
+      widget.onSelectionChanged?.call(currentSelection);
     }
     widget.onSceneChanged?.call();
   }
@@ -5314,6 +5353,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   void _updateConstructionPreview(Point3D? point) {
     if (point == null || _construction == null) return;
     setState(() {
+      _constructionPreviewPoint = point;
       _construction!.updatePreviewPoint(
         point,
         workingPlaneNormal: _constPlaneNormal,

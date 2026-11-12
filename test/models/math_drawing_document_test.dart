@@ -332,6 +332,25 @@ void main() {
     expect(decoded.drawing.scene3D.last.vertices, points);
   });
 
+  test('round trips a sampled formula surface with no triangles', () {
+    final surface = Object3D.surface(
+      vertices: const [Point3D(0, 0, 0)],
+      indices: const [],
+      label: 'sqrt(A-x*x-y*y)',
+    ).copyWith(documentId: 'plot', formulaRowId: 'f-17');
+    final document = MathDrawingDocument(
+      name: 'partial',
+      drawing: snapshot(scene: [...snapshot().scene3D, surface]),
+    );
+    final restored = MathDrawingDocument.decode(document.encode())
+        .drawing
+        .scene3D
+        .singleWhere((o) => o.documentId == 'plot');
+    expect(restored.vertices, hasLength(1));
+    expect(restored.indices, isEmpty);
+    expect(restored.formulaRowId, 'f-17');
+  });
+
   test('rejects mesh and curve objects with missing geometry', () {
     final json = MathDrawingDocument(name: 'x', drawing: snapshot()).toJson();
     final drawing = json['drawing'] as Map<String, dynamic>;

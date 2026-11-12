@@ -90,6 +90,303 @@ void main() {
     );
 
     testWidgets(
+      '3D plots use and follow shared parameters without plotting drafts',
+      (tester) async {
+        final controller = MathDrawingController();
+        await tester.pumpWidget(
+          _buildTestApp(initialExpression: 'A*x', controller: controller),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('绘制'));
+        await tester.pumpAndSettle();
+        controls(tester)
+            .onChanged('A', controls(tester).parameters['A']!.withValue(2));
+        await tester.pump();
+        await tester.tap(find.text('3D'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('绘制'));
+        await tester.pumpAndSettle();
+        final canvas3d = tester.state<MathCanvas3DState>(
+          find.byType(MathCanvas3D),
+        );
+        Object3D plot() =>
+            canvas3d.objects.singleWhere((o) => o.formulaRowId != null);
+        final id = plot().documentId;
+        expect(
+          plot().vertices.first.z,
+          closeTo(2 * plot().vertices.first.x, 1e-8),
+        );
+        await tester.enterText(find.byType(TextField), 'A*x+100');
+        controls(tester)
+            .onChanged('A', controls(tester).parameters['A']!.withValue(3));
+        await tester.pump();
+        expect(plot().documentId, id);
+        expect(plot().label, 'A*x');
+        expect(
+          plot().vertices.first.z,
+          closeTo(3 * plot().vertices.first.x, 1e-8),
+        );
+        final reopened = MathDrawingDocument.decode(
+          MathDrawingDocument(
+            name: 'plot',
+            drawing: controller.snapshot!,
+          ).encode(),
+        );
+        expect(
+          reopened.drawing.scene3D
+              .singleWhere((o) => o.documentId == id)
+              .vertices
+              .first
+              .z,
+          closeTo(plot().vertices.first.z, 1e-8),
+        );
+      },
+    );
+
+    testWidgets('3D-only parametric curves follow their parameter', (
+      tester,
+    ) async {
+      final controller = MathDrawingController();
+      await tester.pumpWidget(_buildTestApp(controller: controller));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('3D'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '(1/(A-1), t, 0)');
+      await tester.pump();
+      await tester.tap(find.byTooltip('绘制'));
+      await tester.pumpAndSettle();
+      final canvas3d = tester.state<MathCanvas3DState>(
+        find.byType(MathCanvas3D),
+      );
+      Object3D plot() =>
+          canvas3d.objects.singleWhere((o) => o.formulaRowId != null);
+      expect(controls(tester).parameters.keys, contains('A'));
+      controls(tester)
+          .onChanged('A', controls(tester).parameters['A']!.withValue(2));
+      await tester.pump();
+      expect(plot().vertices.last.x, closeTo(1, 1e-8));
+      await tester.enterText(find.byType(TextField), '(1/A, t, 0)');
+      await tester.pump();
+      await tester.tap(find.byTooltip('绘制'));
+      await tester.pumpAndSettle();
+      final id = plot().documentId;
+      controls(tester)
+          .onChanged('A', controls(tester).parameters['A']!.withValue(0));
+      await tester.pump();
+      expect(plot().documentId, id);
+      expect(plot().vertices, isEmpty);
+      controls(tester)
+          .onChanged('A', controls(tester).parameters['A']!.withValue(1));
+      await tester.pump();
+      expect(plot().vertices, isNotEmpty);
+      expect(plot().vertices.first.x, closeTo(1, 1e-8));
+    });
+
+    testWidgets('parameter refresh preserves attached round constructions', (
+      tester,
+    ) async {
+      final controller = MathDrawingController();
+      await tester.pumpWidget(
+        _buildTestApp(initialExpression: 'A*x', controller: controller),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('绘制'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('3D'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('绘制'));
+      await tester.pumpAndSettle();
+      final canvas3d = tester.state<MathCanvas3DState>(
+        find.byType(MathCanvas3D),
+      );
+      final plot = canvas3d.objects.singleWhere((o) => o.formulaRowId != null);
+      const center = Point3D(1, 0, 1);
+      const rim = Point3D(2, 0, 1);
+      canvas3d.setObjects([
+        ...canvas3d.objects,
+        Object3D.point(center).copyWith(documentId: 'center'),
+        Object3D.point(rim).copyWith(documentId: 'rim'),
+        Object3D.curve(points: const [center, rim])
+            .copyWith(documentId: 'circle'),
+      ]);
+      canvas3d.restoreDocumentRelationships(
+        pointAttachments: [
+          PointAttachment(pointId: 'center', targetId: plot.documentId),
+        ],
+        constructionDependencies: [
+          ConstructionDependency(
+            objectId: 'circle',
+            tool: ConstructionTool.circle,
+            inputPoints: [center, rim],
+            sourcePointIds: ['center', 'rim'],
+            workingPlaneNormal: Vector3D.unitZ,
+            polygonSides: 3,
+          ),
+        ],
+      );
+      controls(tester)
+          .onChanged('A', controls(tester).parameters['A']!.withValue(2));
+      await tester.pumpAndSettle();
+      final movedCenter = canvas3d.objects
+          .singleWhere((o) => o.documentId == 'center')
+          .point;
+      expect(movedCenter, isNot(center));
+      final circle = canvas3d.objects.singleWhere(
+        (o) => o.documentId == 'circle',
+      );
+      expect(circle.vertices.length, greaterThan(2));
+      expect(
+        circle.vertices.every(
+          (p) => p.x.isFinite && p.y.isFinite && p.z.isFinite,
+        ),
+        isTrue,
+      );
+      expect(
+        canvas3d.documentPointAttachments.single.targetId,
+        plot.documentId,
+      );
+      expect(canvas3d.documentConstructionDependencies.single.sourcePointIds, [
+        'center',
+        'rim',
+      ]);
+      final restored = MathDrawingDocument.decode(
+        MathDrawingDocument(
+          name: 'round',
+          drawing: controller.snapshot!,
+        ).encode(),
+      ).drawing;
+      expect(restored.pointAttachments3D.single.targetId, plot.documentId);
+      expect(restored.constructionDependencies3D.single.sourcePointIds, [
+        'center',
+        'rim',
+      ]);
+      expect(
+        restored.scene3D
+            .singleWhere((o) => o.documentId == 'circle')
+            .vertices
+            .length,
+        circle.vertices.length,
+      );
+    });
+
+    testWidgets(
+      'partial parameter replacement retains controls required by 3D plots',
+      (tester) async {
+        final controller = MathDrawingController();
+        await tester.pumpWidget(_buildTestApp(controller: controller));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('3D'));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField), 'A*x+B');
+        await tester.pump();
+        await tester.tap(find.byTooltip('绘制'));
+        await tester.pumpAndSettle();
+        controller.setParameters({'A': MathParameter(value: 2)});
+        await tester.pumpAndSettle();
+        expect(controls(tester).parameters.keys, containsAll(['A', 'B']));
+        controls(tester)
+            .onChanged('B', controls(tester).parameters['B']!.withValue(3));
+        await tester.pump();
+        final canvas3d = tester.state<MathCanvas3DState>(
+          find.byType(MathCanvas3D),
+        );
+        final p = canvas3d.objects
+            .singleWhere((o) => o.formulaRowId != null)
+            .vertices
+            .first;
+        expect(p.z, closeTo(2 * p.x + 3, 1e-8));
+      },
+    );
+
+    testWidgets('uppercase and lowercase parameters drive 3D surfaces', (
+      tester,
+    ) async {
+      final controller = MathDrawingController();
+      await tester.pumpWidget(_buildTestApp(controller: controller));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('3D'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'X*x+a');
+      await tester.pump();
+      await tester.tap(find.byTooltip('绘制'));
+      await tester.pumpAndSettle();
+      final canvas3d = tester.state<MathCanvas3DState>(
+        find.byType(MathCanvas3D),
+      );
+      Object3D plot() =>
+          canvas3d.objects.singleWhere((o) => o.formulaRowId != null);
+      expect(controls(tester).parameters.keys, containsAll(['X', 'a']));
+      controls(tester)
+          .onChanged('X', controls(tester).parameters['X']!.withValue(2));
+      await tester.pump();
+      controls(tester)
+          .onChanged('a', controls(tester).parameters['a']!.withValue(3));
+      await tester.pump();
+      final p = plot().vertices.first;
+      expect(p.z, closeTo(2 * p.x + 3, 1e-8));
+      final restored = MathDrawingDocument.decode(
+        MathDrawingDocument(
+          name: 'case',
+          drawing: controller.snapshot!,
+        ).encode(),
+      ).drawing;
+      expect(restored.parameters['X']!.value, 2);
+      expect(restored.parameters['a']!.value, 3);
+      expect(
+        restored.scene3D
+            .singleWhere((o) => o.formulaRowId != null)
+            .vertices
+            .first
+            .z,
+        closeTo(p.z, 1e-8),
+      );
+    });
+
+    testWidgets('uppercase and lowercase parameters drive 3D curves', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_buildTestApp());
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('3D'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '(T*t, a*t, 0)');
+      await tester.pump();
+      await tester.tap(find.byTooltip('绘制'));
+      await tester.pumpAndSettle();
+      final canvas3d = tester.state<MathCanvas3DState>(
+        find.byType(MathCanvas3D),
+      );
+      Object3D plot() =>
+          canvas3d.objects.singleWhere((o) => o.formulaRowId != null);
+      expect(controls(tester).parameters.keys, containsAll(['T', 'a']));
+      controls(tester)
+          .onChanged('T', controls(tester).parameters['T']!.withValue(2));
+      await tester.pump();
+      controls(tester)
+          .onChanged('a', controls(tester).parameters['a']!.withValue(4));
+      await tester.pump();
+      final p = plot().vertices.last;
+      expect(p.y, closeTo(2 * p.x, 1e-8));
+      expect(p.x, closeTo(4 * 3.141592653589793, 1e-8));
+    });
+
+    testWidgets(
+      'plotting in 3D does not expose the y coordinate as a parameter',
+      (tester) async {
+        await tester.pumpWidget(_buildTestApp(initialExpression: 'x+y'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('绘制'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('3D'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('绘制'));
+        await tester.pumpAndSettle();
+        expect(find.byType(MathParameterControls), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
       'parameter settings survive replot and visibility reconciliation',
       (tester) async {
         await tester.pumpWidget(_buildTestApp(initialExpression: 'A*x'));

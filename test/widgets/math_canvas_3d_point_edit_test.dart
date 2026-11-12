@@ -100,6 +100,7 @@ void main() {
   Future<MathCanvas3DState> setup(
     WidgetTester tester, {
     VoidCallback? onSceneChanged,
+    ValueChanged<Object3D?>? onSelectionChanged,
     void Function(MathCanvas3DState)? captureScene,
   }) async {
     final key = GlobalKey<MathCanvas3DState>();
@@ -109,6 +110,7 @@ void main() {
           body: MathCanvas3D(
             key: key,
             currentTool: ConstructionTool.point,
+            onSelectionChanged: onSelectionChanged,
             onSceneChanged: () {
               onSceneChanged?.call();
               captureScene?.call(key.currentState!);
@@ -174,10 +176,16 @@ void main() {
       Point3D.origin + direction * -2,
       Point3D.origin + direction * 2,
     );
-    state.setObjects([circle, line]);
+    Object3D plot() => Object3D.surface(
+      vertices: const [],
+      indices: const [],
+    ).copyWith(documentId: 'plot', formulaRowId: 'row');
+    state.setObjects([circle, line, plot()]);
     state.setTool(ConstructionTool.intersectionPoint);
     await tester.pump();
     await tester.tapAt(screen(state, const Point3D(0, 1, 0)));
+    await tester.pump();
+    state.replaceFormulaObjects([plot()]);
     await tester.pump();
     await tester.tapAt(screen(state, Point3D.origin));
     await tester.pump();
@@ -197,6 +205,28 @@ void main() {
             object.point.distanceTo(Point3D.origin + direction * -1) < 1e-8,
       ),
       isTrue,
+    );
+    final arc = Object3D.curve(
+      points: circle.vertices.take(5).toList(),
+      conic: circle.conic,
+    );
+    state.setObjects([arc, line, plot()]);
+    await tester.pump();
+    await tester.tapAt(
+      screen(state, Point3D(math.cos(math.pi / 8), math.sin(math.pi / 8), 0)),
+    );
+    await tester.pump();
+    state.replaceFormulaObjects([plot()]);
+    await tester.pump();
+    await tester.tapAt(screen(state, Point3D.origin));
+    await tester.pump();
+    final arcPoints = state.objects
+        .where((o) => o.type == Object3DType.point)
+        .toList();
+    expect(arcPoints, hasLength(1));
+    expect(
+      arcPoints.single.point.distanceTo(Point3D.origin + direction),
+      lessThan(1e-8),
     );
   });
 
@@ -727,6 +757,58 @@ void main() {
     ]);
   });
 
+  testWidgets('formula refresh preserves polygon retry source points', (
+    tester,
+  ) async {
+    const rejected = [
+      Point3D(-2, -2, 0),
+      Point3D(2, 2, 0),
+      Point3D(-2, 2, 0),
+      Point3D(2, -2, 0),
+    ];
+    const retry = [Point3D(-1, -1, 0), Point3D(1, -1, 0), Point3D(0, 1, 0)];
+    final state = await setup(tester);
+    Object3D plot() => Object3D.surface(
+      vertices: const [],
+      indices: const [],
+    ).copyWith(documentId: 'plot', formulaRowId: 'row');
+    state.setObjects([
+      for (final point in [...rejected, ...retry]) Object3D.point(point),
+      plot(),
+    ]);
+    state.ensureDocumentIds();
+    state.setTool(ConstructionTool.polygon);
+    await tester.pump();
+    for (final point in [...rejected, rejected.first, ...retry.take(2)]) {
+      await tester.tapAt(screen(state, point));
+      await tester.pump();
+    }
+    final pointer = await tester.startGesture(screen(state, retry.last));
+    await tester.pump();
+    expect(state.constructionPreview, isNotNull);
+    state.replaceFormulaObjects([plot()]);
+    await tester.pump();
+    expect(state.constructionPreview, isNotNull);
+    await pointer.cancel();
+    await tester.pump();
+    for (final point in [retry.last, retry.first]) {
+      await tester.tapAt(screen(state, point));
+      await tester.pump();
+    }
+    final dependency = state.documentConstructionDependencies.single;
+    expect(dependency.sourcePointIds, [
+      for (final object in state.objects.skip(4).take(3)) object.documentId,
+    ]);
+    state.setTool(ConstructionTool.move);
+    await tester.pump();
+    await tester.dragFrom(screen(state, retry.first), const Offset(-45, 24));
+    await tester.pump();
+    expect(state.objects.last.vertices, [
+      state.objects[4].point,
+      ...retry.skip(1),
+    ]);
+  });
+
   testWidgets('nearby closing clicks retain polygon geometry', (tester) async {
     final state = await setup(tester);
     const vertices = [Point3D(-2, 0, 0), Point3D(0, 0, 0), Point3D(0, 2, 0)];
@@ -1028,6 +1110,59 @@ void main() {
     }
   });
 
+  testWidgets('replot reports moved selected attached point', (tester) async {
+    final observed = <Object3D?>[];
+    final state = await setup(tester, onSelectionChanged: observed.add);
+    Object3D surface(double z) => Object3D.surface(
+      vertices: [Point3D(-2, -2, z), Point3D(2, -2, z), Point3D(0, 2, z)],
+      indices: const [0, 1, 2],
+    ).copyWith(documentId: 'plot', formulaRowId: 'row');
+    state.setObjects([
+      surface(0),
+      Object3D.point(Point3D.origin).copyWith(documentId: 'p'),
+    ]);
+    state.restoreDocumentRelationships(
+      pointAttachments: const [PointAttachment(pointId: 'p', targetId: 'plot')],
+      constructionDependencies: const [],
+    );
+    state.setTool(ConstructionTool.move);
+    await tester.pump();
+    await tester.tapAt(screen(state, Point3D.origin));
+    await tester.pump();
+    expect(state.selectedPoint?.documentId, 'p');
+    observed.clear();
+    state.replaceFormulaObjects([surface(1)]);
+    await tester.pump();
+    expect(state.selectedPoint!.point.z, closeTo(1, 1e-8));
+    expect(observed.last!.point.z, closeTo(1, 1e-8));
+  });
+
+  testWidgets('replot retains selection of a constructed point', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    const point = Point3D(-2, 0, 0);
+    state.setObjects([
+      Object3D.surface(
+        vertices: const [],
+        indices: const [],
+      ).copyWith(documentId: 'plot:1', formulaRowId: 'row'),
+      Object3D.point(point).copyWith(documentId: 'p'),
+    ]);
+    await tester.pump();
+    await tester.tapAt(screen(state, point));
+    await tester.pump();
+    expect(state.selectedPoint?.documentId, 'p');
+    state.replaceFormulaObjects([
+      Object3D.surface(
+        vertices: const [],
+        indices: const [],
+      ).copyWith(documentId: 'plot:1', formulaRowId: 'row'),
+    ]);
+    await tester.pump();
+    expect(state.selectedPoint?.documentId, 'p');
+  });
+
   testWidgets('replot keeps the source of a construction in progress', (
     tester,
   ) async {
@@ -1314,6 +1449,43 @@ void main() {
       );
     },
   );
+
+  testWidgets('sphere snapping survives formula refresh during construction', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    state.setProjectionType(ProjectionType.parallel);
+    final eye = state.camera.position;
+    final forward = (state.camera.target - eye).normalized();
+    final center = eye + forward * 4;
+    const first = Point3D(-2, 0, 0);
+    Object3D plot() => Object3D.surface(
+      vertices: const [],
+      indices: const [],
+    ).copyWith(documentId: 'plot', formulaRowId: 'row');
+    state.setObjects([
+      Object3D.point(first).copyWith(documentId: 'first'),
+      Object3D.sphere(center: center, radius: 2).copyWith(documentId: 'sphere'),
+      plot(),
+    ]);
+    state.setTool(ConstructionTool.segment);
+    await tester.pump();
+    await tester.tapAt(screen(state, first));
+    await tester.pump();
+    expect(state.constructionState!.points.single, first);
+    state.replaceFormulaObjects([plot()]);
+    await tester.pump();
+    await tester.tapAt(const Offset(430, 300));
+    await tester.pump();
+    final line = state.objects.last;
+    expect(line.type, Object3DType.line);
+    expect(line.pointB.distanceTo(center), closeTo(2, 1e-6));
+    expect((line.pointB - center).dot(forward), lessThan(0));
+    expect(
+      state.documentConstructionDependencies.single.sourcePointIds.first,
+      'first',
+    );
+  });
 
   testWidgets('parallel snaps to a large representable sphere', (tester) async {
     final state = await setup(tester);

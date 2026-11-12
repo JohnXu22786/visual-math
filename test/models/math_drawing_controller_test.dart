@@ -410,6 +410,73 @@ void main() {
     await tester.pump();
     expectDomain(4, 5);
   });
+  testWidgets('shared 3D updates retain parameterized LaTeX bounds', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          initialShowWebView: false,
+          initialMathematicalMode: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    controller.setParameters({
+      'a': MathParameter(value: 2, min: 0, max: 6, step: 1),
+    });
+    controller.setFormulas([
+      FormulaEntry(
+        rawExpression: 'a*x',
+        domainStartExpression: r'\frac{a}{2}',
+        domainEndExpression: 'a+1',
+      ),
+    ]);
+    await controller.plot();
+    await tester.pumpAndSettle();
+    final canvas2d = tester.state<MathCanvasState>(find.byType(MathCanvas));
+    void checkBounds(double low, double high) {
+      final xs = canvas2d.curvePoints.map((p) => p['x']!);
+      expect(xs, isNotEmpty);
+      expect(xs.every((x) => x >= low && x <= high), isTrue);
+    }
+
+    checkBounds(1, 3);
+    controller.setActiveView(ViewMode.mode3D);
+    await tester.pumpAndSettle();
+    await controller.plot();
+    await tester.pumpAndSettle();
+    final canvas3d = tester.state<MathCanvas3DState>(find.byType(MathCanvas3D));
+    Object3D plot() =>
+        canvas3d.objects.singleWhere((o) => o.formulaRowId != null);
+    controller.setParameters({
+      'a': MathParameter(value: 4, min: 0, max: 6, step: 1),
+    });
+    await tester.pumpAndSettle();
+    checkBounds(2, 5);
+    final p = plot().vertices.first;
+    expect(p.z, closeTo(4 * p.x, 1e-8));
+    final restored = MathDrawingDocument.decode(
+      MathDrawingDocument(
+        name: 'bounds',
+        drawing: controller.snapshot!,
+      ).encode(),
+    ).drawing;
+    expect(restored.formulas.single.domainStartExpression, r'\frac{a}{2}');
+    expect(restored.formulas.single.domainEndExpression, 'a+1');
+    expect(restored.parameters['a']!.value, 4);
+    expect(
+      restored.scene3D
+          .singleWhere((o) => o.formulaRowId != null)
+          .vertices
+          .first
+          .z,
+      closeTo(p.z, 1e-8),
+    );
+  });
+
   testWidgets('invalid parameterized bounds hide curves until valid again', (
     tester,
   ) async {
