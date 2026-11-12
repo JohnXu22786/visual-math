@@ -9,6 +9,46 @@ import 'package:visual_math/visual_math.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('zero grid lines remain visible when axes are hidden', () {
+    for (final showAxes in [false, true]) {
+      for (final showGrid in [false, true]) {
+        final canvas = TestRecordingCanvas();
+        GraphPainter(
+          xMin: -10,
+          xMax: 10,
+          yMin: -10,
+          yMax: 10,
+          showAxes: showAxes,
+          showGrid: showGrid,
+          gridColor: Colors.red.shade500,
+          axisColor: Colors.blue.shade500,
+        ).paint(canvas, const Size(200, 200));
+        for (final endpoints in [
+          (const Offset(100, 0), const Offset(100, 200)),
+          (const Offset(0, 100), const Offset(200, 100)),
+        ]) {
+          final lines = canvas.invocations
+              .map((record) => record.invocation)
+              .where(
+                (call) =>
+                    call.memberName == #drawLine &&
+                    call.positionalArguments[0] == endpoints.$1 &&
+                    call.positionalArguments[1] == endpoints.$2,
+              )
+              .toList();
+          expect(lines, hasLength(showAxes || showGrid ? 1 : 0));
+          if (lines.isNotEmpty) {
+            expect(
+              (lines.single.positionalArguments[2] as Paint).color.toARGB32(),
+              (showAxes ? Colors.blue.shade500 : Colors.red.shade500)
+                  .toARGB32(),
+            );
+          }
+        }
+      }
+    }
+  });
+
   test('offscreen axes keep fallback tick labels inside the canvas', () {
     const size = Size(200, 200);
     final narrow = TestRecordingCanvas();

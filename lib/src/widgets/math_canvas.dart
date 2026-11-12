@@ -1043,11 +1043,10 @@ class GraphPainter extends CustomPainter {
     // Use the same step for both axes so they have the same number of cells.
     final step = _niceStep((xMax - xMin) / 2 + (eYMax - eYMin) / 2, 8);
 
-    // Vertical grid lines
+    // Vertical grid lines (the axis replaces the zero line when shown).
     double gx = _firstGridTick(xMin, step);
     while (gx <= xMax) {
-      if (gx.abs() > 1e-10) {
-        // Skip axis line (drawn separately)
+      if (!showAxes || gx.abs() > 1e-10) {
         final screenX = _mathToScreenX(gx, size.width);
         canvas.drawLine(
           Offset(screenX, 0),
@@ -1060,11 +1059,10 @@ class GraphPainter extends CustomPainter {
       gx = next;
     }
 
-    // Horizontal grid lines (using effective y bounds for 1:1 aspect ratio)
+    // Horizontal grid lines use effective y bounds for a 1:1 aspect ratio.
     double gy = _firstGridTick(eYMin, step);
     while (gy <= eYMax) {
-      if (gy.abs() > 1e-10) {
-        // Skip axis line
+      if (!showAxes || gy.abs() > 1e-10) {
         final screenY = _mathToScreenY(gy, size.height, eYMin, eYMax);
         canvas.drawLine(
           Offset(0, screenY),
