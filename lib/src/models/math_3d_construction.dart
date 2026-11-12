@@ -2252,29 +2252,35 @@ class ConstructionState {
     final quadraticDiscriminant = coefficientScale == 0
         ? 0.0
         : (normalizedCoefficients[1] / coefficientScale) *
-                (normalizedCoefficients[1] / coefficientScale) -
-            4 *
-                (normalizedCoefficients[0] / coefficientScale) *
-                (normalizedCoefficients[2] / coefficientScale);
+                  (normalizedCoefficients[1] / coefficientScale) -
+              4 *
+                  (normalizedCoefficients[0] / coefficientScale) *
+                  (normalizedCoefficients[2] / coefficientScale);
     // A positive discriminant means an indefinite quadratic form. Avoid a
     // fixed tolerance here so very elongated hyperbolas keep both branches.
     final isHyperbola = quadraticDiscriminant > 0;
+    final isParabola = !isHyperbola &&
+        quadraticDiscriminant.abs() <= 8 * 2.220446049250313e-16;
     final hyperbolaPaths = List.generate(2, (_) => <List<Point3D>>[]);
     final activeHyperbolaPaths = List<List<Point3D>?>.filled(2, null);
     double? previousScaledRadius;
+    int? previousRootIndex;
+    int? rootAfterAsymptote;
     final coefficientMagnitude = normalizedCoefficients.fold<double>(
       0,
       (maximum, coefficient) =>
           dart_math.max(maximum, coefficient.abs()).toDouble(),
     );
     const coefficientPrecision = 32 * 2.220446049250313e-16;
-    final originOnConic = normalizedCoefficients[5].abs() <=
+    final originOnConic =
+        normalizedCoefficients[5].abs() <=
         coefficientMagnitude * coefficientPrecision;
 
     double radialDiscriminantAt(double theta) {
       final cosine = dart_math.cos(theta);
       final sine = dart_math.sin(theta);
-      final quadratic = normalizedCoefficients[0] * cosine * cosine +
+      final quadratic =
+          normalizedCoefficients[0] * cosine * cosine +
           normalizedCoefficients[1] * cosine * sine +
           normalizedCoefficients[2] * sine * sine;
       final linear =
@@ -2287,6 +2293,17 @@ class ConstructionState {
     final sampleSpan = isHyperbola ? dart_math.pi : 2 * dart_math.pi;
     for (var i = 0; i <= baseSampleCount; i++) {
       sampleAngles.add(sampleSpan * i / baseSampleCount);
+    }
+    // Include the null direction of a parabolic quadratic form so a root
+    // diverging between regular samples can be separated from its finite peer.
+    if (isParabola) {
+      final phase = dart_math.atan2(b, a - c);
+      final mean = (a + c) / 2;
+      var boundary = (phase + (mean >= 0 ? dart_math.pi : 0)) / 2;
+      boundary %= dart_math.pi;
+      if (boundary < 0) boundary += dart_math.pi;
+      sampleAngles.add(boundary);
+      sampleAngles.add(boundary + dart_math.pi);
     }
     if (isHyperbola) {
       // Close the diverging root's path at each radial asymptote.
@@ -2315,13 +2332,13 @@ class ConstructionState {
       final constant = normalizedCoefficients[5];
       final discriminantX =
           normalizedCoefficients[3] * normalizedCoefficients[3] -
-              4 * constant * normalizedCoefficients[0];
+          4 * constant * normalizedCoefficients[0];
       final discriminantXY =
           2 * normalizedCoefficients[3] * normalizedCoefficients[4] -
-              4 * constant * normalizedCoefficients[1];
+          4 * constant * normalizedCoefficients[1];
       final discriminantY =
           normalizedCoefficients[4] * normalizedCoefficients[4] -
-              4 * constant * normalizedCoefficients[2];
+          4 * constant * normalizedCoefficients[2];
       final mean = (discriminantX + discriminantY) / 2;
       final cosineCoefficient = (discriminantX - discriminantY) / 2;
       final sineCoefficient = discriminantXY / 2;
@@ -2391,7 +2408,9 @@ class ConstructionState {
       final constant = normalizedCoefficients[5];
       final candidates = <({int index, double radius})>[];
       final quadraticIsNearZero =
-          quadraticScale == 0 || quadratic.abs() <= quadraticScale * 1e-12;
+          quadraticScale == 0 ||
+          quadratic.abs() <=
+              (isParabola ? coefficientScale : quadraticScale) * 1e-12;
       if (originOnConic && isHyperbola) {
         // With a zero constant, the root at radius zero is present at every
         // angle. Follow only the other root, keeping its identity through the
@@ -2416,8 +2435,9 @@ class ConstructionState {
           final stableRoot = stableNumerator == 0
               ? -linear / (2 * quadratic)
               : stableNumerator / quadratic;
-          final complementaryRoot =
-              stableNumerator == 0 ? stableRoot : constant / stableNumerator;
+          final complementaryRoot = stableNumerator == 0
+              ? stableRoot
+              : constant / stableNumerator;
           final roots = linear >= 0
               ? [
                   (index: 0, radius: complementaryRoot),
@@ -2462,19 +2482,30 @@ class ConstructionState {
       }
 
       double? scaledRadius;
+      if (!quadraticIsNearZero && rootAfterAsymptote != null) {
+        previousRootIndex = rootAfterAsymptote;
+        rootAfterAsymptote = null;
+        previousScaledRadius = null;
+      }
       if (candidates.isNotEmpty) {
-        var selected = candidates.first;
-        for (final candidate in candidates.skip(1)) {
-          if (previousScaledRadius != null &&
-              (candidate.radius - previousScaledRadius).abs() <
-                  (selected.radius - previousScaledRadius).abs()) {
-            selected = candidate;
+        final matchingIndex = candidates.indexWhere(
+          (candidate) => candidate.index == previousRootIndex,
+        );
+        final selected = matchingIndex < 0
+            ? candidates.first
+            : candidates[matchingIndex];
+        if (previousRootIndex != null && matchingIndex < 0) {
+          if (isParabola && quadraticIsNearZero) {
+            rootAfterAsymptote = previousRootIndex;
           }
+          previousScaledRadius = null;
         }
+        previousRootIndex = selected.index;
         scaledRadius = selected.radius;
       }
       if (scaledRadius == null || !scaledRadius.isFinite) {
         previousScaledRadius = null;
+        previousRootIndex = null;
         continue;
       }
       final startsNewBranch =
@@ -2482,6 +2513,7 @@ class ConstructionState {
       final radius = scaledRadius * coordinateScale;
       if (!radius.isFinite) {
         previousScaledRadius = null;
+        previousRootIndex = null;
         continue;
       }
       if (startsNewBranch) curveStarts.add(samples.length);
