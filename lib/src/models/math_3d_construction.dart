@@ -173,8 +173,9 @@ class ConstructionState {
       final normal = (_points[1] - _points[0]).normalized();
       final radiusVector = point - _points[0];
       final axialOffset = radiusVector.dot(normal).abs();
-      final planeTolerance =
-          dart_math.max(1e-9, radiusVector.magnitude * 1e-9).toDouble();
+      final planeTolerance = dart_math
+          .max(1e-9, radiusVector.magnitude * 1e-9)
+          .toDouble();
       if (axialOffset > planeTolerance) {
         return _reject('圆周点必须位于与法向量垂直的平面内，请重新选择');
       }
@@ -200,8 +201,11 @@ class ConstructionState {
       return _reject('参考平面的三个点不能共线，请重新选择第三个点');
     }
     if (tool == ConstructionTool.perpendicularPlane && _points.length == 4) {
-      final referenceNormal =
-          _triangleUnitNormal(_points[0], _points[1], _points[2]);
+      final referenceNormal = _triangleUnitNormal(
+        _points[0],
+        _points[1],
+        _points[2],
+      );
       final direction = point - _points[3];
       if (direction.magnitude < 1e-9) {
         return _reject('方向点不能与平面经过点重合，请重新选择');
@@ -360,8 +364,11 @@ class ConstructionState {
             tool == ConstructionTool.extrudePrism ||
             tool == ConstructionTool.pyramid) &&
         _points.length == 3) {
-      final baseNormal =
-          _triangleUnitNormal(_points[0], _points[1], _points[2]);
+      final baseNormal = _triangleUnitNormal(
+        _points[0],
+        _points[1],
+        _points[2],
+      );
       final baseScale = dart_math
           .max(
             _points[0].distanceTo(_points[1]),
@@ -463,14 +470,14 @@ class ConstructionState {
           final b = _points[1];
           _result = switch (tool) {
             ConstructionTool.midpoint => Object3D.point(
-                a.midpoint(b),
-                color: 0xFF2196F3,
-              ),
+              a.midpoint(b),
+              color: 0xFF2196F3,
+            ),
             ConstructionTool.vector => Object3D.vectorObj(
-                origin: a,
-                vector: b - a,
-                color: 0xFF00897B,
-              ),
+              origin: a,
+              vector: b - a,
+              color: 0xFF00897B,
+            ),
             ConstructionTool.regularPolygon => _createRegularPolygon(a, b),
             _ => _createTetrahedron(a, b),
           };
@@ -541,8 +548,9 @@ class ConstructionState {
             }
           }
           _points.removeLast();
-          _stepIndex =
-              _points.length < totalSteps ? _points.length : totalSteps - 1;
+          _stepIndex = _points.length < totalSteps
+              ? _points.length
+              : totalSteps - 1;
           _updatePreview();
           return ConstructionAction.awaitInput;
         }
@@ -802,14 +810,20 @@ class ConstructionState {
         );
       case ConstructionTool.parallelPlane:
         return finishWhenReady(4, () {
-          final normal =
-              _triangleUnitNormal(_points[0], _points[1], _points[2]);
+          final normal = _triangleUnitNormal(
+            _points[0],
+            _points[1],
+            _points[2],
+          );
           return _createPlaneFromNormal(_points[3], normal);
         });
       case ConstructionTool.perpendicularPlane:
         return finishWhenReady(5, () {
-          final referenceNormal =
-              _triangleUnitNormal(_points[0], _points[1], _points[2]);
+          final referenceNormal = _triangleUnitNormal(
+            _points[0],
+            _points[1],
+            _points[2],
+          );
           final direction = _points[4] - _points[3];
           final normal = _stableNormalize(referenceNormal.cross(direction));
           return _createPlaneFromNormal(_points[3], normal);
@@ -867,8 +881,9 @@ class ConstructionState {
         final conic = _createConic(_points);
         if (conic == null) {
           _points.removeLast();
-          _stepIndex =
-              _points.length < totalSteps ? _points.length : totalSteps - 1;
+          _stepIndex = _points.length < totalSteps
+              ? _points.length
+              : totalSteps - 1;
           _validationMessage = '五个点必须共面且能确定圆锥曲线，请重新选择';
           _updatePreview();
           return ConstructionAction.awaitInput;
@@ -963,14 +978,14 @@ class ConstructionState {
           final radius = radiusScale == 0
               ? 0.0
               : radiusScale *
-                  dart_math.sqrt(
-                    (radiusVector.x / radiusScale) *
-                            (radiusVector.x / radiusScale) +
-                        (radiusVector.y / radiusScale) *
-                            (radiusVector.y / radiusScale) +
-                        (radiusVector.z / radiusScale) *
-                            (radiusVector.z / radiusScale),
-                  );
+                    dart_math.sqrt(
+                      (radiusVector.x / radiusScale) *
+                              (radiusVector.x / radiusScale) +
+                          (radiusVector.y / radiusScale) *
+                              (radiusVector.y / radiusScale) +
+                          (radiusVector.z / radiusScale) *
+                              (radiusVector.z / radiusScale),
+                    );
           return Object3D.point(_points[1] + direction * radius);
         });
       case ConstructionTool.axialSymmetry:
@@ -1067,7 +1082,8 @@ class ConstructionState {
         preview.addPoint(existing, workingPlaneNormal: _workingPlaneNormal);
       }
       preview.addPoint(point, workingPlaneNormal: _workingPlaneNormal);
-      _previewObject = preview.result ??
+      _previewObject =
+          preview.result ??
           Object3D.curve(points: [..._points, point], color: 0x60808080);
       return;
     }
@@ -1248,10 +1264,7 @@ class ConstructionState {
     }).toList();
     final scale = coordinates.fold<double>(0, (maximum, point) {
       return dart_math
-          .max(
-            maximum,
-            dart_math.max(point.$1.abs(), point.$2.abs()),
-          )
+          .max(maximum, dart_math.max(point.$1.abs(), point.$2.abs()))
           .toDouble();
     });
     if (!scale.isFinite || scale == 0) return false;
@@ -1437,8 +1450,9 @@ class ConstructionState {
   Vector3D _edgePerpendicular(Vector3D edge) {
     var perpendicular = _workingPlaneNormal.cross(edge).normalized();
     if (perpendicular.magnitude < 1e-9) {
-      final fallback =
-          edge.normalized().x.abs() < 0.9 ? Vector3D.unitX : Vector3D.unitY;
+      final fallback = edge.normalized().x.abs() < 0.9
+          ? Vector3D.unitX
+          : Vector3D.unitY;
       perpendicular = fallback.cross(edge).normalized();
     }
     return perpendicular;
@@ -1447,7 +1461,8 @@ class ConstructionState {
   Object3D _createRegularPolygon(Point3D a, Point3D b) {
     final edge = b - a;
     final inward = _edgePerpendicular(edge);
-    final center = a.midpoint(b) +
+    final center =
+        a.midpoint(b) +
         inward *
             (edge.magnitude / (2 * dart_math.tan(dart_math.pi / polygonSides)));
     final normal = edge.cross(inward).normalized();
@@ -1481,7 +1496,8 @@ class ConstructionState {
     final u = b - a;
     final v = c - a;
     final normal = u.cross(v);
-    final offset = (v.cross(normal) * u.dot(u) + normal.cross(u) * v.dot(v)) *
+    final offset =
+        (v.cross(normal) * u.dot(u) + normal.cross(u) * v.dot(v)) *
         (1 / (2 * normal.dot(normal)));
     return _createCircle(
       a + offset,
@@ -1505,8 +1521,8 @@ class ConstructionState {
   /// ear-clipping tolerances do not depend on the polygon's position or scale.
   static List<int> _triangulatePolygon(List<Point3D> vertices) {
     List<int> fan() => [
-          for (var i = 1; i < vertices.length - 1; i++) ...[0, i, i + 1],
-        ];
+      for (var i = 1; i < vertices.length - 1; i++) ...[0, i, i + 1],
+    ];
 
     if (vertices.length < 3) return fan();
 
@@ -1534,10 +1550,10 @@ class ConstructionState {
     }
     final dropAxis =
         normal.x.abs() >= normal.y.abs() && normal.x.abs() >= normal.z.abs()
-            ? 0
-            : normal.y.abs() >= normal.z.abs()
-                ? 1
-                : 2;
+        ? 0
+        : normal.y.abs() >= normal.z.abs()
+        ? 1
+        : 2;
     final projected = normalized.map((point) {
       return switch (dropAxis) {
         0 => (point.y, point.z),
@@ -1685,13 +1701,16 @@ class ConstructionState {
 
     for (int i = 0; i <= segments; i++) {
       final theta = 2 * dart_math.pi * i / segments;
-      final x = center.x +
+      final x =
+          center.x +
           radius *
               (dart_math.cos(theta) * dir.x + dart_math.sin(theta) * perp.x);
-      final y = center.y +
+      final y =
+          center.y +
           radius *
               (dart_math.cos(theta) * dir.y + dart_math.sin(theta) * perp.y);
-      final z = center.z +
+      final z =
+          center.z +
           radius *
               (dart_math.cos(theta) * dir.z + dart_math.sin(theta) * perp.z);
       points.add(Point3D(x, y, z));
@@ -1710,18 +1729,17 @@ class ConstructionState {
     Vector3D axisU,
     Vector3D axisV,
     double radius,
-  ) =>
-      Conic3D(
-        origin: center,
-        axisU: axisU,
-        axisV: axisV,
-        quadraticX: 1,
-        quadraticXY: 0,
-        quadraticY: 1,
-        linearX: 0,
-        linearY: 0,
-        constant: -radius * radius,
-      );
+  ) => Conic3D(
+    origin: center,
+    axisU: axisU,
+    axisV: axisV,
+    quadraticX: 1,
+    quadraticXY: 0,
+    quadraticY: 1,
+    linearX: 0,
+    linearY: 0,
+    constant: -radius * radius,
+  );
 
   /// Create a cube from two base edge points.
   static Object3D _createCube(
@@ -1992,7 +2010,8 @@ class ConstructionState {
     final normal = u.cross(v);
     final normalSquared = normal.dot(normal);
     if (!_isNonCollinear(a, b, c)) return a;
-    final offset = (v.cross(normal) * u.dot(u) + normal.cross(u) * v.dot(v)) *
+    final offset =
+        (v.cross(normal) * u.dot(u) + normal.cross(u) * v.dot(v)) *
         (1 / (2 * normalSquared));
     return a + offset;
   }
@@ -2043,8 +2062,9 @@ class ConstructionState {
 
     final middleAngle = angleFor(b);
     final endAngle = angleFor(c);
-    final sweep =
-        middleAngle <= endAngle ? endAngle : endAngle - 2 * dart_math.pi;
+    final sweep = middleAngle <= endAngle
+        ? endAngle
+        : endAngle - 2 * dart_math.pi;
     final radius = center.distanceTo(a);
     final points = List.generate(49, (i) {
       final theta = sweep * i / 48;
@@ -2125,7 +2145,7 @@ class ConstructionState {
   }
 
   static ({Point3D origin, Vector3D u, Vector3D v, Vector3D normal})?
-      _conicPlane(List<Point3D> points) {
+  _conicPlane(List<Point3D> points) {
     if (points.length < 3) return null;
     final anchor = points.first;
     var u = Vector3D.zero;
@@ -2259,7 +2279,8 @@ class ConstructionState {
     // A positive discriminant means an indefinite quadratic form. Avoid a
     // fixed tolerance here so very elongated hyperbolas keep both branches.
     final isHyperbola = quadraticDiscriminant > 0;
-    final isParabola = !isHyperbola &&
+    final isParabola =
+        !isHyperbola &&
         quadraticDiscriminant.abs() <= 8 * 2.220446049250313e-16;
     final hyperbolaPaths = List.generate(2, (_) => <List<Point3D>>[]);
     final activeHyperbolaPaths = List<List<Point3D>?>.filled(2, null);
@@ -2863,8 +2884,8 @@ class ConstructionState {
     final axis = unit.x.abs() <= unit.y.abs() && unit.x.abs() <= unit.z.abs()
         ? Vector3D.unitX
         : unit.y.abs() <= unit.z.abs()
-            ? Vector3D.unitY
-            : Vector3D.unitZ;
+        ? Vector3D.unitY
+        : Vector3D.unitZ;
     return unit.cross(axis).normalized();
   }
 
