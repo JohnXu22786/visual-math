@@ -495,6 +495,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   // Construction state
   ConstructionState? _construction;
   Object3D? _constructionPreview;
+  Point3D? _constructionPreviewPoint;
   final List<int?> _constructionPointSources = [];
   ConstructionTool _currentTool = ConstructionTool.move;
 
@@ -1017,6 +1018,9 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     }
     final construction = _construction;
     if (construction != null) {
+      final previewPoint = _constructionPreview != null
+          ? _constructionPreviewPoint
+          : null;
       for (var i = 0; i < _constructionPointSources.length; i++) {
         final source = _constructionPointSources[i];
         if (source != null &&
@@ -1026,7 +1030,13 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           construction.updatePoint(i, _objects[source].point);
         }
       }
-      _constructionPreview = null;
+      if (previewPoint != null) {
+        construction.updatePreviewPoint(
+          previewPoint,
+          workingPlaneNormal: _constPlaneNormal,
+        );
+      }
+      _constructionPreview = construction.previewObject;
     }
     if (hadSelection &&
         _selectedPointIndex == null &&
@@ -5342,6 +5352,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   void _updateConstructionPreview(Point3D? point) {
     if (point == null || _construction == null) return;
     setState(() {
+      _constructionPreviewPoint = point;
       _construction!.updatePreviewPoint(
         point,
         workingPlaneNormal: _constPlaneNormal,

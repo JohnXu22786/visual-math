@@ -753,7 +753,13 @@ void main() {
       await tester.tapAt(screen(state, point));
       await tester.pump();
     }
+    final pointer = await tester.startGesture(screen(state, retry.last));
+    await tester.pump();
+    expect(state.constructionPreview, isNotNull);
     state.replaceFormulaObjects([plot()]);
+    await tester.pump();
+    expect(state.constructionPreview, isNotNull);
+    await pointer.cancel();
     await tester.pump();
     for (final point in [retry.last, retry.first]) {
       await tester.tapAt(screen(state, point));
