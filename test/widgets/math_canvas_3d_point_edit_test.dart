@@ -1213,6 +1213,50 @@ void main() {
     }
   });
 
+  testWidgets(
+    'parallel sphere snapping uses the front surface across the camera plane',
+    (tester) async {
+      final state = await setup(tester);
+      state.setProjectionType(ProjectionType.parallel);
+      final eye = state.camera.position;
+      final forward = (state.camera.target - eye).normalized();
+      for (final distance in [-4.0, 0.0, 4.0]) {
+        final center = eye + forward * distance;
+        state.setObjects([Object3D.sphere(center: center, radius: 2)]);
+        state.setTool(ConstructionTool.segment);
+        await tester.pump();
+        await tester.tapAt(const Offset(430, 300));
+        await tester.pump();
+        final snapped = state.constructionState!.points.single;
+        expect(
+          snapped.distanceTo(center),
+          closeTo(2, 1e-6),
+          reason: '$distance',
+        );
+        expect(
+          (snapped - center).dot(forward),
+          lessThan(0),
+          reason: '$distance',
+        );
+        state.setTool(ConstructionTool.move);
+      }
+      final front = eye + forward * -4;
+      final back = eye + forward * 4;
+      state.setObjects([
+        Object3D.sphere(center: back, radius: 2),
+        Object3D.sphere(center: front, radius: 2),
+      ]);
+      state.setTool(ConstructionTool.segment);
+      await tester.pump();
+      await tester.tapAt(const Offset(430, 300));
+      await tester.pump();
+      expect(
+        state.constructionState!.points.single.distanceTo(front),
+        closeTo(2, 1e-6),
+      );
+    },
+  );
+
   testWidgets('perspective snaps to the visible exit of a clipped sphere', (
     tester,
   ) async {

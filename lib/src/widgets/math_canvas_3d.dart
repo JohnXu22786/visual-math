@@ -5089,11 +5089,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
               ),
             );
             if (projection.type != ProjectionType.perspective) {
-              if (alongRay >= 0) {
-                surfaceCandidates.add(
-                  ray.pointAt(dart_math.max(0.0, alongRay - offset)),
-                );
-              }
+              surfaceCandidates.add(ray.pointAt(alongRay - offset));
               break;
             }
             for (final hitDistance in [alongRay - offset, alongRay + offset]) {
@@ -5125,9 +5121,10 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       }
     }
 
-    Point3D? nearestIn(List<Point3D> points) {
+    Point3D? nearestIn(List<Point3D> points, {bool resolveDepth = false}) {
       Point3D? nearest;
       var nearestDistance = 14.0;
+      var nearestDepth = double.infinity;
       for (final candidate in points) {
         final screen = worldToScreen(candidate, camera, projection);
         final nearTolerance = segmentCandidates.contains(candidate)
@@ -5145,15 +5142,21 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         final dx = screen.x - screenX;
         final dy = screen.y - screenY;
         final pixelDistance = dart_math.sqrt(dx * dx + dy * dy);
-        if (pixelDistance < nearestDistance) {
+        if (pixelDistance < 14.0 &&
+            (pixelDistance < nearestDistance - (resolveDepth ? 1e-7 : 0) ||
+                (resolveDepth &&
+                    (pixelDistance - nearestDistance).abs() <= 1e-7 &&
+                    screen.z < nearestDepth))) {
           nearestDistance = pixelDistance;
+          nearestDepth = screen.z;
           nearest = candidate;
         }
       }
       return nearest;
     }
 
-    return nearestIn(candidates) ?? nearestIn(surfaceCandidates);
+    return nearestIn(candidates) ??
+        nearestIn(surfaceCandidates, resolveDepth: true);
   }
 
   Point3D _screenToConstructionPlane(
