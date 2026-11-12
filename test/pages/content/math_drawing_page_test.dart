@@ -183,6 +183,22 @@ void main() {
     });
 
     testWidgets(
+      'plotting in 3D does not expose the y coordinate as a parameter',
+      (tester) async {
+        await tester.pumpWidget(_buildTestApp(initialExpression: 'x+y'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('绘制'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('3D'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('绘制'));
+        await tester.pumpAndSettle();
+        expect(find.byType(MathParameterControls), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
       'parameter settings survive replot and visibility reconciliation',
       (tester) async {
         await tester.pumpWidget(_buildTestApp(initialExpression: 'A*x'));

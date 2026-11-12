@@ -1005,13 +1005,18 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       _activeParameterNames = {
         ..._current3DParameterNames(),
         for (final entry in _plottedFormulas) ...{
-          ...entry.parsed!.parameters,
+          ...entry.parsed!.parameters.where(
+            (name) => name != 'x' && name != 'y',
+          ),
           ..._domainParameterNames(
             entry.domainStartExpression,
             entry.domainEndExpression,
           ),
         },
       };
+      for (final name in _activeParameterNames) {
+        _parameters.putIfAbsent(name, MathParameter.new);
+      }
     });
   }
 
@@ -1171,7 +1176,9 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     setState(() {
       _activeParameterNames = {
         for (final entry in _plottedFormulas) ...{
-          ...entry.parsed!.parameters,
+          ...entry.parsed!.parameters.where(
+            (name) => name != 'x' && name != 'y',
+          ),
           ..._domainParameterNames(
             entry.domainStartExpression,
             entry.domainEndExpression,
