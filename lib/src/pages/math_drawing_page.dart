@@ -987,66 +987,72 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     return value.isFinite ? value : null;
   }
 
+  Object3D? _sampleFormula3D(String text, int color) {
+    final surface = Expression3D.surface(text);
+    if (surface.isValid) {
+      final mesh = surface.sampleSurfaceGrid(
+        xMin: -5,
+        xMax: 5,
+        yMin: -5,
+        yMax: 5,
+        gridX: 30,
+        gridY: 30,
+      );
+      if (mesh.vertices.isNotEmpty) {
+        return Object3D.surface(
+          vertices: mesh.vertices,
+          indices: mesh.indices,
+          normals: mesh.normals,
+          color: color,
+          opacity: 0.85,
+          label: text,
+        );
+      }
+    }
+    final curve = Expression3D.parametricCurve(text, tMax: 2 * dart_math.pi);
+    if (curve.isValid) {
+      final points = <Point3D>[];
+      final starts = <int>[];
+      for (final segment in curve.sampleCurveSegments(numSamples: 100)) {
+        if (segment.isEmpty) continue;
+        if (points.isNotEmpty) starts.add(points.length);
+        points.addAll(segment);
+      }
+      if (points.isNotEmpty) {
+        return Object3D.curve(
+          points: points,
+          curveStarts: starts,
+          color: color,
+          label: text,
+        );
+      }
+    }
+    return null;
+  }
+
   void _plotAll3D() {
     final objects = <Object3D>[];
+    final current = _canvas3DKey.currentState?.objects ?? const <Object3D>[];
+    final usedIds = current.map((object) => object.documentId).toSet();
     for (final f in _formulas) {
       final text = f.controller.text.trim();
       if (text.isEmpty) continue;
       if (!f.visible) continue;
 
-      final colorInt = f.color.toARGB32();
-
-      // Try parsing as 3D surface z = f(x, y)
-      final surfaceExpr = Expression3D.surface(text);
-      if (surfaceExpr.isValid) {
-        final mesh = surfaceExpr.sampleSurfaceGrid(
-          xMin: -5,
-          xMax: 5,
-          yMin: -5,
-          yMax: 5,
-          gridX: 30,
-          gridY: 30,
-        );
-        if (mesh.vertices.isNotEmpty) {
-          objects.add(
-            Object3D.surface(
-              vertices: mesh.vertices,
-              indices: mesh.indices,
-              normals: mesh.normals,
-              color: colorInt,
-              opacity: 0.85,
-              label: text,
-            ),
-          );
-          continue;
+      final object = _sampleFormula3D(text, f.color.toARGB32());
+      if (object != null) {
+        final previous = current.where((item) => item.formulaRowId == f.id);
+        var id = previous.isEmpty
+            ? 'formula-plot-3d:${f.id}'
+            : previous.first.documentId;
+        if (previous.isEmpty) {
+          while (usedIds.contains(id)) {
+            id = '$id:';
+          }
         }
-      }
-
-      // Try parsing as parametric curve
-      final curveExpr = Expression3D.parametricCurve(
-        text,
-        tMax: 2 * dart_math.pi,
-      );
-      if (curveExpr.isValid) {
-        final segments = curveExpr.sampleCurveSegments(numSamples: 100);
-        final points = <Point3D>[];
-        final curveStarts = <int>[];
-        for (final segment in segments) {
-          if (segment.isEmpty) continue;
-          if (points.isNotEmpty) curveStarts.add(points.length);
-          points.addAll(segment);
-        }
-        if (points.isNotEmpty) {
-          objects.add(
-            Object3D.curve(
-              points: points,
-              curveStarts: curveStarts,
-              color: colorInt,
-              label: text,
-            ),
-          );
-          continue;
-        }
+        usedIds.add(id);
+        objects.add(object.copyWith(documentId: id, formulaRowId: f.id));
+        continue;
       }
 
       // If none matched, show error
@@ -1060,11 +1066,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       }
     });
 
-    if (objects.isEmpty) {
-      _canvas3DKey.currentState?.clearObjects();
-    } else {
-      _canvas3DKey.currentState?.setObjects(objects);
-    }
+    _canvas3DKey.currentState?.replaceFormulaObjects(objects);
   }
 
   void _addFormula() {

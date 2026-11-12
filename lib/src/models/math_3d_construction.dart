@@ -56,6 +56,13 @@ class ConstructionState {
   /// Points accumulated so far in this construction.
   List<Point3D> get points => List.unmodifiable(_points);
 
+  /// Keep an in-progress input aligned with its moved scene point.
+  void updatePoint(int index, Point3D point) {
+    if (index < 0 || index >= _points.length || !_isFinitePoint(point)) return;
+    _points[index] = point;
+    _previewObject = null;
+  }
+
   /// A preview object showing what's being constructed so far.
   Object3D? get previewObject => _previewObject;
 

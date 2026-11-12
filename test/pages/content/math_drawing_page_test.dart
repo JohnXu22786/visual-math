@@ -5,10 +5,14 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:visual_math/visual_math.dart';
 
-Widget _buildTestApp({String? initialExpression}) {
+Widget _buildTestApp({
+  String? initialExpression,
+  MathDrawingController? controller,
+}) {
   return MaterialApp(
     home: MathDrawingPage(
       initialExpression: initialExpression,
+      controller: controller,
       initialMathematicalMode: false,
       initialShowWebView: false,
     ),
@@ -256,6 +260,161 @@ void main() {
       // Canvas should still be present
       expect(tester.takeException(), isNull);
     });
+  });
+
+  testWidgets('3D replots preserve constructed objects and relationships', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    await tester.pumpWidget(_buildTestApp(controller: controller));
+    await tester.pump();
+    await tester.tap(find.text('3D'));
+    await tester.pumpAndSettle();
+    final canvas = tester.state<MathCanvas3DState>(find.byType(MathCanvas3D));
+    canvas.setObjects([
+      Object3D.point(const Point3D(1, 2, 3)).copyWith(documentId: 'p'),
+      Object3D.sphere().copyWith(documentId: 's'),
+    ]);
+    canvas.restoreDocumentRelationships(
+      pointAttachments: const [PointAttachment(pointId: 'p', targetId: 's')],
+      constructionDependencies: const [],
+    );
+    await tester.enterText(find.byType(TextField), 'x+y');
+    await tester.pump();
+    await tester.tap(find.byTooltip('绘制').first);
+    await tester.pumpAndSettle();
+    expect(canvas.objects.map((o) => o.documentId), containsAll(['p', 's']));
+    expect(
+      canvas.objects.where((o) => o.type == Object3DType.surface),
+      hasLength(1),
+    );
+    expect(canvas.documentPointAttachments.single.targetId, 's');
+    final reopened = MathDrawingDocument.decode(
+      MathDrawingDocument(name: 'plot', drawing: controller.snapshot!).encode(),
+    );
+    expect(
+      reopened.drawing.scene3D
+          .singleWhere((o) => o.type == Object3DType.surface)
+          .formulaRowId,
+      controller.formulas.first.id,
+    );
+    final plotId = canvas.objects
+        .singleWhere((o) => o.type == Object3DType.surface)
+        .documentId;
+    canvas.restoreDocumentRelationships(
+      pointAttachments: [PointAttachment(pointId: 'p', targetId: plotId)],
+      constructionDependencies: const [],
+    );
+    final observed = <MathDrawingSnapshot>[];
+    controller.onSceneChanged = (_) => observed.add(controller.snapshot!);
+    await tester.enterText(find.byType(TextField), 'x-y');
+    await tester.pump();
+    await tester.tap(find.byTooltip('绘制').first);
+    await tester.pumpAndSettle();
+    expect(
+      canvas.objects.where((o) => o.type == Object3DType.surface),
+      hasLength(1),
+    );
+    expect(canvas.documentPointAttachments.single.targetId, plotId);
+    final moved = canvas.objects.first.point;
+    expect(moved.z, closeTo(moved.x - moved.y, 1e-8));
+    expect(observed, hasLength(1));
+    expect(observed.single.pointAttachments3D.single.targetId, plotId);
+    expect(
+      observed.single.scene3D.where((o) => o.type == Object3DType.surface),
+      hasLength(1),
+    );
+    canvas.restoreDocumentRelationships(
+      pointAttachments: const [PointAttachment(pointId: 'p', targetId: 's')],
+      constructionDependencies: const [],
+    );
+    await tester.enterText(find.byType(TextField), '');
+    await tester.pump();
+    await tester.tap(find.byTooltip('绘制').first);
+    await tester.pumpAndSettle();
+    expect(canvas.objects.map((o) => o.documentId), ['p', 's']);
+    expect(canvas.documentPointAttachments.single.targetId, 's');
+  });
+
+  testWidgets('legacy unmarked objects and attachments survive plotting', (
+    tester,
+  ) async {
+    final mesh = Expression3D.surface('x+y').sampleSurfaceGrid(
+      xMin: -5,
+      xMax: 5,
+      yMin: -5,
+      yMax: 5,
+      gridX: 30,
+      gridY: 30,
+    );
+    final controller = MathDrawingController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          initialMathematicalMode: false,
+          initialShowWebView: false,
+        ),
+      ),
+    );
+    await tester.pump();
+    final snapshot = controller.snapshot!;
+    final color = snapshot.formulas.first.color;
+    controller.restore(
+      MathDrawingSnapshot(
+        formulas: [snapshot.formulas.first.copyWith(rawExpression: 'x+y')],
+        parameters: {},
+        activeView: ViewMode.mode3D,
+        activeTool: ConstructionTool.move,
+        viewport2D: snapshot.viewport2D,
+        camera3D: snapshot.camera3D,
+        projection3D: snapshot.projection3D,
+        scene3D: [
+          Object3D.point(const Point3D(1, 2, 3)).copyWith(
+            documentId: 'formula-plot-3d:${snapshot.formulas.first.id}',
+          ),
+          Object3D.surface(
+            vertices: mesh.vertices,
+            indices: mesh.indices,
+            normals: mesh.normals,
+            color: color.toARGB32(),
+            opacity: 0.85,
+            label: 'x+y',
+          ).copyWith(documentId: 'object-1'),
+        ],
+        pointAttachments3D: [
+          PointAttachment(
+            pointId: 'formula-plot-3d:${snapshot.formulas.first.id}',
+            targetId: 'object-1',
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+    final canvas = tester.state<MathCanvas3DState>(find.byType(MathCanvas3D));
+    final targetId = canvas.documentPointAttachments.single.targetId;
+    await tester.enterText(find.byType(TextField), 'x-y');
+    await tester.pump();
+    await tester.tap(find.byTooltip('绘制').first);
+    await tester.pumpAndSettle();
+    expect(
+      canvas.objects.where((o) => o.type == Object3DType.surface),
+      hasLength(2),
+    );
+    expect(
+      canvas.objects.singleWhere((o) => o.documentId == 'object-1').label,
+      'x+y',
+    );
+    expect(canvas.documentPointAttachments.single.targetId, targetId);
+    await tester.enterText(find.byType(TextField), 'x+2*y');
+    await tester.pump();
+    await tester.tap(find.byTooltip('绘制').first);
+    await tester.pumpAndSettle();
+    expect(
+      canvas.objects.where((o) => o.type == Object3DType.point),
+      hasLength(1),
+    );
+    expect(canvas.documentPointAttachments.single.targetId, targetId);
   });
 
   group('MathDrawingPage - error handling', () {
