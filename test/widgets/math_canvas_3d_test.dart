@@ -178,6 +178,24 @@ void main() {
       expect(paintPoint(9.95, ProjectionType.parallel), 1);
     });
 
+    test('clipped selected points do not draw guides', () {
+      final canvas = _CountingCanvas();
+      const point = Object3D.point(Point3D(0, 9.95, 0));
+      MathCanvas3DPainter(
+        cameraTheta: 0,
+        cameraPhi: 0,
+        projectionType: ProjectionType.perspective,
+        showAxes: false,
+        showPlane: false,
+        showGrid: false,
+        showLabels: false,
+        objects: const [point],
+        selectedPoint: point,
+      ).paint(canvas, const Size(400, 400));
+      expect(canvas.circles, 0);
+      expect(canvas.lines, 0);
+    });
+
     test('grid rendering remains bounded at large camera distances', () {
       for (final distance in [10.0, 10000.0, 1e20, double.maxFinite]) {
         final canvas = _CountingCanvas();

@@ -5841,6 +5841,12 @@ class MathCanvas3DPainter extends CustomPainter {
     final point = selectedPoint?.point;
     if (point != null) {
       final screen = worldToScreen(point, camera, projection);
+      if (projection.type == ProjectionType.perspective &&
+          (screen.z <= 0 ||
+              screen.z < projection.near ||
+              screen.z > projection.far)) {
+        return;
+      }
       final center = Offset(screen.x, screen.y);
       final guide = Paint()
         ..color = const Color(0xFF7C4DFF)
