@@ -76,6 +76,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
   bool _applyingFallbackEdit = false;
   bool _applyingFallbackNavigation = false;
   bool _hasUnsupportedSyntax = false;
+  int _webGeneration = 0;
   int _revision = 0;
   int _sequence = -1;
   String _lastSource = '';
@@ -129,6 +130,21 @@ class MathFormulaFieldState extends State<MathFormulaField>
   @override
   void didUpdateWidget(MathFormulaField oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.showWebView != widget.showWebView) {
+      _webGeneration++;
+      _pending = Future.value();
+      _web = null;
+      _ready = false;
+      _failure = null;
+      _hasUnsupportedSyntax = false;
+      _sequence = -1;
+      final generation = _webGeneration;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && generation == _webGeneration) {
+          widget.onReadyChanged?.call();
+        }
+      });
+    }
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller.removeListener(_sourceChanged);
       widget.controller.addListener(_sourceChanged);
@@ -165,15 +181,16 @@ class MathFormulaFieldState extends State<MathFormulaField>
   }
 
   Future<void> _enqueue(Future<void> Function() action) {
+    final generation = _webGeneration;
     _pending = _pending.then((_) async {
-      if (!mounted) return;
+      if (!mounted || generation != _webGeneration) return;
       try {
         await action();
       } catch (_) {
-        if (mounted) {
+        if (mounted && generation == _webGeneration && !_usesFallback) {
           setState(() => _failure = _label('公式编辑器加载失败，可切换到源码继续编辑。'));
+          widget.onReadyChanged?.call();
         }
-        widget.onReadyChanged?.call();
       }
     });
     return _pending;
@@ -182,12 +199,13 @@ class MathFormulaFieldState extends State<MathFormulaField>
   Future<void> _syncSource() {
     final source = widget.controller.text;
     final version = _revision;
+    final generation = _webGeneration;
     return _enqueue(() async {
-      if (!_ready || version != _revision) return;
+      if (_usesFallback || !_ready || version != _revision) return;
       final result = await _web!.evaluateJavascript(
         source: 'window.stroomMath.setSource(${jsonEncode(source)}, $version)',
       );
-      _acceptResult(result);
+      _acceptResult(result, generation);
     });
   }
 
@@ -223,7 +241,8 @@ class MathFormulaFieldState extends State<MathFormulaField>
     }
   }
 
-  void _acceptResult(dynamic value) {
+  void _acceptResult(dynamic value, int generation) {
+    if (!mounted || generation != _webGeneration) return;
     if (value is String) value = jsonDecode(value);
     if (value is Map) acceptSnapshot(Map<String, dynamic>.from(value));
   }
@@ -234,13 +253,14 @@ class MathFormulaFieldState extends State<MathFormulaField>
       _fallbackCommand(kind, value);
       return Future.value();
     }
+    final generation = _webGeneration;
     return _enqueue(() async {
       if (!_ready || _failure != null) return;
       final result = await _web!.evaluateJavascript(
         source:
             'window.stroomMath.command(${jsonEncode(kind)}, ${jsonEncode(value)})',
       );
-      _acceptResult(result);
+      _acceptResult(result, generation);
     });
   }
 
@@ -479,6 +499,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
       }
       return;
     }
+    final generation = _webGeneration;
     if (action == 'paste') {
       dynamic capturedValue;
       await _enqueue(() async {
@@ -490,7 +511,11 @@ class MathFormulaFieldState extends State<MathFormulaField>
       final clipboardText = clipboardReader != null
           ? await clipboardReader()
           : (await Clipboard.getData(Clipboard.kTextPlain))?.text;
-      if (!mounted || clipboardText == null || capturedValue is! String) return;
+      if (!mounted ||
+          generation != _webGeneration ||
+          clipboardText == null ||
+          capturedValue is! String)
+        return;
       final state = Map<String, dynamic>.from(jsonDecode(capturedValue) as Map);
       final revision = state['revision'];
       final sequence = state['sequence'];
@@ -513,6 +538,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
                 '$revision, $sequence, ${jsonEncode(latex)}, '
                 '${jsonEncode(selection)}, ${jsonEncode(clipboardText)})',
           ),
+          generation,
         );
       });
       return;
@@ -524,7 +550,10 @@ class MathFormulaFieldState extends State<MathFormulaField>
         source: 'window.stroomMath.cutSelection()',
       );
     });
-    if (capturedSelection is! String) return;
+    if (!mounted ||
+        generation != _webGeneration ||
+        capturedSelection is! String)
+      return;
     final selection = Map<String, dynamic>.from(
       jsonDecode(capturedSelection) as Map,
     );
@@ -538,6 +567,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
     }
     if (action == 'cut' &&
         mounted &&
+        generation == _webGeneration &&
         (isTargetActive?.call() ?? true) &&
         selectionToken is String) {
       await _enqueue(() async {
@@ -548,17 +578,22 @@ class MathFormulaFieldState extends State<MathFormulaField>
                 'window.stroomMath.deleteSelection('
                 '${jsonEncode(selectionToken)}, ${jsonEncode(latex)})',
           ),
+          generation,
         );
       });
     }
   }
 
-  Future<void> flush() => _enqueue(() async {
-    if (!_ready) return;
-    _acceptResult(
-      await _web!.evaluateJavascript(source: 'window.stroomMath.snapshot()'),
-    );
-  });
+  Future<void> flush() {
+    final generation = _webGeneration;
+    return _enqueue(() async {
+      if (!_ready) return;
+      _acceptResult(
+        await _web!.evaluateJavascript(source: 'window.stroomMath.snapshot()'),
+        generation,
+      );
+    });
+  }
 
   Future<void> activate() async {
     super.activate();
@@ -604,6 +639,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
     final cs = Theme.of(context).colorScheme;
     final mathematicalMode = widget.mathematical;
     final usesFallback = _usesFallback;
+    final generation = _webGeneration;
     final toggle = !widget.allowModeSwitch
         ? const SizedBox.shrink()
         : IconButton(
@@ -673,11 +709,14 @@ class MathFormulaFieldState extends State<MathFormulaField>
                                   supportZoom: false,
                                 ),
                                 onWebViewCreated: (controller) {
+                                  if (!mounted || generation != _webGeneration)
+                                    return;
                                   _web = controller;
                                   controller.addJavaScriptHandler(
                                     handlerName: 'StroomMathEditor',
                                     callback: (args) {
                                       if (!mounted ||
+                                          generation != _webGeneration ||
                                           args.isEmpty ||
                                           args[0] is! Map)
                                         return null;
@@ -698,19 +737,22 @@ class MathFormulaFieldState extends State<MathFormulaField>
                                   );
                                 },
                                 onLoadStop: (controller, _) async {
-                                  if (!mounted) return;
+                                  if (!mounted || generation != _webGeneration)
+                                    return;
                                   _ready = true;
                                   await _syncSource();
-                                  if (!mounted) return;
+                                  if (!mounted || generation != _webGeneration)
+                                    return;
                                   await _syncTheme();
-                                  if (mounted) {
+                                  if (mounted && generation == _webGeneration) {
                                     setState(() {});
                                     widget.onReadyChanged?.call();
                                   }
                                 },
                                 onReceivedError: (_, request, error) {
                                   if (request.isForMainFrame == true &&
-                                      mounted) {
+                                      mounted &&
+                                      generation == _webGeneration) {
                                     setState(
                                       () => _failure = _label(
                                         '公式编辑器加载失败，可切换到源码继续编辑。',

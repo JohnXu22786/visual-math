@@ -101,3 +101,34 @@ test('coordinate sampling terminates for narrow and normal bounds', () => {
   assert.equal(messages[1].points[0].x, 1e16);
   assert.equal(messages[1].points[50].x, 1e16 + 2);
 });
+test('parameter updates do not restore a cleared expression', () => {
+  const source = fs.readFileSync(path.join(__dirname,
+    '../../lib/src/widgets/math_canvas_webview.dart'), 'utf8');
+  const script = source.match(/<script>\s*([\s\S]*?)<\/script>/)[1]
+    .replaceAll('$boardId', 'board')
+    .replaceAll('$escapedExpr', '')
+    .replaceAll('$encodedInitialParameters', '{}');
+  let activeCurve = null;
+  const board = {
+    on: () => {},
+    create: () => { activeCurve = {}; return activeCurve; },
+    removeObject: curve => { assert.equal(curve, activeCurve); activeCurve = null; },
+  };
+  const context = {
+    JXG: {JSXGraph: {initBoard: () => board}},
+    window: {},
+    document: {getElementById: () => null},
+    setInterval: () => 1,
+    clearInterval: () => {},
+    console,
+  };
+  vm.runInNewContext(script, context);
+  for (const emptyExpression of ['', '  ']) {
+    context.window.setExpression('a*x', JSON.stringify({a: 1}));
+    assert.ok(activeCurve);
+    context.window.setExpression(emptyExpression, null);
+    assert.equal(activeCurve, null);
+    context.window.updateParameters(JSON.stringify({a: 2}));
+    assert.equal(activeCurve, null);
+  }
+});

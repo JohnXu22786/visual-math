@@ -916,6 +916,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       }
       entries.add(
         FormulaEntry(
+          id: f.id,
           rawExpression: text,
           parsed: parsed,
           color: f.color,
@@ -976,6 +977,39 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         ),
     ];
     _canvasKey.currentState?.setFormulas(entries);
+  }
+
+  /// Remove a row's committed plots even when another draft cannot be plotted.
+  void _removeCommittedPlots(String rowId) {
+    final retained = _plottedFormulas
+        .where((entry) => entry.id != rowId)
+        .toList();
+    if (retained.length != _plottedFormulas.length) {
+      setState(() {
+        _plottedFormulas = retained;
+        _activeParameterNames = {
+          for (final entry in retained) ...{
+            ...entry.parsed!.parameters.where(
+              (name) => name != 'x' && name != 'y',
+            ),
+            ..._domainParameterNames(
+              entry.domainStartExpression,
+              entry.domainEndExpression,
+            ),
+          },
+        };
+      });
+      _refreshParameterCurves();
+    }
+    final canvas = _canvas3DKey.currentState;
+    if (canvas != null &&
+        canvas.objects.any((object) => object.formulaRowId == rowId)) {
+      canvas.replaceFormulaObjects([
+        for (final object in canvas.objects)
+          if (object.formulaRowId != null && object.formulaRowId != rowId)
+            object,
+      ]);
+    }
   }
 
   void _updateParameter(String name, MathParameter parameter) {
@@ -1119,6 +1153,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       _formulas.removeAt(index);
       _invalidatePlots();
     });
+    _removeCommittedPlots(removing.id);
     // Re-plot after deletion so the canvas reflects the remaining formulas
     _plotAll();
   }
@@ -1177,6 +1212,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       formula.visible = !formula.visible;
       _invalidatePlots();
     });
+    if (!formula.visible) _removeCommittedPlots(formula.id);
     // Re-plot to update canvas
     _plotAll();
   }

@@ -271,7 +271,7 @@ class _Math3DToolbarState extends State<Math3DToolbar> {
                       ),
                       if (_commandFeedback case final feedback?)
                         Text(
-                          '${label('命令：')}$feedback',
+                          '${label('命令：')}${label(feedback)}',
                           style: TextStyle(fontSize: 11, color: cs.primary),
                         ),
                     ],

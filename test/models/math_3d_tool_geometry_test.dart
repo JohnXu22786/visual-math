@@ -110,6 +110,103 @@ void main() {
     },
   );
 
+  test('circumcircle constructions handle large coordinates', () {
+    for (final tool in [
+      ConstructionTool.circleThreePoints,
+      ConstructionTool.circumcircleArc,
+      ConstructionTool.circumcircleSector,
+    ]) {
+      final state = ConstructionState(tool: tool);
+      state.addPoint(Point3D.origin);
+      state.addPoint(const Point3D(1e80, 0, 0));
+      expect(
+        state.addPoint(const Point3D(0, 1e80, 0)),
+        ConstructionAction.complete,
+      );
+      final vertices = state.result!.vertices;
+      for (final point in vertices) {
+        expect(
+          point.x.isFinite && point.y.isFinite && point.z.isFinite,
+          isTrue,
+          reason: '$tool produced $point',
+        );
+      }
+      if (tool == ConstructionTool.circumcircleSector) {
+        expect(vertices.first.x, closeTo(5e79, 1e65));
+        expect(vertices.first.y, closeTo(5e79, 1e65));
+      }
+      final perimeter = tool == ConstructionTool.circumcircleSector
+          ? vertices.skip(1)
+          : vertices;
+      for (final point in perimeter) {
+        final x = (point.x - 5e79) / 1e80;
+        final y = (point.y - 5e79) / 1e80;
+        expect(x * x + y * y, closeTo(0.5, 1e-12), reason: '$tool');
+      }
+    }
+  });
+
+  test('circumcircle constructions handle unequal edge scales', () {
+    for (final tool in [
+      ConstructionTool.circleThreePoints,
+      ConstructionTool.circumcircleArc,
+      ConstructionTool.circumcircleSector,
+    ]) {
+      final state = ConstructionState(tool: tool);
+      state.addPoint(Point3D.origin);
+      state.addPoint(const Point3D(1e154, 0, 0));
+      expect(
+        state.addPoint(const Point3D(0, 1e-8, 0)),
+        ConstructionAction.complete,
+      );
+      for (final point in state.result!.vertices) {
+        expect(
+          point.x.isFinite && point.y.isFinite && point.z.isFinite,
+          isTrue,
+          reason: '$tool produced $point',
+        );
+      }
+      if (tool == ConstructionTool.circumcircleSector) {
+        expect(state.result!.vertices.first.x, closeTo(5e153, 1e139));
+        expect(state.result!.vertices.first.y, closeTo(5e-9, 1e-23));
+      }
+    }
+
+    final state = ConstructionState(tool: ConstructionTool.circumcircleSector);
+    state.addPoint(Point3D.origin);
+    state.addPoint(const Point3D(1.3e308, 1.3e308, 0));
+    expect(
+      state.addPoint(const Point3D(0, 0, 1e307)),
+      ConstructionAction.complete,
+    );
+    final center = state.result!.vertices.first;
+    expect(center.x / 1e308, closeTo(0.65, 1e-14));
+    expect(center.y / 1e308, closeTo(0.65, 1e-14));
+    expect(center.z / 1e307, closeTo(0.5, 1e-14));
+    final skew = ConstructionState(tool: ConstructionTool.circumcircleSector);
+    skew.addPoint(Point3D.origin);
+    skew.addPoint(const Point3D(1e308, 0, 0));
+    expect(
+      skew.addPoint(const Point3D(1e-9, 2e-9, 0)),
+      ConstructionAction.complete,
+    );
+    final skewCenter = skew.result!.vertices.first;
+    expect(skewCenter.x / 1e308, closeTo(0.5, 1e-14));
+    expect(skewCenter.y / 1e308, closeTo(-0.25, 1e-14));
+    final parallel = ConstructionState(
+      tool: ConstructionTool.circumcircleSector,
+    );
+    parallel.addPoint(Point3D.origin);
+    parallel.addPoint(const Point3D(1e308, 0, 0));
+    expect(
+      parallel.addPoint(const Point3D(1e308, 1e300, 0)),
+      ConstructionAction.complete,
+    );
+    final parallelCenter = parallel.result!.vertices.first;
+    expect(parallelCenter.x / 1e308, closeTo(0.5, 1e-14));
+    expect(parallelCenter.y / 1e300, closeTo(0.5, 1e-14));
+  });
+
   test(
     'regular polygon has equal sides in a tilted plane and validates count',
     () {

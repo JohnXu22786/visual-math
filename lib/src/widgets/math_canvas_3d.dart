@@ -913,6 +913,11 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         _selectedObjectIndex = null;
       }
       if (!preservesExistingObjects) {
+        _constructionPointSources.fillRange(
+          0,
+          _constructionPointSources.length,
+          null,
+        );
         _pointAttachments.clear();
         _constructionDependencies.clear();
         _attachmentPointIndex = null;
@@ -1011,6 +1016,11 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       _pointEditPointer = null;
       _pointAttachments.clear();
       _constructionDependencies.clear();
+      _constructionPointSources.fillRange(
+        0,
+        _constructionPointSources.length,
+        null,
+      );
       _attachmentPointIndex = null;
       _styleSourceIndex = null;
       _intersectionSourceIndex = null;
