@@ -560,6 +560,41 @@ void main() {
     expect(state.objects[2].point, state.objects[0].point.midpoint(b));
   });
 
+  testWidgets('replaying a curve preserves vertices near its first point', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    const first = Point3D(0, 0, 0);
+    const nearFirst = Point3D(0.0000000005, 0, 0);
+    const source = Point3D(2, 0, 0);
+    const other = Point3D(0, 2, 0);
+    const vertices = [first, nearFirst, source, other, first];
+    state.setObjects([
+      Object3D.point(source).copyWith(documentId: 'source'),
+      Object3D.curve(points: vertices).copyWith(documentId: 'curve'),
+    ]);
+    state.restoreDocumentRelationships(
+      pointAttachments: const [],
+      constructionDependencies: [
+        ConstructionDependency(
+          objectId: 'curve',
+          tool: ConstructionTool.polyline,
+          inputPoints: vertices,
+          sourcePointIds: [null, null, 'source', null, null],
+          workingPlaneNormal: Vector3D.unitZ,
+          polygonSides: 3,
+        ),
+      ],
+    );
+    state.setTool(ConstructionTool.move);
+    await tester.pump();
+    await tester.dragFrom(screen(state, source), const Offset(45, 24));
+    await tester.pump();
+    expect(state.objects.first.point.distanceTo(source), greaterThan(0.1));
+    expect(state.objects.last.vertices[2], state.objects.first.point);
+    expect(state.objects.last.vertices[1], nearFirst);
+  });
+
   testWidgets('area follows its source vertices before and after reopening', (
     tester,
   ) async {

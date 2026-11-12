@@ -3929,6 +3929,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
             closesCurve ? dependency.points.first : dependency.points[i],
             workingPlaneNormal: dependency.workingPlaneNormal,
             closeToFirstPoint: closesCurve,
+            allowWorldClosure: false,
           );
           if (construction.points.length != previousCount + 1) {
             acceptedAllPoints = false;
