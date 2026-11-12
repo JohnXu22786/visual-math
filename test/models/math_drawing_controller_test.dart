@@ -74,6 +74,57 @@ void main() {
     expect(viewportChanges, isEmpty);
   });
 
+  testWidgets('attached controller publishes construction relationships', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    final published = <MathDrawingSnapshot>[];
+    controller.onSceneChanged = (_) => published.add(controller.snapshot!);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          initialShowWebView: false,
+          initialMathematicalMode: false,
+          options: const MathWorkspaceOptions(show3D: true, show3DTools: true),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    controller.setActiveView(ViewMode.mode3D);
+    const first = Point3D(-2, 0, 0);
+    const second = Point3D(-1, 0, 0);
+    controller.setScene3D([
+      const Object3D.point(first),
+      const Object3D.point(second),
+    ]);
+    controller.setActiveTool(ConstructionTool.tetrahedron);
+    await tester.pumpAndSettle();
+    final finder = find.byType(MathCanvas3D);
+    final state = tester.state<MathCanvas3DState>(finder);
+    final box = tester.renderObject<RenderBox>(finder);
+    final projection = Projection3D.parallel(
+      width: box.size.width,
+      height: box.size.height,
+      scale: state.camera.distance * 0.6,
+    );
+    Offset screen(Point3D point) {
+      final p = worldToScreen(point, state.camera, projection);
+      return box.localToGlobal(Offset(p.x, p.y));
+    }
+
+    await tester.tapAt(screen(first));
+    await tester.pump();
+    await tester.tapAt(screen(second));
+    await tester.pump();
+    expect(controller.snapshot!.constructionDependencies3D, hasLength(1));
+    expect(published.last.constructionDependencies3D, hasLength(1));
+    final decoded = MathDrawingDocument.decode(
+      MathDrawingDocument(name: '3D', drawing: controller.snapshot!).encode(),
+    );
+    expect(decoded.drawing.constructionDependencies3D, hasLength(1));
+  });
+
   testWidgets('controller commands update the attached page snapshot', (
     tester,
   ) async {
@@ -131,7 +182,9 @@ void main() {
     expect(restoredController.viewport2D.yMax, 3);
     expect(restoredController.snapshot?.polygonSides3D, 9);
     expect(
-      tester.widget<DropdownButton<int>>(find.byType(DropdownButton<int>)).value,
+      tester
+          .widget<DropdownButton<int>>(find.byType(DropdownButton<int>))
+          .value,
       9,
     );
   });
@@ -319,5 +372,50 @@ void main() {
     });
     await tester.pump();
     expectDomain(4, 5);
+  });
+  testWidgets('invalid parameterized bounds hide curves until valid again', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          initialShowWebView: false,
+          initialMathematicalMode: false,
+          options: const MathWorkspaceOptions(
+            show3D: false,
+            showFormulaEditor: false,
+            showKeyboard: false,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    void setA(double value) => controller.setParameters({
+      'a': MathParameter(value: value, min: -2, max: 2, step: 1),
+    });
+    setA(1);
+    controller.setFormulas([
+      FormulaEntry(
+        rawExpression: 'x',
+        parsed: MathExpression.fromInput('x'),
+        domainStartExpression: 'sqrt(a)',
+      ),
+    ]);
+    await controller.plot();
+    await tester.pump();
+    final canvas = tester.state<MathCanvasState>(find.byType(MathCanvas));
+    expect(canvas.curvePoints, isNotEmpty);
+    expect(canvas.curvePoints.every((point) => point['x']! >= 1), isTrue);
+
+    setA(-1);
+    await tester.pump();
+    expect(canvas.curvePoints, isEmpty);
+
+    setA(1);
+    await tester.pump();
+    expect(canvas.curvePoints, isNotEmpty);
+    expect(canvas.curvePoints.every((point) => point['x']! >= 1), isTrue);
   });
 }

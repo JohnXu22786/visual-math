@@ -99,6 +99,7 @@ void main() {
   Future<MathCanvas3DState> setup(
     WidgetTester tester, {
     VoidCallback? onSceneChanged,
+    void Function(MathCanvas3DState)? captureScene,
   }) async {
     final key = GlobalKey<MathCanvas3DState>();
     await tester.pumpWidget(
@@ -107,12 +108,16 @@ void main() {
           body: MathCanvas3D(
             key: key,
             currentTool: ConstructionTool.point,
-            onSceneChanged: onSceneChanged,
+            onSceneChanged: () {
+              onSceneChanged?.call();
+              captureScene?.call(key.currentState!);
+            },
             onObjectCreated: (object) {
               key.currentState!.setObjects([
                 ...key.currentState!.objects,
                 object,
               ]);
+              if (captureScene != null) key.currentState!.ensureDocumentIds();
             },
           ),
         ),
@@ -136,6 +141,52 @@ void main() {
     );
     return Offset(projected.x, projected.y);
   }
+
+  testWidgets('snapshot during creation retains point and construction links', (
+    tester,
+  ) async {
+    var publishedDependencies = 0;
+    var publishedAttachments = 0;
+    var incompletePublication = false;
+    final state = await setup(
+      tester,
+      captureScene: (canvas) {
+        canvas.ensureDocumentIds();
+        publishedDependencies = canvas.documentConstructionDependencies.length;
+        publishedAttachments = canvas.documentPointAttachments.length;
+        if (canvas.objects.any(
+              (object) => object.type == Object3DType.polyhedron,
+            ) &&
+            publishedDependencies == 0) {
+          incompletePublication = true;
+        }
+      },
+    );
+    const first = Point3D(-2, 0, 0);
+    const second = Point3D(-1, 0, 0);
+    state.setObjects([
+      const Object3D.point(first),
+      const Object3D.point(second),
+    ]);
+    state.setTool(ConstructionTool.tetrahedron);
+    await tester.pump();
+    await tester.tapAt(screen(state, first));
+    await tester.pump();
+    await tester.tapAt(screen(state, second));
+    await tester.pump();
+    expect(state.documentConstructionDependencies, hasLength(1));
+    expect(publishedDependencies, 1);
+    expect(incompletePublication, isFalse);
+
+    state.setObjects([const Object3D.plane(c: 1, d: 0)]);
+    state.setTool(ConstructionTool.pointOnObject);
+    await tester.pump();
+    await tester.tapAt(const Offset(400, 300));
+    await tester.pump();
+    expect(state.documentPointAttachments, hasLength(1));
+    expect(state.selectedPoint, same(state.objects.last));
+    expect(publishedAttachments, 1);
+  });
 
   testWidgets('free point starts on z=0 even over an elevated surface', (
     tester,
