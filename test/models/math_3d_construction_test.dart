@@ -2,6 +2,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:visual_math/visual_math.dart';
 
 void main() {
+  test('angle measurement remains accurate for large finite vectors', () {
+    final state = ConstructionState(tool: ConstructionTool.angle);
+
+    expect(
+      state.addPoint(const Point3D(1e155, 0, 0)),
+      ConstructionAction.advanceStep,
+    );
+    expect(state.addPoint(Point3D.origin), ConstructionAction.advanceStep);
+    state.addPoint(const Point3D(1e155, 1e155, 0));
+
+    expect(state.result?.label, '角度 45.00°');
+  });
+
   test('collinear plane points remain incomplete', () {
     final state = ConstructionState(tool: ConstructionTool.plane);
 

@@ -697,14 +697,30 @@ List<Point3D> clipLineToView(
 ) {
   final view = camera.viewMatrix();
   final a = _transformPoint(view, object.pointA);
-  final direction = _transformPoint(view, object.pointB) - a;
+  final edge = object.pointB - object.pointA;
+  final edgeScale = dart_math.max(
+    edge.x.abs(),
+    dart_math.max(edge.y.abs(), edge.z.abs()),
+  );
+  final unitEdge = edgeScale == 0
+      ? edge
+      : Vector3D(edge.x / edgeScale, edge.y / edgeScale, edge.z / edgeScale);
+  // Directions must not include the view translation: subtracting transformed
+  // points can lose a short edge when it is added to the camera position.
+  final direction = Point3D(
+    view[0] * unitEdge.x + view[4] * unitEdge.y + view[8] * unitEdge.z,
+    view[1] * unitEdge.x + view[5] * unitEdge.y + view[9] * unitEdge.z,
+    view[2] * unitEdge.x + view[6] * unitEdge.y + view[10] * unitEdge.z,
+  );
   var lower = object.lineKind == Line3DKind.line
       ? double.negativeInfinity
       : 0.0;
-  var upper = object.lineKind == Line3DKind.segment ? 1.0 : double.infinity;
+  var upper = object.lineKind == Line3DKind.segment
+      ? edgeScale
+      : double.infinity;
 
   bool clip(double value, double slope) {
-    if (slope.abs() < 1e-12) return value >= 0;
+    if (slope == 0) return value >= 0;
     final bound = -value / slope;
     if (slope > 0) {
       lower = dart_math.max(lower, bound);
@@ -737,6 +753,5 @@ List<Point3D> clipLineToView(
       return const [];
   }
   if (!lower.isFinite || !upper.isFinite) return const [];
-  final edge = object.pointB - object.pointA;
-  return [object.pointA + edge * lower, object.pointA + edge * upper];
+  return [object.pointA + unitEdge * lower, object.pointA + unitEdge * upper];
 }

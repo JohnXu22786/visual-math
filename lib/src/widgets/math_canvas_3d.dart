@@ -5244,7 +5244,9 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       closeToFirstPoint: closeToFirstPoint,
       allowWorldClosure: _isFirstConstructionPointVisible(),
     );
-    if (construction.points.length > previousPointCount) {
+    if (construction.points.isEmpty) {
+      _constructionPointSources.clear();
+    } else if (construction.points.length > previousPointCount) {
       _constructionPointSources.add(sourcePointIndex);
     }
     switch (action) {
@@ -7470,6 +7472,7 @@ class MathCanvas3DPainter extends CustomPainter {
         oldDelegate.showPlane != showPlane ||
         oldDelegate.showGrid != showGrid ||
         oldDelegate.showLabels != showLabels ||
+        oldDelegate.objects != objects ||
         oldDelegate.objectsVersion != objectsVersion ||
         oldDelegate.canvasWidth != canvasWidth ||
         oldDelegate.canvasHeight != canvasHeight ||

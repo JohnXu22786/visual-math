@@ -45,6 +45,7 @@ class _Math3DToolbarState extends State<Math3DToolbar> {
   void initState() {
     super.initState();
     _scrollGroupIntoView(_group);
+    _scrollActiveToolIntoView();
   }
 
   @override
@@ -82,10 +83,14 @@ class _Math3DToolbarState extends State<Math3DToolbar> {
   void _scrollActiveToolIntoView() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final context = _activeToolKey.currentContext;
-      if (!mounted || context == null) return;
+      if (!mounted || context == null || !_toolScrollController.hasClients) {
+        return;
+      }
+      final renderObject = context.findRenderObject();
+      if (renderObject == null) return;
       unawaited(
-        Scrollable.ensureVisible(
-          context,
+        _toolScrollController.position.ensureVisible(
+          renderObject,
           alignment: 0.5,
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOut,

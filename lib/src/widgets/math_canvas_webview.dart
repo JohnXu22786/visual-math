@@ -243,6 +243,7 @@ class MathCanvasWebView extends StatefulWidget {
 
     var currentExpression = $encodedExpression;
     var initialParameters = $encodedInitialParameters;
+    var currentParameters = initialParameters || {};
 
     function plotFunction(expression, parameters) {
       try {
@@ -338,9 +339,11 @@ class MathCanvasWebView extends StatefulWidget {
     // Set/update the expression to plot
     window.setExpression = function(expression, parameters) {
       try {
-        plotFunction(expression, parameters ? JSON.parse(parameters) : null);
+        currentParameters = parameters ? JSON.parse(parameters) : {};
+        plotFunction(expression, currentParameters);
       } catch(e) {
-        plotFunction(expression, null);
+        currentParameters = {};
+        plotFunction(expression, currentParameters);
       }
     };
 
@@ -348,7 +351,8 @@ class MathCanvasWebView extends StatefulWidget {
     window.updateParameters = function(parametersJson) {
       try {
         var params = JSON.parse(parametersJson);
-        plotFunction(currentExpression, params);
+        currentParameters = Object.assign({}, currentParameters, params);
+        plotFunction(currentExpression, currentParameters);
       } catch(e) {
         console.error('updateParameters error:', e);
       }

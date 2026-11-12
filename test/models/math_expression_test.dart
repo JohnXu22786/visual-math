@@ -929,6 +929,55 @@ void main() {
       );
     });
 
+    test('connects a curved crossing without joining a nearby hyperbola', () {
+      List<List<Map<String, double>>> sample(String input) =>
+          MathExpression.fromInput(input).sampleContourSegments(
+            xMin: 0,
+            xMax: 0.25,
+            yMin: 0,
+            yMax: 0.25,
+            gridX: 1,
+            gridY: 1,
+          );
+      final crossing = sample('(x-0.1)*(y-0.1+0.001*x*(0.25-x))=0');
+      final incident = crossing.where(
+        (segment) => segment.any(
+          (point) =>
+              (point['x']! - 0.1).abs() < 1e-10 &&
+              (point['y']! - 0.099985).abs() < 1e-10,
+        ),
+      );
+      expect(incident.length, 4);
+
+      final curvedBoth = sample('(x*x-0.02)*(y-0.1+0.001*x*(0.25-x))=0');
+      final crossX = 0.1414213562373095;
+      final crossY = 0.1 - 0.001 * crossX * (0.25 - crossX);
+      expect(
+        curvedBoth
+            .where(
+              (segment) => segment.any(
+                (point) =>
+                    (point['x']! - crossX).abs() < 1e-10 &&
+                    (point['y']! - crossY).abs() < 1e-10,
+              ),
+            )
+            .length,
+        4,
+      );
+
+      final separated = sample('(x-0.1)*(y-0.1+0.001*x*(0.25-x))+1e-10=0');
+      expect(
+        separated.where(
+          (segment) => segment.any(
+            (point) =>
+                (point['x']! - 0.1).abs() < 1e-10 &&
+                (point['y']! - 0.099985).abs() < 1e-10,
+          ),
+        ),
+        isEmpty,
+      );
+    });
+
     test(
       'zero determinant connects all four contour branches at the saddle',
       () {

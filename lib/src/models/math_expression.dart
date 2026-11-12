@@ -1061,8 +1061,7 @@ class MathExpression {
             }
           }
 
-          if (determinant.abs() <= 1e-14 &&
-              pBottom != null &&
+          if (pBottom != null &&
               pTop != null &&
               pLeft != null &&
               pRight != null) {
@@ -1083,6 +1082,51 @@ class MathExpression {
               'x': pBottom['x']! + t * ax,
               'y': pBottom['y']! + t * ay,
             };
+            // The intersection of edge chords is only an approximation for
+            // curved branches. Estimate each coordinate from roots on two
+            // nearby parallel sections, progressively shrinking their spacing.
+            if (determinant.abs() > 1e-14) {
+              double? section(bool vertical, double coordinate) {
+                final x1 = vertical ? coordinate : x;
+                final y1 = vertical ? y : coordinate;
+                final x2 = vertical ? coordinate : x + stepX;
+                final y2 = vertical ? y + stepY : coordinate;
+                try {
+                  final a = evaluator2D(x1, y1);
+                  final b = evaluator2D(x2, y2);
+                  if (!a.isFinite || !b.isFinite || (a < 0) == (b < 0)) {
+                    return null;
+                  }
+                  final root = crossing(x1, y1, x2, y2, a, b);
+                  if (root == null) return null;
+                  return vertical ? y1 + root * stepY : x1 + root * stepX;
+                } catch (_) {
+                  return null;
+                }
+              }
+
+              for (final fraction in [0.01, 0.0001, 0.000001]) {
+                final dx = stepX * fraction;
+                final dy = stepY * fraction;
+                if (saddle['x']! - dx <= x ||
+                    saddle['x']! + dx >= x + stepX ||
+                    saddle['y']! - dy <= y ||
+                    saddle['y']! + dy >= y + stepY) {
+                  break;
+                }
+                final below = section(false, saddle['y']! - dy);
+                final above = section(false, saddle['y']! + dy);
+                final left = section(true, saddle['x']! - dx);
+                final right = section(true, saddle['x']! + dx);
+                if (below == null ||
+                    above == null ||
+                    left == null ||
+                    right == null)
+                  break;
+                saddle['x'] = (below + above) / 2;
+                saddle['y'] = (left + right) / 2;
+              }
+            }
             double saddleValue;
             try {
               saddleValue = evaluator2D(saddle['x']!, saddle['y']!);
@@ -1092,7 +1136,14 @@ class MathExpression {
             // Corner values alone cannot establish a crossing for a nonlinear
             // function; subdivide when the candidate is not on the contour.
             if (!saddleValue.isFinite || saddleValue != 0) {
-              refineOrPair();
+              if (determinant.abs() <= 1e-14) {
+                refineOrPair();
+                continue;
+              }
+              addPairedCrossings();
+              if (!cellSegments.any(zeroEdgeHasUndefinedInterior)) {
+                result.addAll(cellSegments);
+              }
               continue;
             }
             // A point on one branch is not necessarily the intersection.
@@ -1126,7 +1177,14 @@ class MathExpression {
               }
             }
             if (!alternating) {
-              refineOrPair();
+              if (determinant.abs() <= 1e-14) {
+                refineOrPair();
+              } else {
+                addPairedCrossings();
+                if (!cellSegments.any(zeroEdgeHasUndefinedInterior)) {
+                  result.addAll(cellSegments);
+                }
+              }
               continue;
             }
             for (final point in [pBottom, pTop, pLeft, pRight]) {

@@ -158,3 +158,31 @@ test('leading newlines evaluate in plots and coordinate samples', () => {
   assert.equal(points.length, 51);
   assert.equal(points[0].y, 0);
 });
+
+test('partial parameter updates retain the current expression scope', () => {
+  const source = fs.readFileSync(path.join(__dirname,
+    '../../lib/src/widgets/math_canvas_webview.dart'), 'utf8');
+  const script = source.match(/<script>\s*([\s\S]*?)<\/script>/)[1]
+    .replaceAll('$boardId', 'board')
+    .replaceAll('$encodedExpression', JSON.stringify('a*x+b'))
+    .replaceAll('$encodedInitialParameters', JSON.stringify({a: 2, b: 3}));
+  let evaluate;
+  const board = {
+    on: () => {}, removeObject: () => {},
+    create: (_, args) => { evaluate = args[0]; return {}; },
+  };
+  const context = {
+    JXG: {JSXGraph: {initBoard: () => board}}, window: {},
+    document: {getElementById: () => null},
+    setInterval: () => 1, clearInterval: () => {}, console,
+  };
+  vm.runInNewContext(script, context);
+  assert.equal(evaluate(2), 7);
+  context.window.updateParameters(JSON.stringify({a: 4}));
+  assert.equal(evaluate(2), 11);
+  context.window.updateParameters(JSON.stringify({b: 5}));
+  assert.equal(evaluate(2), 13);
+  context.window.setExpression('a*x+b', JSON.stringify({a: 1, b: 10}));
+  context.window.updateParameters(JSON.stringify({a: 3}));
+  assert.equal(evaluate(2), 16);
+});
