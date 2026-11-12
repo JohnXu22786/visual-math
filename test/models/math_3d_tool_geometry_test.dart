@@ -55,6 +55,68 @@ void main() {
     },
   );
 
+  test('short nonzero line directions clip like scaled directions', () {
+    const camera = Camera3D(theta: math.pi / 2, phi: 0, distance: 10);
+    for (final projection in [
+      Projection3D.parallel(scale: 6),
+      Projection3D.perspective(),
+    ]) {
+      for (final kind in [Line3DKind.line, Line3DKind.ray]) {
+        final short = clipLineToView(
+          Object3D.line(
+            const Point3D(0, 0, 0),
+            const Point3D(0, 1e-13, 0),
+            lineKind: kind,
+          ),
+          camera,
+          projection,
+        );
+        final normal = clipLineToView(
+          Object3D.line(
+            const Point3D(0, 0, 0),
+            const Point3D(0, 1, 0),
+            lineKind: kind,
+          ),
+          camera,
+          projection,
+        );
+        expect(short, hasLength(2));
+        expect(normal, hasLength(2));
+        for (var i = 0; i < 2; i++) {
+          expect(short[i].y, closeTo(normal[i].y, 1e-8));
+        }
+      }
+    }
+  });
+
+  test('short direction along the camera axis remains visible', () {
+    const camera = Camera3D(theta: 0, phi: 0, distance: 10);
+    final projection = Projection3D.perspective();
+    final short = clipLineToView(
+      const Object3D.line(
+        Point3D(0, 0, 0),
+        Point3D(0, 1e-16, 0),
+        lineKind: Line3DKind.line,
+      ),
+      camera,
+      projection,
+    );
+    final normal = clipLineToView(
+      const Object3D.line(
+        Point3D(0, 0, 0),
+        Point3D(0, 1, 0),
+        lineKind: Line3DKind.line,
+      ),
+      camera,
+      projection,
+    );
+    expect(short, hasLength(2));
+    expect(normal, hasLength(2));
+    for (var i = 0; i < 2; i++) {
+      expect(short[i].y, closeTo(normal[i].y, 1e-8));
+    }
+  });
+
   test('two-point tools keep their geometry and reject zero-length input', () {
     for (final tool in [
       ConstructionTool.segment,
