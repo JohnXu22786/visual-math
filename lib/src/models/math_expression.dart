@@ -956,7 +956,7 @@ class MathExpression {
 
         // With 2 crossings, connect them as a segment
         // With 4 crossings, use the asymptotic decider to choose adjacent
-        // edge pairs. Connecting opposite edges would draw a false crossing.
+        // edge pairs, unless the bilinear saddle lies on the contour.
         if (crossings.length == 2) {
           final p1 = _crossingPoint(
             crossings[0],
@@ -1036,17 +1036,104 @@ class MathExpression {
           ].reduce((a, b) => a > b ? a : b);
           final determinant =
               (v00 / scale) * (v11 / scale) - (v10 / scale) * (v01 / scale);
-          if (determinant >= 0) {
-            if (pBottom != null && pRight != null) {
-              cellSegments.add([pBottom, pRight]);
+          void addPairedCrossings() {
+            if (determinant >= 0) {
+              if (pBottom != null && pRight != null)
+                cellSegments.add([pBottom, pRight]);
+              if (pTop != null && pLeft != null)
+                cellSegments.add([pTop, pLeft]);
+            } else {
+              if (pBottom != null && pLeft != null)
+                cellSegments.add([pBottom, pLeft]);
+              if (pTop != null && pRight != null)
+                cellSegments.add([pTop, pRight]);
             }
-            if (pTop != null && pLeft != null) cellSegments.add([pTop, pLeft]);
+          }
+
+          void refineOrPair() {
+            if (refinements > 0) {
+              refineCell();
+            } else {
+              addPairedCrossings();
+              if (!cellSegments.any(zeroEdgeHasUndefinedInterior)) {
+                result.addAll(cellSegments);
+              }
+            }
+          }
+
+          if (determinant.abs() <= 1e-14 &&
+              pBottom != null &&
+              pTop != null &&
+              pLeft != null &&
+              pRight != null) {
+            final ax = pTop['x']! - pBottom['x']!;
+            final ay = pTop['y']! - pBottom['y']!;
+            final bx = pRight['x']! - pLeft['x']!;
+            final by = pRight['y']! - pLeft['y']!;
+            final denominator = ax * by - ay * bx;
+            if (denominator == 0 || !denominator.isFinite) {
+              refineOrPair();
+              continue;
+            }
+            final t =
+                ((pLeft['x']! - pBottom['x']!) * by -
+                    (pLeft['y']! - pBottom['y']!) * bx) /
+                denominator;
+            final saddle = {
+              'x': pBottom['x']! + t * ax,
+              'y': pBottom['y']! + t * ay,
+            };
+            double saddleValue;
+            try {
+              saddleValue = evaluator2D(saddle['x']!, saddle['y']!);
+            } catch (_) {
+              saddleValue = double.nan;
+            }
+            // Corner values alone cannot establish a crossing for a nonlinear
+            // function; subdivide when the candidate is not on the contour.
+            if (!saddleValue.isFinite || saddleValue != 0) {
+              refineOrPair();
+              continue;
+            }
+            // A point on one branch is not necessarily the intersection.
+            // Check the alternating signs in a small neighborhood.
+            var alternating = false;
+            for (final fraction in [1e-8, 1e-6, 1e-4]) {
+              final dx = [
+                stepX * fraction,
+                (saddle['x']! - x) / 2,
+                (x + stepX - saddle['x']!) / 2,
+              ].reduce((a, b) => a < b ? a : b);
+              final dy = [
+                stepY * fraction,
+                (saddle['y']! - y) / 2,
+                (y + stepY - saddle['y']!) / 2,
+              ].reduce((a, b) => a < b ? a : b);
+              try {
+                final a = evaluator2D(saddle['x']! - dx, saddle['y']! - dy);
+                final b = evaluator2D(saddle['x']! + dx, saddle['y']! - dy);
+                final c = evaluator2D(saddle['x']! - dx, saddle['y']! + dy);
+                final d = evaluator2D(saddle['x']! + dx, saddle['y']! + dy);
+                if ([a, b, c, d].any((v) => !v.isFinite)) break;
+                if ([a, b, c, d].any((v) => v == 0)) continue;
+                alternating =
+                    (a < 0) == (d < 0) &&
+                    (b < 0) == (c < 0) &&
+                    (a < 0) != (b < 0);
+                break;
+              } catch (_) {
+                break;
+              }
+            }
+            if (!alternating) {
+              refineOrPair();
+              continue;
+            }
+            for (final point in [pBottom, pTop, pLeft, pRight]) {
+              cellSegments.add([point, saddle]);
+            }
           } else {
-            if (pBottom != null && pLeft != null) {
-              cellSegments.add([pBottom, pLeft]);
-            }
-            if (pTop != null && pRight != null)
-              cellSegments.add([pTop, pRight]);
+            addPairedCrossings();
           }
         }
         if (cellSegments.any(zeroEdgeHasUndefinedInterior)) {
