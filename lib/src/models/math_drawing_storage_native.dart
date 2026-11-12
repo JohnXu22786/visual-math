@@ -185,25 +185,25 @@ Future<List<String>> _listDocumentNames() async {
   final names = <String>{};
   await for (final entity in directory.list(followLinks: false)) {
     if (entity is! File || !entity.path.endsWith('.vm')) continue;
+    String? name;
     try {
-      names.add(
-        MathDrawingDocument.decode(utf8.decode(await entity.readAsBytes()))
-            .name,
-      );
+      name = MathDrawingDocument.decode(utf8.decode(await entity.readAsBytes()))
+          .name;
     } on FormatException {
-      var name = _legacyName(entity.uri.pathSegments.last);
-      final nameFile = _nameFile(entity);
-      if (name == null && await nameFile.exists()) {
-        try {
-          final savedName = utf8.decode(await nameFile.readAsBytes());
-          if (_fileName(savedName) == entity.uri.pathSegments.last)
-            name = savedName;
-        } on FormatException {
-          // A damaged name file cannot identify the document.
-        }
-      }
-      if (name != null) names.add(name);
+      name = _legacyName(entity.uri.pathSegments.last);
     }
+    final nameFile = _nameFile(entity);
+    if (await nameFile.exists()) {
+      try {
+        final savedName = utf8.decode(await nameFile.readAsBytes());
+        if (_fileName(savedName) == entity.uri.pathSegments.last) {
+          name = savedName;
+        }
+      } on FormatException {
+        // A damaged name file cannot identify the document.
+      }
+    }
+    if (name != null) names.add(name);
   }
   return names.toList()..sort();
 }
@@ -212,13 +212,38 @@ Future<File> _fileFor(String name) async => File(
   '${(await _documentsDirectory()).path}${Platform.pathSeparator}${_fileName(name)}',
 );
 
+Future<Object?> loadDocumentSource(String name) => _locked(() async {
+  final file = await _fileFor(name);
+  final legacy = await _legacyFiles(file.parent, name);
+  final source = await file.exists()
+      ? file
+      : (legacy.isEmpty ? null : legacy.first);
+  if (source == null) return null;
+  final bytes = await source.readAsBytes();
+  try {
+    return utf8.decode(bytes);
+  } on FormatException {
+    return bytes;
+  }
+});
+
 Future<MathDrawingDocument?> loadDocument(String name) =>
     _locked(() => _loadDocument(name));
 
 Future<MathDrawingDocument?> _loadDocument(String name) async {
   final file = await _fileFor(name);
-  if (await file.exists())
-    return MathDrawingDocument.decode(utf8.decode(await file.readAsBytes()));
+  if (await file.exists()) {
+    final document = MathDrawingDocument.decode(
+      utf8.decode(await file.readAsBytes()),
+    );
+    return document.name == name
+        ? document
+        : MathDrawingDocument(
+            name: name,
+            drawing: document.drawing,
+            extensions: document.extensions,
+          );
+  }
   final legacy = await _legacyFiles(file.parent, name);
   if (legacy.isEmpty) return null;
   return MathDrawingDocument.decode(

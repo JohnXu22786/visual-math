@@ -230,7 +230,9 @@ MathDrawingSnapshot _snapshotFromJson(Map<String, dynamic> j) {
     throw const FormatException('Unknown active construction tool.');
   final polygonSides3D = _optional<int>(j, 'polygonSides3D', 6);
   if (polygonSides3D < 3 || polygonSides3D > 12) {
-    throw const FormatException('3D polygon side count must be between 3 and 12.');
+    throw const FormatException(
+      '3D polygon side count must be between 3 and 12.',
+    );
   }
   final viewportJson = obj(j['viewport2D'], 'viewport2D');
   final viewport = Viewport(
@@ -257,10 +259,7 @@ MathDrawingSnapshot _snapshotFromJson(Map<String, dynamic> j) {
       .firstOrNull;
   if (projection == null) throw const FormatException('Unknown 3D projection.');
   final objects = [
-    for (final (index, object) in list(
-      v3['objects'],
-      'view3D.objects',
-    ).indexed)
+    for (final (index, object) in list(v3['objects'], 'view3D.objects').indexed)
       _objectFromJson(object, 'object-$index'),
   ];
   final ids = objects.map((object) => object.documentId).toSet();
@@ -426,6 +425,7 @@ ConstructionDependency _dependencyFromJson(Map<String, dynamic> json) {
 Map<String, dynamic> _objectToJson(Object3D o, String id) => {
   'id': id,
   'type': o.type.name,
+  if (o.formulaRowId != null) 'formulaRowId': o.formulaRowId,
   'color': o.color,
   'opacity': o.opacity,
   'edgeWidth': o.edgeWidth,
@@ -523,6 +523,7 @@ Object3D _objectFromJson(Map<String, dynamic> j, String fallbackId) {
           : Object3D.point(point, color: color, opacity: opacity, label: label);
       return result.copyWith(
         documentId: _optional<String>(j, 'id', fallbackId),
+        formulaRowId: j['formulaRowId'] as String?,
         visible: _required<bool>(j, 'visible'),
         transformOrigin: _required<bool>(j, 'transformOrigin'),
         edgeWidth: edgeWidth,
@@ -542,6 +543,7 @@ Object3D _objectFromJson(Map<String, dynamic> j, String fallbackId) {
         label: label,
       ).copyWith(
         documentId: _optional<String>(j, 'id', fallbackId),
+        formulaRowId: j['formulaRowId'] as String?,
         visible: _required<bool>(j, 'visible'),
         transformOrigin: _required<bool>(j, 'transformOrigin'),
         edgeWidth: edgeWidth,
@@ -563,6 +565,7 @@ Object3D _objectFromJson(Map<String, dynamic> j, String fallbackId) {
         label: label,
       ).copyWith(
         documentId: _optional<String>(j, 'id', fallbackId),
+        formulaRowId: j['formulaRowId'] as String?,
         visible: _required<bool>(j, 'visible'),
         transformOrigin: _required<bool>(j, 'transformOrigin'),
         edgeWidth: edgeWidth,
@@ -580,6 +583,7 @@ Object3D _objectFromJson(Map<String, dynamic> j, String fallbackId) {
         label: label,
       ).copyWith(
         documentId: _optional<String>(j, 'id', fallbackId),
+        formulaRowId: j['formulaRowId'] as String?,
         visible: _required<bool>(j, 'visible'),
         transformOrigin: _required<bool>(j, 'transformOrigin'),
         edgeWidth: edgeWidth,
@@ -594,6 +598,7 @@ Object3D _objectFromJson(Map<String, dynamic> j, String fallbackId) {
         label: label,
       ).copyWith(
         documentId: _optional<String>(j, 'id', fallbackId),
+        formulaRowId: j['formulaRowId'] as String?,
         visible: _required<bool>(j, 'visible'),
         transformOrigin: _required<bool>(j, 'transformOrigin'),
         edgeWidth: edgeWidth,
@@ -610,6 +615,7 @@ Object3D _objectFromJson(Map<String, dynamic> j, String fallbackId) {
         label: label,
       ).copyWith(
         documentId: _optional<String>(j, 'id', fallbackId),
+        formulaRowId: j['formulaRowId'] as String?,
         visible: _required<bool>(j, 'visible'),
         transformOrigin: _required<bool>(j, 'transformOrigin'),
         edgeWidth: edgeWidth,
@@ -624,6 +630,7 @@ Object3D _objectFromJson(Map<String, dynamic> j, String fallbackId) {
         label: label,
       ).copyWith(
         documentId: _optional<String>(j, 'id', fallbackId),
+        formulaRowId: j['formulaRowId'] as String?,
         visible: _required<bool>(j, 'visible'),
         transformOrigin: _required<bool>(j, 'transformOrigin'),
         edgeWidth: edgeWidth,
@@ -656,6 +663,7 @@ Object3D _objectFromJson(Map<String, dynamic> j, String fallbackId) {
         label: label,
       ).copyWith(
         documentId: _optional<String>(j, 'id', fallbackId),
+        formulaRowId: j['formulaRowId'] as String?,
         visible: _required<bool>(j, 'visible'),
         transformOrigin: _required<bool>(j, 'transformOrigin'),
         edgeWidth: edgeWidth,

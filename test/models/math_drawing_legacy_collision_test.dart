@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -12,7 +13,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test(
-    'keeps the legacy index when an existing drawing has the same name',
+    'recovers a colliding legacy drawing without overwriting existing names',
     () async {
       final directory = await Directory.systemTemp.createTemp(
         'drawing-collision-',
@@ -40,8 +41,12 @@ void main() {
         name: 'Same',
         drawing: drawing,
         extensions: const {'legacy': true},
-      ).encode();
+      ).encode().replaceFirst('{', '{"opaque":900719925474099312345,');
       await backend.saveDocument(current, overwrite: false);
+      await backend.saveDocument(
+        MathDrawingDocument(name: 'Same (recovered 1)', drawing: drawing),
+        overwrite: false,
+      );
       const key = 'visual_math.documents.v1';
       SharedPreferences.setMockInitialValues({
         key: jsonEncode({'Same': legacy}),
@@ -49,9 +54,25 @@ void main() {
 
       const storage = MathDrawingStorage();
       expect((await storage.load('Same'))?.extensions['legacy'], isNull);
-      final retained = (await SharedPreferences.getInstance()).getString(key);
-      expect(retained, isNotNull);
-      expect((jsonDecode(retained!) as Map)['Same'], legacy);
+      expect(await storage.listNames(), [
+        'Same',
+        'Same (recovered 1)',
+        'Same (recovered 2)',
+      ]);
+      expect(
+        (await storage.load('Same (recovered 2)'))?.extensions['legacy'],
+        isTrue,
+      );
+      expect(
+        (await storage.load('Same (recovered 1)'))?.extensions['legacy'],
+        isNull,
+      );
+      final recoveredHash = sha256.convert(utf8.encode('Same (recovered 2)'));
+      final recoveredFile = File(
+        '${directory.path}/visual_math/hash-$recoveredHash.vm',
+      );
+      expect(await recoveredFile.readAsString(), legacy);
+      expect((await SharedPreferences.getInstance()).getString(key), isNull);
     },
   );
 }
