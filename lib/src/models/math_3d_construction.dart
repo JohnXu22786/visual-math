@@ -99,6 +99,17 @@ class ConstructionState {
     if (!_isFinitePoint(point)) {
       return _reject('无法放置无效坐标，请重新选择位置');
     }
+    if (const {
+          ConstructionTool.sphere,
+          ConstructionTool.sphereByRadius,
+          ConstructionTool.circle,
+          ConstructionTool.arc,
+          ConstructionTool.circularSector,
+        }.contains(tool) &&
+        _points.length == 1 &&
+        !_representableRoundRadius(_points.first, point)) {
+      return _reject('半径过大，无法表示圆或球，请重新选择半径点');
+    }
     if (tool == ConstructionTool.conic &&
         _points.any((existing) => existing.distanceTo(point) < 1e-9)) {
       return _reject('圆锥曲线的五个点不能重合，请重新选择');
@@ -107,7 +118,7 @@ class ConstructionState {
             tool == ConstructionTool.circularSector) &&
         _points.length == 2) {
       final projectedEnd = _projectArcEndpoint(_points[0], _points[1], point);
-      if (projectedEnd == null) {
+      if (projectedEnd == null || !_isFinitePoint(projectedEnd)) {
         return _reject('圆弧终点不能与圆心重合，请重新选择终点');
       }
       point = projectedEnd;
@@ -169,6 +180,28 @@ class ConstructionState {
         _points.first.distanceTo(point) < 1e-9) {
       return _reject('圆的轴线或法向量两点不能重合，请重新选择');
     }
+    if ((tool == ConstructionTool.circleAxisPoint ||
+            tool == ConstructionTool.circleCenterNormalRadius) &&
+        _points.length == 2) {
+      final axis = _points[1] - _points[0];
+      final axisSquared = axis.dot(axis);
+      final offset = point - _points[0];
+      if ((tool == ConstructionTool.circleAxisPoint &&
+              (!axisSquared.isFinite ||
+                  axisSquared == 0 ||
+                  !offset.dot(axis).isFinite)) ||
+          (tool == ConstructionTool.circleCenterNormalRadius &&
+              !_representableRoundRadius(_points[0], point))) {
+        return _reject('半径或轴线过大，无法表示圆，请重新选择点');
+      }
+      final center = tool == ConstructionTool.circleAxisPoint
+          ? _points[0] + axis * (offset.dot(axis) / axisSquared)
+          : _points[0];
+      if (!_isFinitePoint(center) ||
+          !_representableRoundRadius(center, point)) {
+        return _reject('半径过大，无法表示圆，请重新选择点');
+      }
+    }
     if (tool == ConstructionTool.circleAxisPoint && _points.length == 2) {
       final axis = _points[1] - _points[0];
       final fromAxis = point - _points[0];
@@ -179,7 +212,7 @@ class ConstructionState {
     }
     if (tool == ConstructionTool.circleCenterNormalRadius &&
         _points.length == 2) {
-      final normal = (_points[1] - _points[0]).normalized();
+      final normal = _stableNormalize(_points[1] - _points[0]);
       final radiusVector = point - _points[0];
       final axialOffset = radiusVector.dot(normal).abs();
       final planeTolerance = dart_math
@@ -208,6 +241,18 @@ class ConstructionState {
         _points.length == 2 &&
         !_isNonCollinear(_points[0], _points[1], point)) {
       return _reject('参考平面的三个点不能共线，请重新选择第三个点');
+    }
+    if (const {
+          ConstructionTool.circleThreePoints,
+          ConstructionTool.circumcircleArc,
+          ConstructionTool.circumcircleSector,
+        }.contains(tool) &&
+        _points.length == 2) {
+      final center = _circumcenter(_points[0], _points[1], point);
+      if (!_isFinitePoint(center) ||
+          !_representableRoundRadius(center, _points[0])) {
+        return _reject('半径过大，无法表示圆或圆弧，请重新选择点');
+      }
     }
     if (tool == ConstructionTool.perpendicularPlane && _points.length == 4) {
       final referenceNormal = _triangleUnitNormal(
@@ -856,7 +901,7 @@ class ConstructionState {
         });
       case ConstructionTool.circleCenterNormalRadius:
         return finishWhenReady(3, () {
-          final normal = (_points[1] - _points[0]).normalized();
+          final normal = _stableNormalize(_points[1] - _points[0]);
           final radiusVector = _points[2] - _points[0];
           final radial = radiusVector - normal * radiusVector.dot(normal);
           return _createCircle(
@@ -1087,7 +1132,9 @@ class ConstructionState {
             tool == ConstructionTool.circularSector) &&
         _points.length == 2) {
       final projectedEnd = _projectArcEndpoint(_points[0], _points[1], point);
-      if (projectedEnd != null && projectedEnd.distanceTo(_points[1]) >= 1e-9) {
+      if (projectedEnd != null &&
+          _isFinitePoint(projectedEnd) &&
+          projectedEnd.distanceTo(_points[1]) >= 1e-9) {
         _previewObject = tool == ConstructionTool.arc
             ? _createArc(_points[0], _points[1], projectedEnd)
             : _createSector(_points[0], _points[1], projectedEnd);
@@ -1118,6 +1165,15 @@ class ConstructionState {
     }
 
     final start = _points.last;
+    if (const {
+          ConstructionTool.sphere,
+          ConstructionTool.sphereByRadius,
+          ConstructionTool.circle,
+        }.contains(tool) &&
+        !_representableRoundRadius(start, point)) {
+      _previewObject = Object3D.point(start, color: 0x60808080);
+      return;
+    }
     switch (tool) {
       case ConstructionTool.sphere:
       case ConstructionTool.sphereByRadius:
@@ -2933,6 +2989,20 @@ class ConstructionState {
   ConstructionAction _reject(String message) {
     _validationMessage = message;
     return ConstructionAction.awaitInput;
+  }
+
+  // Radius-squared is used by conics and sphere operations. Check it and the
+  // coordinate bounds before creating either a committed object or a preview.
+  static bool _representableRoundRadius(Point3D center, Point3D point) {
+    final radius = center.distanceTo(point);
+    return radius.isFinite &&
+        (radius * radius).isFinite &&
+        (center.x + radius).isFinite &&
+        (center.x - radius).isFinite &&
+        (center.y + radius).isFinite &&
+        (center.y - radius).isFinite &&
+        (center.z + radius).isFinite &&
+        (center.z - radius).isFinite;
   }
 
   static bool _isFinitePoint(Point3D point) =>
