@@ -202,6 +202,7 @@ class MathWorkspaceRegionActions {
   final ValueChanged<ConstructionTool> select3DTool;
 
   /// Updates the polygon side count used by polygon tools.
+  /// Sets the regular polygon's side count, clamped to the range 3–12.
   final ValueChanged<int> setPolygonSides;
 
   /// Updates a formula draft at [index]. Call [plot] to commit it to a canvas.

@@ -755,7 +755,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   }
 
   void _setPolygonSides(int sides) {
-    setState(() => _polygonSides = sides);
+    setState(() => _polygonSides = sides.clamp(3, 12));
     _syncController();
   }
 
