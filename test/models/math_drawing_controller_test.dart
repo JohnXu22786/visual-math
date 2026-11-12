@@ -131,7 +131,9 @@ void main() {
     expect(restoredController.viewport2D.yMax, 3);
     expect(restoredController.snapshot?.polygonSides3D, 9);
     expect(
-      tester.widget<DropdownButton<int>>(find.byType(DropdownButton<int>)).value,
+      tester
+          .widget<DropdownButton<int>>(find.byType(DropdownButton<int>))
+          .value,
       9,
     );
   });
