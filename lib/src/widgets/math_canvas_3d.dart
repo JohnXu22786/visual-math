@@ -946,6 +946,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   /// Replace plotted objects while retaining constructed objects and their
   /// relationships. Remove from the end so construction indices stay valid.
   void replaceFormulaObjects(List<Object3D> objects) {
+    ensureDocumentIds();
     final previousPoint = selectedPoint;
     final previousObject = selectedObject;
     Object3D? at(int? index) => index == null ? null : _objects[index];

@@ -38,13 +38,19 @@ void main() {
       Object3D plane = const Object3D.plane(c: 1, d: 0),
       Point3D lineTap = const Point3D(0.5, 0, 0),
       Point3D planeTap = const Point3D(0, 2, 0),
+      bool refresh = false,
     }) async {
-      state.setObjects([line]);
+      Object3D plot() => Object3D.surface(
+        vertices: const [],
+        indices: const [],
+      ).copyWith(documentId: 'plot', formulaRowId: 'row');
+      state.setObjects([line, if (refresh) plot()]);
       await tester.pump();
       await tester.tapAt(screen(lineTap));
       await tester.pump();
       expect(instruction, '再点击第二个相交对象');
-      state.setObjects([line, plane]);
+      if (refresh) state.replaceFormulaObjects([plot()]);
+      state.setObjects([...state.objects, plane]);
       await tester.pump();
       await tester.tapAt(screen(planeTap));
       await tester.pump();
@@ -58,6 +64,13 @@ void main() {
     expect(crossing, hasLength(1));
     expect(crossing.single.point.x, closeTo(0.5, 1e-12));
     expect(crossing.single.point.z, closeTo(0, 1e-25));
+    final refreshedCrossing = await intersect(
+      const Object3D.line(Point3D(0, 0, -1e-13), Point3D(1, 0, 1e-13)),
+      refresh: true,
+    );
+    expect(refreshedCrossing, hasLength(1));
+    expect(refreshedCrossing.single.point.x, closeTo(0.5, 1e-12));
+    expect(refreshedCrossing.single.point.z, closeTo(0, 1e-25));
 
     final parallel = await intersect(
       const Object3D.line(Point3D(0, 0, 1e-13), Point3D(1, 0, 1e-13)),
