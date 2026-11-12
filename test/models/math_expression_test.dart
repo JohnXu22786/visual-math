@@ -489,6 +489,104 @@ void main() {
       );
     });
 
+    test('rejects pole crossings while retaining nearby real roots', () {
+      List<List<Map<String, double>>> sample(String equation) =>
+          MathExpression.fromInput(equation).sampleContourSegments(
+            xMin: -1,
+            xMax: 2,
+            yMin: -1,
+            yMax: 2,
+            gridX: 4,
+            gridY: 1,
+          );
+      expect(sample('1/x=0'), isEmpty);
+      expect(sample('1/y=0'), isEmpty);
+      expect(sample('1/x+1000000000*x=0'), isEmpty);
+      expect(sample('x-0.000000000001=0'), isNotEmpty);
+      final roots = sample('(x-1)/x=0');
+      expect(roots, isNotEmpty);
+      expect(
+        roots.expand((s) => s).every((p) => (p['x']! - 1).abs() < 1e-4),
+        isTrue,
+      );
+      final branches = MathExpression.fromInput('(y-0.5)/x=0')
+          .sampleContourSegments(
+            xMin: -1,
+            xMax: 1,
+            yMin: 0,
+            yMax: 1,
+            gridX: 1,
+            gridY: 1,
+          );
+      expect(branches, isNotEmpty);
+      expect(branches.expand((s) => s).any((p) => p['x']! < 0), isTrue);
+      expect(branches.expand((s) => s).any((p) => p['x']! > 0), isTrue);
+      expect(branches.every((s) => s.first['x']! * s.last['x']! > 0), isTrue);
+      final alignedBranches = MathExpression.fromInput('(y-0.5)/x=0')
+          .sampleContourSegments(
+            xMin: -1,
+            xMax: 1,
+            yMin: 0,
+            yMax: 1,
+            gridX: 1,
+            gridY: 2,
+          );
+      expect(alignedBranches, isNotEmpty);
+      expect(
+        alignedBranches.every((s) => s.first['x']! * s.last['x']! > 0),
+        isTrue,
+      );
+      final zeroEdge = MathExpression.fromInput('y^2/x^2=0')
+          .sampleContourSegments(
+            xMin: -1,
+            xMax: 1,
+            yMin: 0,
+            yMax: 1,
+            gridX: 1,
+            gridY: 1,
+          );
+      expect(zeroEdge, isNotEmpty);
+      expect(zeroEdge.every((s) => s.first['x']! * s.last['x']! > 0), isTrue);
+      final evenPole = MathExpression.fromInput('(y-0.5)/x^2=0')
+          .sampleContourSegments(
+            xMin: -1,
+            xMax: 1,
+            yMin: 0,
+            yMax: 1,
+            gridX: 1,
+            gridY: 1,
+          );
+      expect(evenPole, isNotEmpty);
+      expect(evenPole.every((s) => s.first['x']! * s.last['x']! > 0), isTrue);
+      final curve =
+          MathExpression.fromInput(
+            '(x*x+y*y-1)/((x-0.5)*(x-0.5)+(y-0.5)*(y-0.5))=0',
+          ).sampleContourSegments(
+            xMin: 0,
+            xMax: 1,
+            yMin: 0,
+            yMax: 1,
+            gridX: 1,
+            gridY: 1,
+          );
+      expect(curve, isNotEmpty);
+      final wide = MathExpression.fromInput('x*x=2').sampleContourSegments(
+        xMin: 0,
+        xMax: 1e40,
+        yMin: -1,
+        yMax: 1,
+        gridX: 1,
+        gridY: 1,
+      );
+      expect(wide, isNotEmpty);
+      expect(
+        wide
+            .expand((s) => s)
+            .every((p) => (p['x']! - 1.41421356237).abs() < 1e-6),
+        isTrue,
+      );
+    });
+
     test('detects contour crossing for unit circle', () {
       // x^2 + y^2 = 1
       // The circle does not pass through the origin (f(0,0) = -1), but it
