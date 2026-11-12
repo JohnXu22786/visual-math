@@ -628,6 +628,27 @@ void main() {
         ),
         isTrue,
       );
+      for (final equation in [
+        '(x-0.25)^2*(1+16*x*(1-x))=0',
+        '(x-0.25)^2*(x-0.75)^2*(1+32*x*(1-x))=0',
+      ]) {
+        final segments = MathExpression.fromInput(equation)
+            .sampleContourSegments(
+              xMin: 0,
+              xMax: 1,
+              yMin: 0,
+              yMax: 1,
+              gridX: 1,
+              gridY: 1,
+            );
+        for (final root in equation.contains('0.75') ? [0.25, 0.75] : [0.25]) {
+          expect(
+            segments.any((s) => s.every((p) => (p['x']! - root).abs() < 1e-6)),
+            isTrue,
+            reason: equation,
+          );
+        }
+      }
       final rounded = MathExpression.fromInput('abs(x^2-2)=0')
           .sampleContourSegments(
             xMin: 1,

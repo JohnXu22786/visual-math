@@ -446,7 +446,6 @@ class MathExpression {
       // A quadratic estimate identifies a possible interior minimum even when
       // it is closer to an endpoint than to the middle of the edge.
       final curvature = a.abs() - 2 * middle + b.abs();
-      if (curvature.abs() <= scale * 1e-12) return null;
       final vertex = curvature > scale * 1e-12
           ? 0.5 + (a.abs() - b.abs()) / (4 * curvature)
           : double.nan;
