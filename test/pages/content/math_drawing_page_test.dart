@@ -182,6 +182,93 @@ void main() {
       expect(plot().vertices.first.x, closeTo(1, 1e-8));
     });
 
+    testWidgets('parameter refresh preserves attached round constructions', (
+      tester,
+    ) async {
+      final controller = MathDrawingController();
+      await tester.pumpWidget(
+        _buildTestApp(initialExpression: 'A*x', controller: controller),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('绘制'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('3D'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('绘制'));
+      await tester.pumpAndSettle();
+      final canvas3d = tester.state<MathCanvas3DState>(
+        find.byType(MathCanvas3D),
+      );
+      final plot = canvas3d.objects.singleWhere((o) => o.formulaRowId != null);
+      const center = Point3D(1, 0, 1);
+      const rim = Point3D(2, 0, 1);
+      canvas3d.setObjects([
+        ...canvas3d.objects,
+        Object3D.point(center).copyWith(documentId: 'center'),
+        Object3D.point(rim).copyWith(documentId: 'rim'),
+        Object3D.curve(points: const [center, rim])
+            .copyWith(documentId: 'circle'),
+      ]);
+      canvas3d.restoreDocumentRelationships(
+        pointAttachments: [
+          PointAttachment(pointId: 'center', targetId: plot.documentId),
+        ],
+        constructionDependencies: [
+          ConstructionDependency(
+            objectId: 'circle',
+            tool: ConstructionTool.circle,
+            inputPoints: [center, rim],
+            sourcePointIds: ['center', 'rim'],
+            workingPlaneNormal: Vector3D.unitZ,
+            polygonSides: 3,
+          ),
+        ],
+      );
+      controls(tester)
+          .onChanged('A', controls(tester).parameters['A']!.withValue(2));
+      await tester.pumpAndSettle();
+      final movedCenter = canvas3d.objects
+          .singleWhere((o) => o.documentId == 'center')
+          .point;
+      expect(movedCenter, isNot(center));
+      final circle = canvas3d.objects.singleWhere(
+        (o) => o.documentId == 'circle',
+      );
+      expect(circle.vertices.length, greaterThan(2));
+      expect(
+        circle.vertices.every(
+          (p) => p.x.isFinite && p.y.isFinite && p.z.isFinite,
+        ),
+        isTrue,
+      );
+      expect(
+        canvas3d.documentPointAttachments.single.targetId,
+        plot.documentId,
+      );
+      expect(canvas3d.documentConstructionDependencies.single.sourcePointIds, [
+        'center',
+        'rim',
+      ]);
+      final restored = MathDrawingDocument.decode(
+        MathDrawingDocument(
+          name: 'round',
+          drawing: controller.snapshot!,
+        ).encode(),
+      ).drawing;
+      expect(restored.pointAttachments3D.single.targetId, plot.documentId);
+      expect(restored.constructionDependencies3D.single.sourcePointIds, [
+        'center',
+        'rim',
+      ]);
+      expect(
+        restored.scene3D
+            .singleWhere((o) => o.documentId == 'circle')
+            .vertices
+            .length,
+        circle.vertices.length,
+      );
+    });
+
     testWidgets('uppercase and lowercase parameters drive 3D surfaces', (
       tester,
     ) async {
