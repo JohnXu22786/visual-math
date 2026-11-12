@@ -170,6 +170,49 @@ void main() {
     expect(edge.b, greaterThan(edge.g));
   });
 
+  test('surface outline respects color alpha and object opacity', () {
+    const size = Size(400, 400);
+    for (final (color, opacity) in [
+      (0xFF2196F3, 0.0),
+      (0x002196F3, 1.0),
+      (0x802196F3, 0.5),
+      (0xFF2196F3, 1.0),
+    ]) {
+      final canvas = _RecordingCanvas();
+      final painter = MathCanvas3DPainter(
+        cameraDistance: 7,
+        showAxes: false,
+        showPlane: false,
+        showGrid: false,
+        showLabels: false,
+        objects: [
+          Object3D.surface(
+            vertices: const [
+              Point3D(-2, -1, 0),
+              Point3D(2, -1, 0),
+              Point3D(0, 2, 0),
+            ],
+            indices: const [0, 1, 2],
+            color: color,
+            opacity: opacity,
+          ),
+        ],
+        canvasWidth: size.width,
+        canvasHeight: size.height,
+      );
+      painter.paint(canvas, size);
+      final strokes = canvas.events.where(
+        (event) =>
+            event.kind == 'path' && event.paint.style == PaintingStyle.stroke,
+      );
+      expect(strokes, hasLength(1));
+      expect(
+        strokes.single.paint.color.a,
+        closeTo(((color >> 24) & 0xFF) / 255 * opacity * 0.3, 0.00001),
+      );
+    }
+  });
+
   test('polyhedron edge strokes render after an incident face fill', () {
     const size = Size(400, 400);
     final canvas = _RecordingCanvas();
