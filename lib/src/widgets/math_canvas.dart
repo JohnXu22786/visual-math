@@ -497,6 +497,12 @@ class MathCanvasState extends State<MathCanvas> {
       formula.domainEndExpression,
       formula.parameterValues,
     );
+    if ((formula.domainStartExpression?.trim().isNotEmpty == true &&
+            domainStart == null) ||
+        (formula.domainEndExpression?.trim().isNotEmpty == true &&
+            domainEnd == null)) {
+      return [];
+    }
     final sampleMin = dart_math.max(
       _xMin - marginX,
       domainStart ?? double.negativeInfinity,
