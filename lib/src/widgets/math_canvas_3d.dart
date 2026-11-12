@@ -5969,13 +5969,18 @@ class MathCanvas3DPainter extends CustomPainter {
     final gridCenter = camera.target;
     const maxHalfLines = 50;
     final step = dart_math.max(1.0, gridRange / maxHalfLines);
-    final halfLines = dart_math.min(maxHalfLines, (gridRange / step).floor());
     final lines = <List<Offset>>[];
+    final startX = gridCenter.x - gridRange;
+    final startY = gridCenter.y - gridRange;
+    final remainderX = startX.remainder(step);
+    final remainderY = startY.remainder(step);
+    final anchorX = startX - remainderX + (remainderX > 0 ? step : 0);
+    final anchorY = startY - remainderY + (remainderY > 0 ? step : 0);
 
     // Lines along X (constant Y).
-    for (var i = -halfLines; i <= halfLines; i++) {
-      if (i == 0) continue;
-      final y = gridCenter.y + i * step;
+    for (var i = 0; i <= 2 * maxHalfLines; i++) {
+      final y = anchorY + i * step;
+      if (y > gridCenter.y + gridRange) break;
       final p1 = worldToScreen(
         Point3D(gridCenter.x - gridRange, y, 0),
         camera,
@@ -5990,9 +5995,9 @@ class MathCanvas3DPainter extends CustomPainter {
     }
 
     // Lines along Y (constant X).
-    for (var i = -halfLines; i <= halfLines; i++) {
-      if (i == 0) continue;
-      final x = gridCenter.x + i * step;
+    for (var i = 0; i <= 2 * maxHalfLines; i++) {
+      final x = anchorX + i * step;
+      if (x > gridCenter.x + gridRange) break;
       final p1 = worldToScreen(
         Point3D(x, gridCenter.y - gridRange, 0),
         camera,
