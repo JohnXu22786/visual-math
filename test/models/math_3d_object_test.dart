@@ -147,6 +147,28 @@ void main() {
       );
     });
 
+    test('rejects finite bounds whose span overflows before sampling', () {
+      for (final overflowX in [true, false]) {
+        var sampled = false;
+        expect(
+          () => SurfaceMesh.fromFunction(
+            xMin: overflowX ? -1e308 : -1,
+            xMax: overflowX ? 1e308 : 1,
+            yMin: overflowX ? -1 : -1e308,
+            yMax: overflowX ? 1 : 1e308,
+            gridX: 2,
+            gridY: 2,
+            f: (x, y) {
+              sampled = true;
+              return 0;
+            },
+          ),
+          throwsArgumentError,
+        );
+        expect(sampled, isFalse);
+      }
+    });
+
     test('creates grid mesh for z = f(x,y) function', () {
       final mesh = SurfaceMesh.fromFunction(
         xMin: -1,
