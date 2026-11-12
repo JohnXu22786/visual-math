@@ -143,11 +143,11 @@ class MathExpressionParser {
       'cot' => '(1/Math.tan($a))',
       'csc' => '(1/Math.sin($a))',
       'sec' => '(1/Math.cos($a))',
-      'sinh' => '((v)=>(Math.exp(v)-Math.exp(-v))/2)($a)',
+      'sinh' => 'Math.sinh($a)',
       'cosh' => '((v)=>(Math.exp(v)+Math.exp(-v))/2)($a)',
       'tanh' => 'Math.tanh($a)',
       'coth' => '(1/Math.tanh($a))',
-      'csch' => '((v)=>2/(Math.exp(v)-Math.exp(-v)))($a)',
+      'csch' => '(1/Math.sinh($a))',
       'sech' => '((v)=>2/(Math.exp(v)+Math.exp(-v)))($a)',
       'round' => '((v)=>Math.sign(v)*Math.round(Math.abs(v)))($a)',
       'fact' =>
@@ -409,7 +409,7 @@ class MathExpressionParser {
     'cot': (value) => 1 / math.tan(value),
     'coth': (value) => 1 / _tanh(value),
     'csc': (value) => 1 / math.sin(value),
-    'csch': (value) => 2 / (math.exp(value) - math.exp(-value)),
+    'csch': (value) => 1 / _sinh(value),
     'exp': math.exp,
     'fact': _factorial,
     'floor': (value) => value.floorToDouble(),
@@ -419,7 +419,7 @@ class MathExpressionParser {
     'sec': (value) => 1 / math.cos(value),
     'sech': (value) => 2 / (math.exp(value) + math.exp(-value)),
     'sin': math.sin,
-    'sinh': (value) => (math.exp(value) - math.exp(-value)) / 2,
+    'sinh': _sinh,
     'sqrt': math.sqrt,
     'tan': math.tan,
     'tanh': _tanh,
@@ -432,6 +432,16 @@ class MathExpressionParser {
         : math.pow(value, 1 / root).toDouble(),
     'pow': (base, exponent) => math.pow(base, exponent).toDouble(),
   };
+
+  static double _sinh(double value) {
+    if (value == 0) return value;
+    // A Taylor approximation avoids subtracting nearly equal exponentials.
+    if (value.abs() < 1e-2) {
+      final square = value * value;
+      return value * (1 + square / 6 + square * square / 120);
+    }
+    return (math.exp(value) - math.exp(-value)) / 2;
+  }
 
   static double _tanh(double value) {
     if (value == 0) return value;

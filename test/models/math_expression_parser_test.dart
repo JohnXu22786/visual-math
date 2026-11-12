@@ -69,6 +69,28 @@ void main() {
       }
     });
 
+    test('sinh and csch retain precision near zero', () {
+      for (final name in ['sinh', 'csch']) {
+        final evaluate = MathExpressionParser.parse(
+          '$name(x)',
+          variables: ['x'],
+        );
+        for (final x in [-1e-4, -1e-20, 1e-20, 1e-4, 0.00010001, 0.01]) {
+          final sinh = x * (1 + x * x / 6 + x * x * x * x / 120);
+          final expected = name == 'sinh' ? sinh : 1 / sinh;
+          expect((evaluate({'x': x}) / expected - 1).abs(), lessThan(1e-14));
+        }
+        final negativeZero = evaluate({'x': -0.0});
+        expect(
+          name == 'sinh'
+              ? negativeZero.isNegative
+              : negativeZero == double.negativeInfinity,
+          isTrue,
+        );
+        expect(evaluate({'x': 0}), name == 'sinh' ? 0 : double.infinity);
+      }
+    });
+
     test('factorial stops after overflow for very large inputs', () {
       final evaluate = MathExpressionParser.parse('fact(x)', variables: ['x']);
 
