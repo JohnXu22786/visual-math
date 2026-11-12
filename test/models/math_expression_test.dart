@@ -512,6 +512,196 @@ void main() {
       );
     });
 
+    test(
+      'finds off-grid touching zero contours without inventing nearby ones',
+      () {
+        for (final axis in ['x', 'y']) {
+          List<List<Map<String, double>>> sample(String equation) =>
+              MathExpression.fromInput(equation).sampleContourSegments(
+                xMin: -1,
+                xMax: 1,
+                yMin: -1,
+                yMax: 1,
+                gridX: 4,
+                gridY: 4,
+              );
+          final segments = sample('($axis-0.1)^2=0');
+          expect(segments, isNotEmpty, reason: axis);
+          expect(
+            segments
+                .expand((s) => s)
+                .every((p) => (p[axis]! - 0.1).abs() < 1e-6),
+            isTrue,
+            reason: axis,
+          );
+          expect(sample('($axis-0.1)^2+0.001=0'), isEmpty, reason: axis);
+          final intersecting = sample('($axis-0.1)^2*(y-0.1)=0');
+          if (axis == 'x') {
+            expect(
+              intersecting.any(
+                (s) =>
+                    s.every((p) => (p['x']! - 0.1).abs() < 1e-6) &&
+                    s.first['y']! < 0.1 &&
+                    s.last['y']! > 0.1,
+              ),
+              isTrue,
+            );
+          }
+        }
+      },
+    );
+
+    test('touching contours connect adjacent edges and avoid poles', () {
+      List<List<Map<String, double>>> sample(String equation) =>
+          MathExpression.fromInput(equation).sampleContourSegments(
+            xMin: 0,
+            xMax: 0.5,
+            yMin: 0,
+            yMax: 0.5,
+            gridX: 1,
+            gridY: 1,
+          );
+      final diagonal = sample('(x+y-0.1)^2=0');
+      expect(diagonal, isNotEmpty);
+      expect(
+        diagonal
+            .expand((s) => s)
+            .every((p) => (p['x']! + p['y']! - 0.1).abs() < 1e-6),
+        isTrue,
+      );
+      expect(sample('((x^2+y^2)*((x-0.5)^2+(y-0.5)^2))=0'), isEmpty);
+      expect(sample('((x-0.1)^2+y^2)*((x-0.4)^2+(y-0.5)^2)=0'), isEmpty);
+      expect(
+        sample(
+          '((x-0.1)^2+y^2)*((x-0.25)^2+(y-0.25)^2)*((x-0.4)^2+(y-0.5)^2)=0',
+        ),
+        isEmpty,
+      );
+      final boundary = sample('(x+y-0.1)^2*sqrt(x)=0');
+      expect(
+        boundary.any(
+          (s) => s.any(
+            (p) => p['x']!.abs() < 1e-12 && (p['y']! - 0.1).abs() < 1e-6,
+          ),
+        ),
+        isTrue,
+      );
+      final mixed = sample('(x-2*y-0.05)^2*(y-0.2)=0');
+      expect(
+        mixed.any(
+          (s) => s.every((p) => (p['x']! - 2 * p['y']! - 0.05).abs() < 1e-6),
+        ),
+        isTrue,
+      );
+      final cornersMixed = sample('(x-y)^2*(x-0.4)=0');
+      expect(
+        cornersMixed.any(
+          (s) => s.every((p) => (p['x']! - p['y']!).abs() < 1e-6),
+        ),
+        isTrue,
+      );
+      final crossingTangents = sample('(x-0.1)^2*(y-0.2)^2=0');
+      expect(
+        crossingTangents.any(
+          (s) => s.every((p) => (p['x']! - 0.1).abs() < 1e-6),
+        ),
+        isTrue,
+      );
+      expect(
+        crossingTangents.any(
+          (s) => s.every((p) => (p['y']! - 0.2).abs() < 1e-6),
+        ),
+        isTrue,
+      );
+      final multiple = sample('(x-0.1)^2*(x-0.4)^2=0');
+      for (final root in [0.1, 0.4]) {
+        expect(
+          multiple.any((s) => s.every((p) => (p['x']! - root).abs() < 1e-6)),
+          isTrue,
+        );
+      }
+      final boundedPole = sample('(x-0.1)^2/((x-0.1)^2+(y-0.25)^2)=0');
+      expect(boundedPole, isNotEmpty);
+      expect(
+        boundedPole.every(
+          (s) => (s.first['y']! - 0.25) * (s.last['y']! - 0.25) > 0,
+        ),
+        isTrue,
+      );
+      final rounded = MathExpression.fromInput('abs(x^2-2)=0')
+          .sampleContourSegments(
+            xMin: 1,
+            xMax: 2,
+            yMin: 0,
+            yMax: 1,
+            gridX: 1,
+            gridY: 1,
+          );
+      expect(rounded, isNotEmpty);
+      expect(
+        rounded
+            .expand((s) => s)
+            .every((p) => (p['x']! * p['x']! - 2).abs() < 1e-10),
+        isTrue,
+      );
+      final flat = sample('(x-0.01)^4=0');
+      expect(flat, isNotEmpty);
+      expect(
+        flat.expand((s) => s).every((p) => (p['x']! - 0.01).abs() < 1e-6),
+        isTrue,
+      );
+      final branch = sample('(x-0.1)^2*y=0');
+      expect(
+        branch.any((s) => s.every((p) => (p['x']! - 0.1).abs() < 1e-6)),
+        isTrue,
+      );
+      final angledBranch = sample('(x-y-0.1)^2*y=0');
+      expect(
+        angledBranch.any(
+          (s) => s.every((p) => (p['x']! - p['y']! - 0.1).abs() < 1e-6),
+        ),
+        isTrue,
+      );
+      expect(
+        angledBranch.every(
+          (s) =>
+              s.every((p) => p['y'] == 0) ||
+              s.every((p) => (p['x']! - p['y']! - 0.1).abs() < 1e-6),
+        ),
+        isTrue,
+      );
+      final corners = sample('(x+y-0.5)^2=0');
+      expect(corners, isNotEmpty);
+      expect(
+        corners
+            .expand((s) => s)
+            .every((p) => (p['x']! + p['y']! - 0.5).abs() < 1e-6),
+        isTrue,
+      );
+      final nearEndPole = sample('(x-0.1)^2/(y-0.01)^2=0');
+      expect(nearEndPole, isNotEmpty);
+      expect(
+        nearEndPole.every(
+          (s) => (s.first['y']! - 0.01) * (s.last['y']! - 0.01) > 0,
+        ),
+        isTrue,
+      );
+      final offGridPole = sample('(x-0.1)^2/(y-0.2)^2=0');
+      expect(offGridPole, isNotEmpty);
+      expect(
+        offGridPole.every(
+          (s) => (s.first['y']! - 0.2) * (s.last['y']! - 0.2) > 0,
+        ),
+        isTrue,
+      );
+      final pole = sample('(x-0.1)^2/(y-0.25)^2=0');
+      expect(pole, isNotEmpty);
+      expect(
+        pole.every((s) => (s.first['y']! - 0.25) * (s.last['y']! - 0.25) > 0),
+        isTrue,
+      );
+    });
+
     test('rejects pole crossings while retaining nearby real roots', () {
       List<List<Map<String, double>>> sample(String equation) =>
           MathExpression.fromInput(equation).sampleContourSegments(
