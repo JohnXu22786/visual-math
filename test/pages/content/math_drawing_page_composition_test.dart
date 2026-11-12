@@ -498,6 +498,46 @@ void main() {
     expect(find.byTooltip('Localized 放大'), findsOneWidget);
   });
 
+  testWidgets('custom polygon side counts stay within supported bounds', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    late MathWorkspaceRegionActions actions;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          options: MathWorkspaceOptions(
+            show2D: false,
+            initialView: ViewMode.mode3D,
+            persistence: const MathWorkspacePersistence(enabled: false),
+            threeDToolsBuilder: (context, content, regionActions) {
+              actions = regionActions;
+              return content;
+            },
+          ),
+          initialMathematicalMode: false,
+          initialShowWebView: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    for (final entry in {2: 3, 13: 12, 7: 7}.entries) {
+      actions.setPolygonSides(entry.key);
+      actions.select3DTool(ConstructionTool.regularPolygon);
+      await tester.pumpAndSettle();
+      expect(controller.snapshot!.polygonSides3D, entry.value);
+      expect(
+        tester
+            .widget<DropdownButton<int>>(find.byType(DropdownButton<int>))
+            .value,
+        entry.value,
+      );
+      expect(tester.takeException(), isNull);
+    }
+  });
+
   testWidgets('custom 3D tool selection updates the workspace controller', (
     tester,
   ) async {
