@@ -34,6 +34,9 @@ class MathDrawingPage extends StatefulWidget {
   /// Initial expression shown in the first formula row, if any.
   final String? initialExpression;
 
+  /// Saved document to open when the workspace is first created.
+  final MathDrawingDocument? initialDocument;
+
   /// Whether to show the platform WebView editor when it is supported.
   final bool initialShowWebView;
 
@@ -53,6 +56,7 @@ class MathDrawingPage extends StatefulWidget {
   const MathDrawingPage({
     super.key,
     this.initialExpression,
+    this.initialDocument,
     this.initialShowWebView = true,
     this.initialMathematicalMode,
     this.controller,
@@ -147,6 +151,12 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       setParameters: _setParameters,
       restore: _restoreSnapshot,
     );
+    final document = widget.initialDocument;
+    if (document != null) {
+      _currentDocumentName = document.name;
+      _currentDocumentExtensions = document.extensions;
+      _restoreSnapshot(document.drawing);
+    }
     _syncController();
   }
 
