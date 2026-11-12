@@ -4710,7 +4710,15 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   Point3D? _nearestSnappedPoint(double screenX, double screenY) {
     if (_canvasWidth <= 0 || _canvasHeight <= 0) return null;
     final projection = _currentProjection();
-    final candidates = <Point3D>[Point3D.origin];
+    bool pointInDepthRange(Point3D point) {
+      final depth = worldToScreen(point, camera, projection).z;
+      return projection.type == ProjectionType.parallel ||
+          (depth >= projection.near && depth <= projection.far);
+    }
+
+    final candidates = <Point3D>[
+      if (pointInDepthRange(Point3D.origin)) Point3D.origin,
+    ];
     if (const {
       ConstructionTool.polygon,
       ConstructionTool.area,
@@ -4718,7 +4726,9 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       ConstructionTool.locus,
     }.contains(_currentTool)) {
       final points = _construction?.points ?? const <Point3D>[];
-      if (points.isNotEmpty) candidates.add(points.first);
+      if (points.isNotEmpty && pointInDepthRange(points.first)) {
+        candidates.add(points.first);
+      }
     }
     final surfaceCandidates = <Point3D>[];
 
@@ -4759,9 +4769,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       }
       switch (object.type) {
         case Object3DType.point:
-          final depth = worldToScreen(object.point, camera, projection).z;
-          if (projection.type == ProjectionType.parallel ||
-              (depth >= projection.near && depth <= projection.far)) {
+          if (pointInDepthRange(object.point)) {
             candidates.add(object.point);
           }
         case Object3DType.line:
