@@ -52,6 +52,29 @@ void main() {
       expect(updated.distance, closeTo(5, 1e-10)); // zoom in: distance / factor
     });
 
+    test(
+      'pan tracks pointer at the target for each projection and viewport',
+      () {
+        const camera = Camera3D(distance: 10);
+        for (final height in [300.0, 1200.0]) {
+          for (final projection in [
+            Projection3D.parallel(width: 800, height: height, scale: 6),
+            Projection3D.perspective(width: 800, height: height, fov: 60),
+          ]) {
+            final before = worldToScreen(camera.target, camera, projection);
+            final panned = camera.pan(
+              deltaX: 100,
+              deltaY: -50,
+              projection: projection,
+            );
+            final after = worldToScreen(camera.target, panned, projection);
+            expect(after.x - before.x, closeTo(100, 1e-8));
+            expect(after.y - before.y, closeTo(-50, 1e-8));
+          }
+        }
+      },
+    );
+
     test('pan moves target parallel to view plane', () {
       final cam = Camera3D(
         target: Point3D(0, 0, 0),

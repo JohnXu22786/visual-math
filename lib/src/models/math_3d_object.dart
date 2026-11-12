@@ -70,9 +70,17 @@ class Vector3D {
   /// Returns a unit vector in the same direction.
   /// Returns zero vector if magnitude is zero.
   Vector3D normalized() {
-    final mag = magnitude;
-    if (mag < 1e-15) return Vector3D.zero;
-    return Vector3D(x / mag, y / mag, z / mag);
+    final scale = dart_math.max(x.abs(), dart_math.max(y.abs(), z.abs()));
+    if (scale == 0) return Vector3D.zero;
+    if (!scale.isFinite) {
+      final mag = magnitude;
+      return Vector3D(x / mag, y / mag, z / mag);
+    }
+    final sx = x / scale;
+    final sy = y / scale;
+    final sz = z / scale;
+    final mag = dart_math.sqrt(sx * sx + sy * sy + sz * sz);
+    return Vector3D(sx / mag, sy / mag, sz / mag);
   }
 
   /// Dot product with another vector.

@@ -54,6 +54,44 @@ Future<void> _pumpKeyboard(
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  testWidgets('numeric keyboard scrolls to its keys on a short screen', (
+    tester,
+  ) async {
+    final inserts = <String>[];
+    var backspaces = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 320,
+            height: 150,
+            child: MathNumericKeyboard(
+              activeLabel: '参数',
+              onInsert: (text, {cursorFromEnd}) => inserts.add(text),
+              onBackspace: () => backspaces++,
+              onMoveCaret: (_) {},
+              onDismiss: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.byTooltip('7'));
+    await tester.scrollUntilVisible(
+      find.byTooltip('⌫'),
+      60,
+      scrollable: find.descendant(
+        of: find.byType(MathNumericKeyboard),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    await tester.tap(find.byTooltip('⌫'));
+    expect(inserts, ['7']);
+    expect(backspaces, 1);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('common first page swaps the operator and function columns', (
     tester,
   ) async {
