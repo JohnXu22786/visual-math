@@ -2097,7 +2097,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
                 point: _constrainPointToObject(point.point, _objects[index]),
               );
               _pointAttachments[pointIndex] = index;
-              _propagateAttachedPointMoves(pointIndex);
+              _propagateConstructionAndAttachmentMoves(pointIndex);
               _attachmentPointIndex = null;
               _objectsVersion++;
             });
@@ -3675,37 +3675,6 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     return false;
   }
 
-  void _propagateAttachedPointMoves(int targetIndex) {
-    final pending = <int>[targetIndex];
-    final visited = <int>{targetIndex};
-    while (pending.isNotEmpty) {
-      final currentTargetIndex = pending.removeAt(0);
-      if (currentTargetIndex < 0 || currentTargetIndex >= _objects.length) {
-        continue;
-      }
-      for (final attachment in _pointAttachments.entries) {
-        final attachedIndex = attachment.key;
-        if (attachment.value != currentTargetIndex ||
-            attachedIndex < 0 ||
-            attachedIndex >= _objects.length ||
-            !visited.add(attachedIndex)) {
-          continue;
-        }
-        final attachedPoint = _objects[attachedIndex];
-        if (attachedPoint.type != Object3DType.point) continue;
-        final position = _constrainPointToObject(
-          attachedPoint.point,
-          _objects[currentTargetIndex],
-        );
-        if (position != attachedPoint.point) {
-          _objects[attachedIndex] = attachedPoint.copyWith(point: position);
-          _updateConstructionObjectsForSourcePoint(attachedIndex);
-        }
-        pending.add(attachedIndex);
-      }
-    }
-  }
-
   int? _sourcePointIndexAt(Point3D position) {
     for (var i = 0; i < _objects.length; i++) {
       final object = _objects[i];
@@ -3721,76 +3690,115 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     return null;
   }
 
-  void _updateConstructionObjectsForSourcePoint(int sourcePointIndex) {
-    for (final entry in _constructionDependencies.entries) {
-      final solidIndex = entry.key;
-      final dependency = entry.value;
-      if (!dependency.sourcePointIndices.contains(sourcePointIndex) ||
-          solidIndex < 0 ||
-          solidIndex >= _objects.length) {
-        continue;
+  void _propagateConstructionAndAttachmentMoves(int sourceIndex) {
+    // Visit all reachable dependents in dependency order, including both kinds
+    // of relationship. A visited set also bounds malformed cyclic documents.
+    final visited = <int>{};
+    final order = <int>[];
+    void visit(int index) {
+      if (index < 0 || index >= _objects.length || !visited.add(index)) return;
+      for (final entry in _constructionDependencies.entries) {
+        if (entry.value.sourcePointIndices.contains(index)) visit(entry.key);
       }
-
-      for (var i = 0; i < dependency.sourcePointIndices.length; i++) {
-        final sourceIndex = dependency.sourcePointIndices[i];
-        if (sourceIndex == null ||
-            sourceIndex < 0 ||
-            sourceIndex >= _objects.length) {
-          continue;
-        }
-        final sourcePoint = _objects[sourceIndex];
-        if (sourcePoint.type == Object3DType.point &&
-            !sourcePoint.isTextAnnotation) {
-          dependency.points[i] = sourcePoint.point;
-        }
+      for (final entry in _pointAttachments.entries) {
+        if (entry.value == index) visit(entry.key);
       }
+      order.add(index);
+    }
 
-      final original = _objects[solidIndex];
-      final construction = ConstructionState(
-        tool: dependency.tool,
-        polygonSides: dependency.polygonSides,
-      );
-      var acceptedAllPoints = true;
-      for (var i = 0; i < dependency.points.length; i++) {
-        final previousCount = construction.points.length;
-        construction.addPoint(
-          dependency.points[i],
-          workingPlaneNormal: dependency.workingPlaneNormal,
+    visit(sourceIndex);
+    final changed = <int>{sourceIndex};
+    for (final solidIndex in order.reversed) {
+      if (solidIndex == sourceIndex) continue;
+      final dependency = _constructionDependencies[solidIndex];
+      if (dependency != null &&
+          dependency.sourcePointIndices.any(changed.contains)) {
+        for (var i = 0; i < dependency.sourcePointIndices.length; i++) {
+          final sourceIndex = dependency.sourcePointIndices[i];
+          if (sourceIndex == null ||
+              sourceIndex < 0 ||
+              sourceIndex >= _objects.length) {
+            continue;
+          }
+          final sourcePoint = _objects[sourceIndex];
+          if (sourcePoint.type == Object3DType.point &&
+              !sourcePoint.isTextAnnotation) {
+            dependency.points[i] = sourcePoint.point;
+          }
+        }
+
+        final original = _objects[solidIndex];
+        final construction = ConstructionState(
+          tool: dependency.tool,
+          polygonSides: dependency.polygonSides,
         );
-        if (construction.points.length != previousCount + 1) {
-          acceptedAllPoints = false;
-          break;
+        var acceptedAllPoints = true;
+        for (var i = 0; i < dependency.points.length; i++) {
+          final previousCount = construction.points.length;
+          final closesCurve =
+              i == dependency.points.length - 1 &&
+              const {
+                ConstructionTool.polygon,
+                ConstructionTool.locus,
+                ConstructionTool.polyline,
+              }.contains(dependency.tool);
+          construction.addPoint(
+            closesCurve ? dependency.points.first : dependency.points[i],
+            workingPlaneNormal: dependency.workingPlaneNormal,
+            closeToFirstPoint: closesCurve,
+          );
+          if (construction.points.length != previousCount + 1) {
+            acceptedAllPoints = false;
+            break;
+          }
+        }
+        if (acceptedAllPoints &&
+            dependency.tool == ConstructionTool.area &&
+            dependency.points.length >= 3) {
+          construction.addPoint(
+            dependency.points.first,
+            workingPlaneNormal: dependency.workingPlaneNormal,
+            closeToFirstPoint: true,
+          );
+        }
+        final updated = construction.result;
+        if (acceptedAllPoints && updated != null) {
+          _objects[solidIndex] = updated.copyWith(
+            documentId: original.documentId,
+            label:
+                const {
+                  ConstructionTool.area,
+                  ConstructionTool.angle,
+                  ConstructionTool.distance,
+                }.contains(dependency.tool)
+                ? updated.label
+                : original.label,
+            color: original.color,
+            opacity: original.opacity,
+            edgeWidth: original.edgeWidth,
+            showEdges: original.showEdges,
+            visible: original.visible,
+          );
+          changed.add(solidIndex);
         }
       }
-      if (!acceptedAllPoints) continue;
-
-      // Area completion removes the closing click, so the stored inputs are
-      // only the polygon vertices. Replay closure after adding those vertices.
-      if (dependency.tool == ConstructionTool.area &&
-          dependency.points.length >= 3) {
-        construction.addPoint(
-          dependency.points.first,
-          workingPlaneNormal: dependency.workingPlaneNormal,
-          closeToFirstPoint: true,
-        );
+      final targetIndex = _pointAttachments[solidIndex];
+      if (targetIndex != null &&
+          changed.contains(targetIndex) &&
+          targetIndex >= 0 &&
+          targetIndex < _objects.length) {
+        final point = _objects[solidIndex];
+        if (point.type == Object3DType.point) {
+          final position = _constrainPointToObject(
+            point.point,
+            _objects[targetIndex],
+          );
+          if (position != point.point) {
+            _objects[solidIndex] = point.copyWith(point: position);
+            changed.add(solidIndex);
+          }
+        }
       }
-
-      final updated = construction.result;
-      if (updated == null) continue;
-      _objects[solidIndex] = updated.copyWith(
-        documentId: original.documentId,
-        label:
-            dependency.tool == ConstructionTool.distance ||
-                dependency.tool == ConstructionTool.angle ||
-                dependency.tool == ConstructionTool.area
-            ? updated.label
-            : original.label,
-        color: original.color,
-        opacity: original.opacity,
-        edgeWidth: original.edgeWidth,
-        showEdges: original.showEdges,
-        visible: original.visible,
-      );
     }
   }
 
@@ -4059,8 +4067,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     var rolledBack = false;
     if (_pointBeforeDrag != null && _selectedPointIndex != null) {
       _objects[_selectedPointIndex!] = _pointBeforeDrag!;
-      _updateConstructionObjectsForSourcePoint(_selectedPointIndex!);
-      _propagateAttachedPointMoves(_selectedPointIndex!);
+      _propagateConstructionAndAttachmentMoves(_selectedPointIndex!);
       _objectsVersion++;
       rolledBack = true;
     }
@@ -4216,8 +4223,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       setState(() {
         final selectedIndex = _selectedPointIndex!;
         _objects[selectedIndex] = _pointBeforeDrag!.copyWith(point: position);
-        _updateConstructionObjectsForSourcePoint(selectedIndex);
-        _propagateAttachedPointMoves(selectedIndex);
+        _propagateConstructionAndAttachmentMoves(selectedIndex);
         _objectsVersion++;
       });
       return;
