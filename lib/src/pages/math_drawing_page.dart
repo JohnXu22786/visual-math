@@ -95,6 +95,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   List<FormulaEntry> _plottedFormulas = [];
   String? _plotError;
   List<Object3D> _lastReportedScene = const [];
+  MathDrawingSnapshot? _restoredSnapshot;
   String? _currentDocumentName;
   Map<String, dynamic> _currentDocumentExtensions = const {};
 
@@ -286,7 +287,13 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       for (final formula in _formulas) _formulaEntryForSnapshot(formula),
     ];
     final viewport =
-        _canvasKey.currentState?.viewport ?? (-10.0, -10.0, 10.0, 10.0);
+        _canvasKey.currentState?.viewport ??
+        (
+          _restoredSnapshot?.viewport2D.xMin ?? -10.0,
+          _restoredSnapshot?.viewport2D.yMin ?? -10.0,
+          _restoredSnapshot?.viewport2D.xMax ?? 10.0,
+          _restoredSnapshot?.viewport2D.yMax ?? 10.0,
+        );
     _canvas3DKey.currentState?.ensureDocumentIds();
     return MathDrawingSnapshot(
       formulas: formulas,
@@ -300,23 +307,58 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         xMax: viewport.$3,
         yMax: viewport.$4,
       ),
-      camera3D: _canvas3DKey.currentState?.camera ?? const Camera3D(),
+      camera3D:
+          _canvas3DKey.currentState?.camera ??
+          _restoredSnapshot?.camera3D ??
+          const Camera3D(),
       projection3D:
-          _canvas3DKey.currentState?.projectionType ?? ProjectionType.parallel,
-      showAxes3D: _canvas3DKey.currentState?.showAxes ?? true,
-      showPlane3D: _canvas3DKey.currentState?.showPlane ?? true,
-      showGrid3D: _canvas3DKey.currentState?.showGrid ?? false,
-      showLabels3D: _canvas3DKey.currentState?.showLabels ?? true,
-      scene3D: _canvas3DKey.currentState?.objects ?? const [],
+          _canvas3DKey.currentState?.projectionType ??
+          _restoredSnapshot?.projection3D ??
+          ProjectionType.parallel,
+      showAxes3D:
+          _canvas3DKey.currentState?.showAxes ??
+          _restoredSnapshot?.showAxes3D ??
+          true,
+      showPlane3D:
+          _canvas3DKey.currentState?.showPlane ??
+          _restoredSnapshot?.showPlane3D ??
+          true,
+      showGrid3D:
+          _canvas3DKey.currentState?.showGrid ??
+          _restoredSnapshot?.showGrid3D ??
+          false,
+      showLabels3D:
+          _canvas3DKey.currentState?.showLabels ??
+          _restoredSnapshot?.showLabels3D ??
+          true,
+      scene3D:
+          _canvas3DKey.currentState?.objects ??
+          _restoredSnapshot?.scene3D ??
+          const [],
       pointAttachments3D:
-          _canvas3DKey.currentState?.documentPointAttachments ?? const [],
+          _canvas3DKey.currentState?.documentPointAttachments ??
+          _restoredSnapshot?.pointAttachments3D ??
+          const [],
       constructionDependencies3D:
           _canvas3DKey.currentState?.documentConstructionDependencies ??
+          _restoredSnapshot?.constructionDependencies3D ??
           const [],
-      showAxes2D: _canvasKey.currentState?.showAxes ?? true,
-      showGrid2D: _canvasKey.currentState?.showGrid ?? true,
-      showZeros2D: _canvasKey.currentState?.showZeros ?? false,
-      showExtrema2D: _canvasKey.currentState?.showExtrema ?? false,
+      showAxes2D:
+          _canvasKey.currentState?.showAxes ??
+          _restoredSnapshot?.showAxes2D ??
+          true,
+      showGrid2D:
+          _canvasKey.currentState?.showGrid ??
+          _restoredSnapshot?.showGrid2D ??
+          true,
+      showZeros2D:
+          _canvasKey.currentState?.showZeros ??
+          _restoredSnapshot?.showZeros2D ??
+          false,
+      showExtrema2D:
+          _canvasKey.currentState?.showExtrema ??
+          _restoredSnapshot?.showExtrema2D ??
+          false,
     );
   }
 
@@ -460,6 +502,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   }
 
   void _restoreSnapshot(MathDrawingSnapshot snapshot) {
+    _restoredSnapshot = snapshot;
     final controller = widget.controller;
     final restoredView = switch (snapshot.activeView) {
       ViewMode.mode2D when widget.options.show2D => ViewMode.mode2D,

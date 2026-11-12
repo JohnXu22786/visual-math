@@ -151,6 +151,56 @@ void main() {
   );
 
   test(
+    'recovers interrupted overwrites without replacing completed writes',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'drawing-recovery-',
+      );
+      const channel = MethodChannel('plugins.flutter.io/path_provider');
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async => directory.path);
+      SharedPreferences.setMockInitialValues({});
+      addTearDown(() async {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, null);
+        if (await directory.exists()) await directory.delete(recursive: true);
+      });
+      const storage = MathDrawingStorage();
+      final drawing = MathDrawingSnapshot(
+        formulas: const [],
+        parameters: const {},
+        activeView: ViewMode.mode2D,
+        activeTool: ConstructionTool.move,
+        viewport2D: Viewport.defaultViewport(),
+        camera3D: const Camera3D(),
+        projection3D: ProjectionType.parallel,
+        scene3D: const [],
+      );
+      final original = MathDrawingDocument(name: 'Alpha', drawing: drawing);
+      await storage.save(original);
+      final folder = Directory('${directory.path}/visual_math');
+      final target = folder.listSync().whereType<File>().singleWhere(
+        (file) => file.path.endsWith('.vm'),
+      );
+      final backup = await target.rename('${target.path}.backup');
+      expect(await storage.listNames(), ['Alpha']);
+      expect((await storage.load('Alpha'))?.name, 'Alpha');
+      expect(await backup.exists(), isFalse);
+
+      await target.copy(backup.path);
+      final replacement = MathDrawingDocument(
+        name: 'Alpha',
+        drawing: drawing,
+        extensions: const {'updated': true},
+      );
+      await target.writeAsString(replacement.encode());
+      expect((await storage.load('Alpha'))?.extensions['updated'], isTrue);
+      await storage.delete('Alpha');
+      expect(await storage.listNames(), isEmpty);
+    },
+  );
+
+  test(
     'writes app-private .vm files and requires explicit overwrite',
     () async {
       final directory = await Directory.systemTemp.createTemp(
