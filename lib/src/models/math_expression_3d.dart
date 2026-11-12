@@ -793,10 +793,19 @@ class Expression3D {
       RegExp(r'(?<![a-zA-Z])([xyzuvt]{2,})(?![a-zA-Z])'),
       (match) => match[1]!.split('').join('*'),
     );
-    result = result.replaceAllMapped(
-      RegExp(r'(\d)([a-zA-Z(])'),
-      (m) => '${m[1]!}*${m[2]!}',
-    );
+    final tokens = RegExp(
+      r'(?<![a-zA-Z0-9_])(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|(?:\d+(?:\.\d*)?|\.\d+)|.',
+    ).allMatches(result).map((match) => match[0]!).toList();
+    final withProducts = StringBuffer();
+    for (var i = 0; i < tokens.length; i++) {
+      if (i > 0 &&
+          double.tryParse(tokens[i - 1]) != null &&
+          RegExp(r'^[a-zA-Z(]$').hasMatch(tokens[i])) {
+        withProducts.write('*');
+      }
+      withProducts.write(tokens[i]);
+    }
+    result = withProducts.toString();
     result = result.replaceAllMapped(
       RegExp(r'(\))\s*([a-zA-Z(])'),
       (m) => '${m[1]!}*${m[2]!}',
