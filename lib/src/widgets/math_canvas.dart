@@ -119,6 +119,7 @@ class MathCanvasState extends State<MathCanvas> {
   }
 
   // Widget size
+  bool _hasCanvasDimensions = false;
   double _canvasWidth = 1;
   double _canvasHeight = 1;
 
@@ -215,7 +216,7 @@ class MathCanvasState extends State<MathCanvas> {
       }
     });
     widget.onCoordinateUpdate?.call(curvePoints);
-    widget.onViewportChange?.call(_xMin, _yMin, _xMax, _yMax);
+    _notifyViewportChange();
   }
 
   /// Fit the plotted formulas into the current canvas.
@@ -278,7 +279,7 @@ class MathCanvasState extends State<MathCanvas> {
       _resampleAll();
     });
     widget.onCoordinateUpdate?.call(curvePoints);
-    widget.onViewportChange?.call(_xMin, _yMin, _xMax, _yMax);
+    _notifyViewportChange();
   }
 
   /// Zoom toward the canvas center by one toolbar step.
@@ -310,10 +311,14 @@ class MathCanvasState extends State<MathCanvas> {
       _resampleAll();
     });
     widget.onCoordinateUpdate?.call(curvePoints);
-    widget.onViewportChange?.call(_xMin, _yMin, _xMax, _yMax);
+    _notifyViewportChange();
   }
 
-  /// Set the viewport to specific bounds.
+  /// Set the horizontal bounds and vertical center of the viewport.
+  ///
+  /// The visible vertical range is adjusted to the canvas aspect ratio so
+  /// that both axes use the same scale. Before layout, the requested bounds
+  /// are reported until the canvas dimensions are known.
   Future<void> setViewport(
     double xMin,
     double yMin,
@@ -343,12 +348,19 @@ class MathCanvasState extends State<MathCanvas> {
       }
     });
     widget.onCoordinateUpdate?.call(curvePoints);
-    widget.onViewportChange?.call(_xMin, _yMin, _xMax, _yMax);
+    _notifyViewportChange();
   }
 
-  /// Get the current viewport bounds.
-  (double xMin, double yMin, double xMax, double yMax) get viewport =>
-      (_xMin, _yMin, _xMax, _yMax);
+  /// Get the visible viewport bounds in math coordinates.
+  (double xMin, double yMin, double xMax, double yMax) get viewport {
+    final (yMin, yMax) = _effectiveYBounds();
+    return (_xMin, yMin, _xMax, yMax);
+  }
+
+  void _notifyViewportChange() {
+    final (xMin, yMin, xMax, yMax) = viewport;
+    widget.onViewportChange?.call(xMin, yMin, xMax, yMax);
+  }
 
   /// Get all current curve points (from all formulas).
   List<Map<String, double>> get curvePoints =>
@@ -713,7 +725,7 @@ class MathCanvasState extends State<MathCanvas> {
     });
     final allPoints = curvePoints;
     widget.onCoordinateUpdate?.call(allPoints);
-    widget.onViewportChange?.call(_xMin, _yMin, _xMax, _yMax);
+    _notifyViewportChange();
   }
 
   /// Resample all formulas at the current viewport (updates _formulaCurves).
@@ -752,18 +764,17 @@ class MathCanvasState extends State<MathCanvas> {
 
   /// Match the aspect-corrected vertical bounds used by [GraphPainter].
   (double, double) _effectiveYBounds() {
-    if (_canvasWidth <= 0 || _canvasHeight <= 0) return (_yMin, _yMax);
-    final aspectRatio = _canvasWidth / _canvasHeight;
-    if (!aspectRatio.isFinite || aspectRatio <= 0) return (_yMin, _yMax);
-    final yRange = (_xMax - _xMin) / aspectRatio;
-    if (!yRange.isFinite) return (_yMin, _yMax);
-    final yCenter = _yMin + (_yMax - _yMin) / 2;
-    final effectiveYMin = yCenter - yRange / 2;
-    final effectiveYMax = yCenter + yRange / 2;
-    if (!effectiveYMin.isFinite || !effectiveYMax.isFinite) {
+    if (!_hasCanvasDimensions || _canvasWidth <= 0 || _canvasHeight <= 0) {
       return (_yMin, _yMax);
     }
-    return (effectiveYMin, effectiveYMax);
+    return _visibleYBounds(
+      _xMin,
+      _yMin,
+      _xMax,
+      _yMax,
+      _canvasWidth,
+      _canvasHeight,
+    );
   }
 
   // ==================================================================
@@ -778,10 +789,19 @@ class MathCanvasState extends State<MathCanvas> {
       builder: (context, constraints) {
         final width = constraints.maxWidth;
         final height = constraints.maxHeight;
+        final previousViewport = viewport;
         final dimensionsChanged =
-            width != _canvasWidth || height != _canvasHeight;
+            !_hasCanvasDimensions ||
+            width != _canvasWidth ||
+            height != _canvasHeight;
         _canvasWidth = width;
         _canvasHeight = height;
+        _hasCanvasDimensions = true;
+        if (dimensionsChanged && viewport != previousViewport) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _notifyViewportChange();
+          });
+        }
         if (dimensionsChanged && _formulaCurves.isNotEmpty) {
           _resampleAll();
         }
@@ -840,6 +860,29 @@ enum ArrowDirection { up, right }
 // GraphPainter — CustomPainter that renders the math graph
 // ======================================================================
 
+(double, double) _visibleYBounds(
+  double xMin,
+  double yMin,
+  double xMax,
+  double yMax,
+  double width,
+  double height,
+) {
+  if (width <= 0 || height <= 0) return (yMin, yMax);
+  final aspectRatio = width / height;
+  final xRange = xMax - xMin;
+  if (!aspectRatio.isFinite || aspectRatio <= 0 || xRange <= 0) {
+    return (yMin, yMax);
+  }
+  final yRange = xRange / aspectRatio;
+  if (!yRange.isFinite) return (yMin, yMax);
+  final yCenter = yMin + (yMax - yMin) / 2;
+  final visibleMin = yCenter - yRange / 2;
+  final visibleMax = yCenter + yRange / 2;
+  if (!visibleMin.isFinite || !visibleMax.isFinite) return (yMin, yMax);
+  return (visibleMin, visibleMax);
+}
+
 /// A [CustomPainter] that renders a mathematical graph with:
 /// - Adaptive grid lines
 /// - Coordinate axes with arrows
@@ -879,34 +922,17 @@ class GraphPainter extends CustomPainter {
     this.labelColor = Colors.grey,
   });
 
-  /// The effective yMin that maintains 1:1 pixel aspect ratio.
-  /// Computed from the canvas aspect ratio to avoid stretching.
-  double _effectiveYMin(double canvasWidth, double canvasHeight) {
-    if (canvasWidth <= 0 || canvasHeight <= 0) return yMin;
-    final aspectRatio = canvasWidth / canvasHeight;
-    final xRange = xMax - xMin;
-    if (xRange <= 0) return yMin;
-    final targetYRange = xRange / aspectRatio;
-    final yCenter = (yMin + yMax) / 2.0;
-    return yCenter - targetYRange / 2.0;
-  }
-
-  /// The effective yMax that maintains 1:1 pixel aspect ratio.
-  double _effectiveYMax(double canvasWidth, double canvasHeight) {
-    if (canvasWidth <= 0 || canvasHeight <= 0) return yMax;
-    final aspectRatio = canvasWidth / canvasHeight;
-    final xRange = xMax - xMin;
-    if (xRange <= 0) return yMax;
-    final targetYRange = xRange / aspectRatio;
-    final yCenter = (yMin + yMax) / 2.0;
-    return yCenter + targetYRange / 2.0;
-  }
-
   @override
   void paint(Canvas canvas, Size size) {
     _drawBackground(canvas, size);
-    final eYMin = _effectiveYMin(size.width, size.height);
-    final eYMax = _effectiveYMax(size.width, size.height);
+    final (eYMin, eYMax) = _visibleYBounds(
+      xMin,
+      yMin,
+      xMax,
+      yMax,
+      size.width,
+      size.height,
+    );
     if (showGrid) _drawGrid(canvas, size, eYMin, eYMax);
     if (showAxes) _drawAxes(canvas, size, eYMin, eYMax);
     _drawCurves(canvas, size, eYMin, eYMax);
