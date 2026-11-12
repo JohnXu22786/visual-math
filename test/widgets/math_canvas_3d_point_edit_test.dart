@@ -176,10 +176,16 @@ void main() {
       Point3D.origin + direction * -2,
       Point3D.origin + direction * 2,
     );
-    state.setObjects([circle, line]);
+    Object3D plot() => Object3D.surface(
+      vertices: const [],
+      indices: const [],
+    ).copyWith(documentId: 'plot', formulaRowId: 'row');
+    state.setObjects([circle, line, plot()]);
     state.setTool(ConstructionTool.intersectionPoint);
     await tester.pump();
     await tester.tapAt(screen(state, const Point3D(0, 1, 0)));
+    await tester.pump();
+    state.replaceFormulaObjects([plot()]);
     await tester.pump();
     await tester.tapAt(screen(state, Point3D.origin));
     await tester.pump();
@@ -199,6 +205,28 @@ void main() {
             object.point.distanceTo(Point3D.origin + direction * -1) < 1e-8,
       ),
       isTrue,
+    );
+    final arc = Object3D.curve(
+      points: circle.vertices.take(5).toList(),
+      conic: circle.conic,
+    );
+    state.setObjects([arc, line, plot()]);
+    await tester.pump();
+    await tester.tapAt(
+      screen(state, Point3D(math.cos(math.pi / 8), math.sin(math.pi / 8), 0)),
+    );
+    await tester.pump();
+    state.replaceFormulaObjects([plot()]);
+    await tester.pump();
+    await tester.tapAt(screen(state, Point3D.origin));
+    await tester.pump();
+    final arcPoints = state.objects
+        .where((o) => o.type == Object3DType.point)
+        .toList();
+    expect(arcPoints, hasLength(1));
+    expect(
+      arcPoints.single.point.distanceTo(Point3D.origin + direction),
+      lessThan(1e-8),
     );
   });
 
