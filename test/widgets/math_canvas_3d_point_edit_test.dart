@@ -727,6 +727,52 @@ void main() {
     ]);
   });
 
+  testWidgets('formula refresh preserves polygon retry source points', (
+    tester,
+  ) async {
+    const rejected = [
+      Point3D(-2, -2, 0),
+      Point3D(2, 2, 0),
+      Point3D(-2, 2, 0),
+      Point3D(2, -2, 0),
+    ];
+    const retry = [Point3D(-1, -1, 0), Point3D(1, -1, 0), Point3D(0, 1, 0)];
+    final state = await setup(tester);
+    Object3D plot() => Object3D.surface(
+      vertices: const [],
+      indices: const [],
+    ).copyWith(documentId: 'plot', formulaRowId: 'row');
+    state.setObjects([
+      for (final point in [...rejected, ...retry]) Object3D.point(point),
+      plot(),
+    ]);
+    state.ensureDocumentIds();
+    state.setTool(ConstructionTool.polygon);
+    await tester.pump();
+    for (final point in [...rejected, rejected.first, ...retry.take(2)]) {
+      await tester.tapAt(screen(state, point));
+      await tester.pump();
+    }
+    state.replaceFormulaObjects([plot()]);
+    await tester.pump();
+    for (final point in [retry.last, retry.first]) {
+      await tester.tapAt(screen(state, point));
+      await tester.pump();
+    }
+    final dependency = state.documentConstructionDependencies.single;
+    expect(dependency.sourcePointIds, [
+      for (final object in state.objects.skip(4).take(3)) object.documentId,
+    ]);
+    state.setTool(ConstructionTool.move);
+    await tester.pump();
+    await tester.dragFrom(screen(state, retry.first), const Offset(-45, 24));
+    await tester.pump();
+    expect(state.objects.last.vertices, [
+      state.objects[4].point,
+      ...retry.skip(1),
+    ]);
+  });
+
   testWidgets('nearby closing clicks retain polygon geometry', (tester) async {
     final state = await setup(tester);
     const vertices = [Point3D(-2, 0, 0), Point3D(0, 0, 0), Point3D(0, 2, 0)];
