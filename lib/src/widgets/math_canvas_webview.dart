@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../models/math_expression.dart';
+import 'math_canvas_webview_loader.dart'
+    if (dart.library.html) 'math_canvas_webview_loader_web.dart';
 
 /// Callback types for WebView → Flutter communication.
 typedef OnCoordinateUpdate = void Function(List<Map<String, dynamic>> points);
@@ -163,22 +165,6 @@ class MathCanvasWebView extends StatefulWidget {
       } catch(e) {
         console.error('Flutter bridge error:', e);
       }
-    }
-
-    var readyMessageSent = false;
-    function notifyFlutterReady() {
-      if (readyMessageSent) return;
-      readyMessageSent = true;
-      sendToFlutter({ type: 'ready' });
-    }
-    if (window.flutter_inappwebview) {
-      notifyFlutterReady();
-    } else {
-      window.addEventListener(
-        'flutterInAppWebViewPlatformReady',
-        notifyFlutterReady,
-        { once: true }
-      );
     }
 
     // ==================================================================
@@ -377,6 +363,7 @@ class MathCanvasWebView extends StatefulWidget {
     if (currentExpression) {
       plotFunction(currentExpression, initialParameters);
     }
+    window.mathCanvasInitialized = true;
   </script>
 </body>
 </html>
@@ -391,17 +378,29 @@ class MathCanvasWebView extends StatefulWidget {
 /// called from the parent widget to control the canvas.
 class MathCanvasWebViewState extends State<MathCanvasWebView> {
   InAppWebViewController? _webViewController;
-  bool _isReady = false;
+  final _htmlLoader = MathCanvasHtmlLoader();
+  bool _loadFinished = false;
   Set<String> _allowedParameters = {};
+
+  @override
+  void didUpdateWidget(covariant MathCanvasWebView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialShowWebView && !widget.initialShowWebView) {
+      _webViewController = null;
+      _loadFinished = false;
+    }
+  }
 
   @override
   void dispose() {
     _webViewController = null;
+    _htmlLoader.dispose();
     super.dispose();
   }
 
   void _onWebViewCreated(InAppWebViewController controller) {
     _webViewController = controller;
+    _loadFinished = false;
 
     // Set up JavaScript channel for WebView → Flutter communication.
     // The web platform of flutter_inappwebview does not implement
@@ -446,18 +445,12 @@ class MathCanvasWebViewState extends State<MathCanvasWebView> {
       initialExpression,
       initialParameters: initialParameters,
     );
-    controller.loadData(data: html, mimeType: 'text/html', encoding: 'utf8');
+    _htmlLoader.load(controller, html);
   }
 
   void _handleWebViewMessage(Map<String, dynamic> message) {
     final type = message['type'] as String?;
     switch (type) {
-      case 'ready':
-        if (!_isReady && mounted) {
-          setState(() => _isReady = true);
-          widget.onReady?.call();
-        }
-        break;
       case 'coordinateUpdate':
         final points =
             (message['points'] as List<dynamic>?)
@@ -586,25 +579,44 @@ class MathCanvasWebViewState extends State<MathCanvasWebView> {
             supportZoom: false,
           ),
           onWebViewCreated: _onWebViewCreated,
-          onLoadStop: (ctrl, url) {
-            // The web implementation has no JS handler bridge, so it cannot
-            // deliver the JavaScript ready message.
-            if (mounted && !_isReady) {
-              setState(() => _isReady = true);
+          onLoadStop: (ctrl, url) async {
+            if (_loadFinished || ctrl.platform != _webViewController?.platform)
+              return;
+            var initialized = false;
+            try {
+              initialized =
+                  await ctrl.evaluateJavascript(
+                    source: 'window.mathCanvasInitialized === true',
+                  ) ==
+                  true;
+            } catch (e) {
+              debugPrint('[MathCanvas] Initialization check failed: $e');
+            }
+            if (!mounted ||
+                _loadFinished ||
+                ctrl.platform != _webViewController?.platform)
+              return;
+            setState(() {
+              _loadFinished = true;
+            });
+            if (initialized) {
               widget.onReady?.call();
+            } else {
+              widget.onError?.call('绘图引擎初始化失败');
             }
           },
           onReceivedError: (ctrl, request, error) {
-            if (request.isForMainFrame == false) return;
+            if (request.isForMainFrame == false ||
+                _loadFinished ||
+                ctrl.platform != _webViewController?.platform)
+              return;
             debugPrint('[MathCanvas] Load error: ${error.description}');
+            if (mounted) setState(() => _loadFinished = true);
             widget.onError?.call('WebView加载失败: ${error.description}');
-            if (mounted && !_isReady) {
-              setState(() => _isReady = true);
-            }
           },
         ),
         // Loading overlay
-        if (!_isReady)
+        if (!_loadFinished)
           Positioned.fill(
             child: Container(
               color: cs.surface,
