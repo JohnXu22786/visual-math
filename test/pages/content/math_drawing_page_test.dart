@@ -233,6 +233,80 @@ void main() {
       expect(find.byIcon(Icons.visibility_off), findsOneWidget);
     });
 
+    testWidgets(
+      'hide and delete remove committed plots with an invalid draft',
+      (tester) async {
+        for (final is3D in [false, true]) {
+          for (final delete in [false, true]) {
+            await tester.pumpWidget(_buildTestApp(initialExpression: 'x'));
+            await tester.pumpAndSettle();
+            await tester.tap(find.byTooltip('添加公式'));
+            await tester.pump();
+            await tester.enterText(find.byType(TextField).at(1), 'x+2');
+            if (is3D) {
+              await tester.tap(find.text('3D'));
+              await tester.pumpAndSettle();
+            }
+            await tester.tap(find.byTooltip('绘制').first);
+            await tester.pumpAndSettle();
+            final canvas2D = tester.state<MathCanvasState>(
+              find.byType(MathCanvas, skipOffstage: false),
+            );
+            final canvas3D = tester.state<MathCanvas3DState>(
+              find.byType(MathCanvas3D, skipOffstage: false),
+            );
+            if (is3D) {
+              expect(
+                canvas3D.objects.where((o) => o.formulaRowId != null),
+                hasLength(2),
+              );
+            } else {
+              expect(
+                canvas2D.curvePoints.any(
+                  (p) => (p['y']! - p['x']! - 2).abs() < 0.01,
+                ),
+                isTrue,
+              );
+            }
+            await tester.enterText(find.byType(TextField).first, 'x+');
+            if (delete) {
+              await tester.tap(find.byIcon(Icons.remove_circle_outline).last);
+              await tester.pumpAndSettle();
+              await tester.tap(find.text('删除').last);
+            } else {
+              await tester.tap(find.byIcon(Icons.visibility).last);
+            }
+            await tester.pumpAndSettle();
+            if (is3D) {
+              expect(
+                canvas3D.objects
+                    .where((o) => o.formulaRowId != null)
+                    .map((o) => o.label),
+                ['x'],
+              );
+            } else {
+              expect(canvas2D.curvePoints, isNotEmpty);
+              expect(
+                canvas2D.curvePoints.every(
+                  (p) => (p['y']! - p['x']!).abs() < 0.01,
+                ),
+                isTrue,
+              );
+            }
+            expect(
+              tester
+                  .widget<TextField>(find.byType(TextField).first)
+                  .controller!
+                  .text,
+              'x+',
+            );
+            await tester.pumpWidget(const SizedBox.shrink());
+            await tester.pumpAndSettle();
+          }
+        }
+      },
+    );
+
     testWidgets('each view tracks its own plotted expression', (tester) async {
       await tester.pumpWidget(_buildTestApp());
       await tester.pump();
