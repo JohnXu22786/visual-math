@@ -269,6 +269,35 @@ void main() {
       );
     });
 
+    testWidgets(
+      'partial parameter replacement retains controls required by 3D plots',
+      (tester) async {
+        final controller = MathDrawingController();
+        await tester.pumpWidget(_buildTestApp(controller: controller));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('3D'));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField), 'A*x+B');
+        await tester.pump();
+        await tester.tap(find.byTooltip('绘制'));
+        await tester.pumpAndSettle();
+        controller.setParameters({'A': MathParameter(value: 2)});
+        await tester.pumpAndSettle();
+        expect(controls(tester).parameters.keys, containsAll(['A', 'B']));
+        controls(tester)
+            .onChanged('B', controls(tester).parameters['B']!.withValue(3));
+        await tester.pump();
+        final canvas3d = tester.state<MathCanvas3DState>(
+          find.byType(MathCanvas3D),
+        );
+        final p = canvas3d.objects
+            .singleWhere((o) => o.formulaRowId != null)
+            .vertices
+            .first;
+        expect(p.z, closeTo(2 * p.x + 3, 1e-8));
+      },
+    );
+
     testWidgets('uppercase and lowercase parameters drive 3D surfaces', (
       tester,
     ) async {

@@ -504,7 +504,22 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       _parameters
         ..clear()
         ..addAll(parameters);
-      _activeParameterNames = parameters.keys.toSet();
+      _activeParameterNames = {
+        ...parameters.keys,
+        ..._current3DParameterNames(),
+        for (final entry in _plottedFormulas) ...{
+          ...entry.parsed!.parameters.where(
+            (name) => name != 'x' && name != 'y',
+          ),
+          ..._domainParameterNames(
+            entry.domainStartExpression,
+            entry.domainEndExpression,
+          ),
+        },
+      };
+      for (final name in _activeParameterNames) {
+        _parameters.putIfAbsent(name, MathParameter.new);
+      }
     });
     _refreshParameterCurves();
     _refreshParameterPlots3D();

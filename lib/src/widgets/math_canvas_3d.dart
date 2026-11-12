@@ -1038,10 +1038,10 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       }
       _constructionPreview = construction.previewObject;
     }
+    final currentSelection = selectedPoint ?? selectedObject;
     if (hadSelection &&
-        _selectedPointIndex == null &&
-        _selectedObjectIndex == null) {
-      widget.onSelectionChanged?.call(null);
+        !identical(currentSelection, previousPoint ?? previousObject)) {
+      widget.onSelectionChanged?.call(currentSelection);
     }
     widget.onSceneChanged?.call();
   }

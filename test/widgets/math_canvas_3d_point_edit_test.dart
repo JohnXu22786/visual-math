@@ -100,6 +100,7 @@ void main() {
   Future<MathCanvas3DState> setup(
     WidgetTester tester, {
     VoidCallback? onSceneChanged,
+    ValueChanged<Object3D?>? onSelectionChanged,
     void Function(MathCanvas3DState)? captureScene,
   }) async {
     final key = GlobalKey<MathCanvas3DState>();
@@ -109,6 +110,7 @@ void main() {
           body: MathCanvas3D(
             key: key,
             currentTool: ConstructionTool.point,
+            onSelectionChanged: onSelectionChanged,
             onSceneChanged: () {
               onSceneChanged?.call();
               captureScene?.call(key.currentState!);
@@ -1078,6 +1080,33 @@ void main() {
       expect(state.objects.last.pointA, segment.pointA);
       expect(state.objects.last.pointB, segment.pointB);
     }
+  });
+
+  testWidgets('replot reports moved selected attached point', (tester) async {
+    final observed = <Object3D?>[];
+    final state = await setup(tester, onSelectionChanged: observed.add);
+    Object3D surface(double z) => Object3D.surface(
+      vertices: [Point3D(-2, -2, z), Point3D(2, -2, z), Point3D(0, 2, z)],
+      indices: const [0, 1, 2],
+    ).copyWith(documentId: 'plot', formulaRowId: 'row');
+    state.setObjects([
+      surface(0),
+      Object3D.point(Point3D.origin).copyWith(documentId: 'p'),
+    ]);
+    state.restoreDocumentRelationships(
+      pointAttachments: const [PointAttachment(pointId: 'p', targetId: 'plot')],
+      constructionDependencies: const [],
+    );
+    state.setTool(ConstructionTool.move);
+    await tester.pump();
+    await tester.tapAt(screen(state, Point3D.origin));
+    await tester.pump();
+    expect(state.selectedPoint?.documentId, 'p');
+    observed.clear();
+    state.replaceFormulaObjects([surface(1)]);
+    await tester.pump();
+    expect(state.selectedPoint!.point.z, closeTo(1, 1e-8));
+    expect(observed.last!.point.z, closeTo(1, 1e-8));
   });
 
   testWidgets('replot retains selection of a constructed point', (
