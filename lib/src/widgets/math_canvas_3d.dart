@@ -589,7 +589,9 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     }
     setState(() {
       _cameraTarget = camera.target;
-      _cameraDistance = camera.distance.clamp(0.25, double.maxFinite).toDouble();
+      _cameraDistance = camera.distance
+          .clamp(0.25, double.maxFinite)
+          .toDouble();
       _cameraTheta = camera.theta;
       _cameraPhi = camera.phi.clamp(-dart_math.pi * 0.49, dart_math.pi * 0.49);
     });
