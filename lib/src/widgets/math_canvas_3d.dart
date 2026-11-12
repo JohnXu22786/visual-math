@@ -3852,7 +3852,8 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           dependency.sourcePointIndices.any(changed.contains)) {
         final polygonHasClosingInput =
             dependency.tool == ConstructionTool.polygon &&
-            dependency.points.length > _objects[solidIndex].vertices.length &&
+            dependency.points.length ==
+                _objects[solidIndex].vertices.length + 1 &&
             dependency.sourcePointIndices.first != null &&
             dependency.sourcePointIndices.first ==
                 dependency.sourcePointIndices.last;

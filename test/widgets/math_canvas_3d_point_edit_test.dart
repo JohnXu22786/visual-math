@@ -566,7 +566,7 @@ void main() {
       for (final count in [3, 4]) {
         for (final hasClosingInput in [false, true]) {
           for (final truncated in [false, true]) {
-            if (truncated && (count != 4 || hasClosingInput)) continue;
+            if (truncated && count != 4) continue;
             final state = await setup(tester);
             const points = [
               Point3D(-2, -1, 0),
