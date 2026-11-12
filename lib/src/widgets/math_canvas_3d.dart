@@ -147,6 +147,42 @@ List<Point3D> _clipPolygonToDepthRange(
   return clipAgainst(nearClipped, projection.far, false);
 }
 
+List<Point3D> _clipSegmentToDepthRange(
+  Point3D start,
+  Point3D end,
+  Camera3D camera,
+  Projection3D projection,
+) {
+  if (projection.type != ProjectionType.perspective) return [start, end];
+  final startDepth = worldToScreen(start, camera, projection).z;
+  final endDepth = worldToScreen(end, camera, projection).z;
+  if ((startDepth < projection.near && endDepth < projection.near) ||
+      (startDepth > projection.far && endDepth > projection.far)) {
+    return const [];
+  }
+  final delta = end - start;
+  Point3D atDepth(double depth) =>
+      start + delta * ((depth - startDepth) / (endDepth - startDepth));
+  return [
+    if (startDepth < projection.near)
+      atDepth(projection.near)
+    else if (startDepth > projection.far)
+      atDepth(projection.far)
+    else
+      start,
+    if (endDepth < projection.near)
+      atDepth(projection.near)
+    else if (endDepth > projection.far)
+      atDepth(projection.far)
+    else
+      end,
+  ];
+}
+
+bool _withinDepthRange(ScreenPoint point, Projection3D projection) =>
+    projection.type != ProjectionType.perspective ||
+    (point.z >= projection.near && point.z <= projection.far);
+
 ({Vector3D normal, double d, double normalSquared, Point3D origin})?
 _normalizedPlaneEquation(Object3D plane) {
   final a = plane.planeA;
@@ -6074,18 +6110,25 @@ class MathCanvas3DPainter extends CustomPainter {
   ) {
     final extent = dart_math.max(6.0, camera.distance * 1.2);
     final center = camera.target;
-    final corners = [
-      Point3D(center.x - extent, center.y - extent, 0),
-      Point3D(center.x + extent, center.y - extent, 0),
-      Point3D(center.x + extent, center.y + extent, 0),
-      Point3D(center.x - extent, center.y + extent, 0),
-    ].map((point) => worldToScreen(point, camera, projection)).toList();
-    final path = Path()
-      ..moveTo(corners[0].x, corners[0].y)
-      ..lineTo(corners[1].x, corners[1].y)
-      ..lineTo(corners[2].x, corners[2].y)
-      ..lineTo(corners[3].x, corners[3].y)
-      ..close();
+    final clipped = _clipPolygonToDepthRange(
+      [
+        Point3D(center.x - extent, center.y - extent, 0),
+        Point3D(center.x + extent, center.y - extent, 0),
+        Point3D(center.x + extent, center.y + extent, 0),
+        Point3D(center.x - extent, center.y + extent, 0),
+      ],
+      camera,
+      projection,
+    );
+    if (clipped.length < 3) return;
+    final corners = clipped
+        .map((point) => worldToScreen(point, camera, projection))
+        .toList();
+    final path = Path()..moveTo(corners[0].x, corners[0].y);
+    for (final corner in corners.skip(1)) {
+      path.lineTo(corner.x, corner.y);
+    }
+    path.close();
     canvas.drawPath(
       path,
       Paint()
@@ -6121,38 +6164,32 @@ class MathCanvas3DPainter extends CustomPainter {
     final anchorX = startX - remainderX + (remainderX > 0 ? step : 0);
     final anchorY = startY - remainderY + (remainderY > 0 ? step : 0);
 
+    void addLine(Point3D start, Point3D end) {
+      final clipped = _clipSegmentToDepthRange(start, end, camera, projection);
+      if (clipped.length != 2) return;
+      final p1 = worldToScreen(clipped[0], camera, projection);
+      final p2 = worldToScreen(clipped[1], camera, projection);
+      lines.add([Offset(p1.x, p1.y), Offset(p2.x, p2.y)]);
+    }
+
     // Lines along X (constant Y).
     for (var i = 0; i <= 2 * maxHalfLines; i++) {
       final y = anchorY + i * step;
       if (y > gridCenter.y + gridRange) break;
-      final p1 = worldToScreen(
+      addLine(
         Point3D(gridCenter.x - gridRange, y, 0),
-        camera,
-        projection,
-      );
-      final p2 = worldToScreen(
         Point3D(gridCenter.x + gridRange, y, 0),
-        camera,
-        projection,
       );
-      lines.add([Offset(p1.x, p1.y), Offset(p2.x, p2.y)]);
     }
 
     // Lines along Y (constant X).
     for (var i = 0; i <= 2 * maxHalfLines; i++) {
       final x = anchorX + i * step;
       if (x > gridCenter.x + gridRange) break;
-      final p1 = worldToScreen(
+      addLine(
         Point3D(x, gridCenter.y - gridRange, 0),
-        camera,
-        projection,
-      );
-      final p2 = worldToScreen(
         Point3D(x, gridCenter.y + gridRange, 0),
-        camera,
-        projection,
       );
-      lines.add([Offset(p1.x, p1.y), Offset(p2.x, p2.y)]);
     }
 
     for (final line in lines) {
@@ -6198,8 +6235,14 @@ class MathCanvas3DPainter extends CustomPainter {
     ];
 
     for (final (label, start, tip, color, labelOffset) in axes) {
-      final startScreen = worldToScreen(start, camera, projection);
-      final tipScreen = worldToScreen(tip, camera, projection);
+      final clipped = _clipSegmentToDepthRange(start, tip, camera, projection);
+      if (clipped.length != 2) continue;
+      final startScreen = worldToScreen(clipped[0], camera, projection);
+      final tipScreen = worldToScreen(clipped[1], camera, projection);
+      final tipVisible = _withinDepthRange(
+        worldToScreen(tip, camera, projection),
+        projection,
+      );
       final startPt = Offset(startScreen.x, startScreen.y);
       final tipPt = Offset(tipScreen.x, tipScreen.y);
       final axisPaint = Paint()
@@ -6211,7 +6254,7 @@ class MathCanvas3DPainter extends CustomPainter {
         ..style = PaintingStyle.fill;
 
       canvas.drawLine(startPt, tipPt, axisPaint);
-      _drawArrowHead(canvas, startPt, tipPt, arrowPaint);
+      if (tipVisible) _drawArrowHead(canvas, startPt, tipPt, arrowPaint);
 
       for (var value = -5; value <= 5; value++) {
         if (value == 0) continue;
@@ -6221,6 +6264,7 @@ class MathCanvas3DPainter extends CustomPainter {
           _ => Point3D(0, 0, value.toDouble()),
         };
         final screen = worldToScreen(point, camera, projection);
+        if (!_withinDepthRange(screen, projection)) continue;
         final axisDirection = (tipPt - startPt);
         if (axisDirection.distance < 1) continue;
         final normal =
@@ -6239,6 +6283,7 @@ class MathCanvas3DPainter extends CustomPainter {
         tickPainter.paint(canvas, center + normal * 5);
       }
 
+      if (!tipVisible) continue;
       final tp = TextPainter(
         text: TextSpan(
           text: label,
@@ -6255,11 +6300,13 @@ class MathCanvas3DPainter extends CustomPainter {
     }
 
     final originScreen = worldToScreen(origin, camera, projection);
-    canvas.drawCircle(
-      Offset(originScreen.x, originScreen.y),
-      2.5,
-      Paint()..color = labelColor,
-    );
+    if (_withinDepthRange(originScreen, projection)) {
+      canvas.drawCircle(
+        Offset(originScreen.x, originScreen.y),
+        2.5,
+        Paint()..color = labelColor,
+      );
+    }
   }
 
   void _drawArrowHead(Canvas canvas, Offset from, Offset to, Paint paint) {
