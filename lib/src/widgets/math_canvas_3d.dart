@@ -4738,6 +4738,24 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     final surfaceCandidates = <Point3D>[];
 
     void addSegmentCandidate(Point3D a, Point3D b) {
+      if (projection.type == ProjectionType.perspective) {
+        final depthA = worldToScreen(a, camera, projection).z;
+        final depthB = worldToScreen(b, camera, projection).z;
+        final delta = depthB - depthA;
+        if (!depthA.isFinite || !depthB.isFinite) return;
+        if (delta.abs() < 1e-12) {
+          if (depthA < projection.near || depthA > projection.far) return;
+        } else {
+          final nearT = (projection.near - depthA) / delta;
+          final farT = (projection.far - depthA) / delta;
+          final start = dart_math.max(0.0, dart_math.min(nearT, farT));
+          final end = dart_math.min(1.0, dart_math.max(nearT, farT));
+          if (start > end) return;
+          final edge = b - a;
+          b = a + edge * end;
+          a = a + edge * start;
+        }
+      }
       final aScreen = worldToScreen(a, camera, projection);
       final bScreen = worldToScreen(b, camera, projection);
       final dx = bScreen.x - aScreen.x;
@@ -4813,15 +4831,32 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           final closest = ray.origin + ray.direction * alongRay;
           final distanceToRay = closest.distanceTo(object.sphereCenter);
           final radius = object.sphereRadius.abs();
-          if (distanceToRay <= radius && alongRay >= 0) {
+          if (distanceToRay <= radius) {
             final offset = dart_math.sqrt(
               dart_math.max(
                 0.0,
                 radius * radius - distanceToRay * distanceToRay,
               ),
             );
-            final hitDistance = dart_math.max(0.0, alongRay - offset);
-            surfaceCandidates.add(ray.pointAt(hitDistance));
+            if (projection.type != ProjectionType.perspective) {
+              if (alongRay >= 0) {
+                surfaceCandidates.add(
+                  ray.pointAt(dart_math.max(0.0, alongRay - offset)),
+                );
+              }
+              break;
+            }
+            for (final hitDistance in [alongRay - offset, alongRay + offset]) {
+              if (hitDistance < 0) continue;
+              final hit = ray.pointAt(hitDistance);
+              final depth = worldToScreen(hit, camera, projection).z;
+              if (projection.type == ProjectionType.perspective &&
+                  (depth < projection.near || depth > projection.far)) {
+                continue;
+              }
+              surfaceCandidates.add(hit);
+              break;
+            }
           }
         case Object3DType.vector:
           candidates.addAll([object.point, object.point + object.vector]);
@@ -4845,6 +4880,16 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       var nearestDistance = 14.0;
       for (final candidate in points) {
         final screen = worldToScreen(candidate, camera, projection);
+        if (projection.type == ProjectionType.perspective &&
+            (!screen.z.isFinite ||
+                screen.z <
+                    projection.near -
+                        1e-9 * dart_math.max(1.0, projection.near.abs()) ||
+                screen.z >
+                    projection.far +
+                        1e-9 * dart_math.max(1.0, projection.far.abs()))) {
+          continue;
+        }
         final dx = screen.x - screenX;
         final dy = screen.y - screenY;
         final pixelDistance = dart_math.sqrt(dx * dx + dy * dy);

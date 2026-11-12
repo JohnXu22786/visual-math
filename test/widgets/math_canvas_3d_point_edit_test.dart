@@ -683,6 +683,54 @@ void main() {
     expect(segment.pointA.z, closeTo(1, 1e-9));
   });
 
+  testWidgets('perspective construction ignores hidden snap geometry', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    state.setProjectionType(ProjectionType.perspective);
+    const visible = Point3D(2, 0, 0);
+    final eye = state.camera.position;
+    final hidden = eye + (eye - visible);
+    final tangent = Vector3D(0, 0, 0.2);
+    final objects = [
+      Object3D.point(hidden),
+      Object3D.polyhedron(vertices: [hidden], indices: const []),
+      Object3D.curve(points: [hidden + tangent, hidden + tangent * -1]),
+    ];
+    for (final object in objects) {
+      state.setObjects([object]);
+      state.setTool(ConstructionTool.segment);
+      await tester.pump();
+      await tester.tapAt(screen(state, visible));
+      await tester.pump();
+      final snapped = state.constructionState!.points.single;
+      final depth = worldToScreen(
+        snapped,
+        state.camera,
+        Projection3D.perspective(width: 800, height: 600),
+      ).z;
+      expect(depth, greaterThanOrEqualTo(0.1));
+      state.setTool(ConstructionTool.move);
+    }
+  });
+
+  testWidgets('perspective snaps to the visible exit of a clipped sphere', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    state.setProjectionType(ProjectionType.perspective);
+    final eye = state.camera.position;
+    state.setObjects([Object3D.sphere(center: eye, radius: 2)]);
+    state.setTool(ConstructionTool.segment);
+    await tester.pump();
+    await tester.tapAt(const Offset(500, 300));
+    await tester.pump();
+    expect(
+      state.constructionState!.points.single.distanceTo(eye),
+      closeTo(2, 1e-6),
+    );
+  });
+
   testWidgets('a snapped solid vertex can begin a later construction', (
     tester,
   ) async {
