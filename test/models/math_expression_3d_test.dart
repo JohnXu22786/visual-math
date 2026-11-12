@@ -207,6 +207,69 @@ void main() {
   });
 
   group('Expression3D - LaTeX support', () {
+    test('keyboard templates evaluate in every 3D expression type', () {
+      final surface = Expression3D.surface(
+        r'\sqrt[3]{\left|x\right|}+\left(y\right)!+\log_{2}\left(8\right)+\left\lfloor1.8\right\rfloor',
+      );
+      expect(surface.isValid, isTrue, reason: surface.parseError);
+      expect(surface.evaluateSurface(-27, 3), closeTo(13, 1e-10));
+      expect(surface.parameters, isEmpty);
+      final negativeRoot = Expression3D.surface(r'\sqrt[3]{x}');
+      expect(negativeRoot.evaluateSurface(-8, 0), closeTo(-2, 1e-10));
+      final adjacent = Expression3D.surface(
+        r'\pi x + \alpha y',
+        parameterValues: {'alpha': 2},
+      );
+      expect(
+        adjacent.evaluateSurface(2, 3),
+        closeTo(2 * dart_math.pi + 6, 1e-10),
+      );
+      expect(adjacent.parameters, {'alpha'});
+      final grouped = Expression3D.surface(
+        r'\pi\left(x+1\right)+\alpha\left(y+1\right)',
+        parameterValues: {'alpha': 2},
+      );
+      expect(grouped.isValid, isTrue, reason: grouped.parseError);
+      expect(
+        grouped.evaluateSurface(1, 2),
+        closeTo(2 * dart_math.pi + 6, 1e-10),
+      );
+      final products = Expression3D.surface(
+        r'\pi 2 + \alpha \beta \gamma',
+        parameterValues: {'alpha': 2, 'beta': 3, 'gamma': 4},
+      );
+      expect(
+        products.evaluateSurface(0, 0),
+        closeTo(2 * dart_math.pi + 24, 1e-10),
+      );
+      final spacedCurve = Expression3D.parametricCurve(r'(t\,2,0,0)');
+      expect(spacedCurve.isValid, isTrue, reason: spacedCurve.parseError);
+      expect(spacedCurve.evaluateCurve(3).x, 6);
+
+      final curve = Expression3D.parametricCurve(
+        r'(\left|t\right|,\sqrt[3]{\left|t\right|},\left(3\right)!)',
+      );
+      expect(curve.isValid, isTrue, reason: curve.parseError);
+      final point = curve.evaluateCurve(-27);
+      expect(point.x, 27);
+      expect(point.y, closeTo(3, 1e-10));
+      expect(point.z, 6);
+      expect(curve.parameters, isEmpty);
+
+      final parametric = Expression3D.parametricSurface(
+        r'(\left|u\right|,\sqrt[3]{v},\left(3\right)!)',
+      );
+      expect(parametric.isValid, isTrue, reason: parametric.parseError);
+      final p = parametric.evaluateParametricSurface(-2, 27);
+      expect(p.x, 2);
+      expect(p.y, closeTo(3, 1e-10));
+      expect(p.z, 6);
+      expect(parametric.parameters, isEmpty);
+
+      expect(Expression3D.surface(r'\sqrt[3]{').isValid, isFalse);
+      expect(Expression3D.parametricCurve(r'(\left|t,0,0)').isValid, isFalse);
+    });
+
     test('LaTeX commands work in surface expressions', () {
       final expr = Expression3D.surface(r'\sin(x) \times \cos(y)');
       expect(expr.isValid, isTrue);

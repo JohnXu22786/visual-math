@@ -1,3 +1,5 @@
+import 'math_expression.dart';
+import 'math_input_catalog.dart';
 import 'math_expression_parser.dart';
 import 'math_3d_object.dart';
 
@@ -108,13 +110,14 @@ class Expression3D {
     }
 
     // Normalize
-    final normalized = _normalizeExpression(body);
+    var normalized = '';
 
     // Create evaluator
     String? error;
     double Function(double, double)? evalFn;
 
     try {
+      normalized = _normalizeExpression(body);
       evalFn = _createSurfaceEvaluator(normalized, parameterValues);
     } catch (e) {
       error = e.toString();
@@ -204,8 +207,13 @@ class Expression3D {
 
     String? error;
     double Function(double)? curveX, curveY, curveZ;
+    var params = <String>{};
 
     try {
+      params = _extractParameters(
+        components.map(_normalizeExpression).join(' '),
+        independentVariables: const {'t'},
+      );
       final varNames = ['t'];
       for (final key in parameterValues.keys) {
         if (!varNames.contains(key)) varNames.add(key);
@@ -229,11 +237,6 @@ class Expression3D {
     } catch (e) {
       error = e.toString();
     }
-
-    final params = _extractParameters(
-      components.map(_normalizeExpression).join(' '),
-      independentVariables: const {'t'},
-    );
 
     return Expression3D._(
       rawExpression: trimmed,
@@ -343,8 +346,13 @@ class Expression3D {
 
     String? error;
     double Function(double, double)? surfX, surfY, surfZ;
+    var params = <String>{};
 
     try {
+      params = _extractParameters(
+        components.map(_normalizeExpression).join(' '),
+        independentVariables: const {'u', 'v'},
+      );
       final varNames = ['u', 'v'];
       for (final key in parameterValues.keys) {
         if (!varNames.contains(key)) varNames.add(key);
@@ -368,11 +376,6 @@ class Expression3D {
     } catch (e) {
       error = e.toString();
     }
-
-    final params = _extractParameters(
-      components.map(_normalizeExpression).join(' '),
-      independentVariables: const {'u', 'v'},
-    );
 
     return Expression3D._(
       rawExpression: trimmed,
@@ -456,10 +459,10 @@ class Expression3D {
   ///
   /// Returns null if the format is invalid.
   static List<String>? _parseParametricComponents(String expr) {
-    final trimmed = expr
-        .replaceAll(RegExp(r'\\left\b'), '')
-        .replaceAll(RegExp(r'\\right\b'), '')
-        .trim();
+    var trimmed = expr.trim();
+    if (trimmed.startsWith(r'\left(') && trimmed.endsWith(r'\right)')) {
+      trimmed = trimmed.substring(5, trimmed.length - 7) + ')';
+    }
     // Must be wrapped in parentheses
     if (!trimmed.startsWith('(') || !trimmed.endsWith(')')) return null;
 
@@ -472,9 +475,9 @@ class Expression3D {
     var start = 0;
 
     for (int i = 0; i < inner.length; i++) {
-      if (inner[i] == '(') depth++;
-      if (inner[i] == ')') depth--;
-      if (inner[i] == ',' && depth == 0) {
+      if ('({['.contains(inner[i])) depth++;
+      if (')}]'.contains(inner[i])) depth--;
+      if (inner[i] == ',' && depth == 0 && (i == 0 || inner[i - 1] != r'\')) {
         components.add(inner.substring(start, i).trim());
         start = i + 1;
       }
@@ -492,8 +495,9 @@ class Expression3D {
     if (result.isEmpty) return '';
 
     // Replace LaTeX commands
-    result = _convertLatex(result);
+    result = MathExpression.convertLatexForParser(result);
     result = result.replaceAll('{', '(').replaceAll('}', ')');
+    result = result.replaceAll(RegExp(r'(?<=\w)\s+(?=\w)'), '*');
     result = result.replaceAll(RegExp(r'\s+'), '');
     if (result.isEmpty) return '';
 
@@ -614,6 +618,13 @@ class Expression3D {
       'cot',
       'pow',
       'nrt',
+      'fact',
+      'floor',
+      'ceil',
+      'round',
+      'coth',
+      'sech',
+      'csch',
     };
 
     final result = <String>[...knownVars];
@@ -655,6 +666,13 @@ class Expression3D {
       'cot',
       'pow',
       'nrt',
+      'fact',
+      'floor',
+      'ceil',
+      'round',
+      'coth',
+      'sech',
+      'csch',
     };
     const builtinConstants = {
       'e',
@@ -680,111 +698,6 @@ class Expression3D {
       params.add(name);
     }
     return params;
-  }
-
-  // ==================================================================
-  // LaTeX conversion (reused from MathExpression)
-  // ==================================================================
-
-  static String _convertLatex(String expr) {
-    var result = expr;
-
-    // \frac
-    result = _replaceFrac(result);
-    result = result.replaceAll(RegExp(r'\\left\b'), '');
-    result = result.replaceAll(RegExp(r'\\right\b'), '');
-    result = result.replaceAll(RegExp(r'\\times\b'), '*');
-    result = result.replaceAll(RegExp(r'\\cdot\b'), '*');
-    result = result.replaceAll(RegExp(r'\\div\b'), '/');
-
-    // Functions
-    result = result.replaceAll(RegExp(r'\\sin\b'), 'sin');
-    result = result.replaceAll(RegExp(r'\\cos\b'), 'cos');
-    result = result.replaceAll(RegExp(r'\\tan\b'), 'tan');
-    result = result.replaceAll(RegExp(r'\\cot\b'), 'cot');
-    result = result.replaceAll(RegExp(r'\\sec\b'), 'sec');
-    result = result.replaceAll(RegExp(r'\\csc\b'), 'csc');
-    result = result.replaceAll(RegExp(r'\\sqrt\b'), 'sqrt');
-    result = result.replaceAll(RegExp(r'\\ln\b'), 'ln');
-    result = result.replaceAll(RegExp(r'\\log\b'), 'log');
-    result = result.replaceAll(RegExp(r'\\exp\b'), 'exp');
-    result = result.replaceAll(RegExp(r'\\sinh\b'), 'sinh');
-    result = result.replaceAll(RegExp(r'\\cosh\b'), 'cosh');
-    result = result.replaceAll(RegExp(r'\\tanh\b'), 'tanh');
-    result = result.replaceAll(RegExp(r'\\arcsin\b'), 'asin');
-    result = result.replaceAll(RegExp(r'\\arccos\b'), 'acos');
-    result = result.replaceAll(RegExp(r'\\arctan\b'), 'atan');
-    result = result.replaceAll(RegExp(r'\\abs\b'), 'abs');
-
-    // Constants
-    result = result.replaceAll(RegExp(r'\\pi\b'), 'pi');
-    result = result.replaceAll(RegExp(r'\\infty\b'), 'Infinity');
-
-    // Greek
-    result = result.replaceAll(RegExp(r'\\alpha\b'), 'alpha');
-    result = result.replaceAll(RegExp(r'\\beta\b'), 'beta');
-    result = result.replaceAll(RegExp(r'\\gamma\b'), 'gamma');
-    result = result.replaceAll(RegExp(r'\\delta\b'), 'delta');
-
-    // Strip any remaining backslash commands
-    result = result.replaceAllMapped(RegExp(r'\\([a-zA-Z]+)'), (m) => m[1]!);
-
-    return result;
-  }
-
-  static String _replaceFrac(String expr) {
-    final fracRegex = RegExp(r'\\frac\b');
-    var result = expr;
-    int pos;
-
-    while ((pos = result.indexOf(fracRegex, 0)) != -1) {
-      final start1 = pos + 5;
-      var idx = start1;
-      while (idx < result.length && result[idx] == ' ') {
-        idx++;
-      }
-      if (idx >= result.length || result[idx] != '{') break;
-
-      int depth = 1;
-      idx++;
-      final contentStart1 = idx;
-      while (idx < result.length && depth > 0) {
-        if (result[idx] == '{') {
-          depth++;
-        } else if (result[idx] == '}') {
-          depth--;
-        }
-        if (depth > 0) idx++;
-      }
-      if (depth != 0) break;
-      final content1 = result.substring(contentStart1, idx);
-      idx++;
-      while (idx < result.length && result[idx] == ' ') {
-        idx++;
-      }
-      if (idx >= result.length || result[idx] != '{') break;
-
-      depth = 1;
-      idx++;
-      final contentStart2 = idx;
-      while (idx < result.length && depth > 0) {
-        if (result[idx] == '{') {
-          depth++;
-        } else if (result[idx] == '}') {
-          depth--;
-        }
-        if (depth > 0) idx++;
-      }
-      if (depth != 0) break;
-      final content2 = result.substring(contentStart2, idx);
-      final braceEnd2 = idx;
-
-      final before = result.substring(0, pos);
-      final after = result.substring(braceEnd2 + 1);
-      result = '$before($content1)/($content2)$after';
-    }
-
-    return result;
   }
 
   static String _addImplicitMultiplication(String expr) {
@@ -814,6 +727,15 @@ class Expression3D {
       RegExp(r'(?<![a-zA-Z])([a-zA-Z])(?![a-zA-Z])\('),
       (match) => '${match[1]}*(',
     );
+    result = result.replaceAllMapped(RegExp(r'\b([a-zA-Z]\w*)\('), (match) {
+      final name = match[1]!;
+      if (mathGreekNames.contains(name) ||
+          mathConstantInputs.any((input) => input.name == name) ||
+          name.contains('_')) {
+        return '$name*(';
+      }
+      return match[0]!;
+    });
     return result;
   }
 }
