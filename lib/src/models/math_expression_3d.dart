@@ -633,7 +633,9 @@ class Expression3D {
       final name = m[1]!;
       if (!result.contains(name) &&
           !knownFunctions.contains(name.toLowerCase()) &&
-          !builtinConstants.contains(name)) {
+          !builtinConstants.contains(name) &&
+          !(name == name.toUpperCase() &&
+              builtinConstants.contains(name.toLowerCase()))) {
         result.add(name);
       }
     }

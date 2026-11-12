@@ -63,6 +63,16 @@ void main() {
       expect(n.magnitude, closeTo(1, 1e-10));
     });
 
+    test('normalized preserves direction across finite scales', () {
+      for (final scale in [1e-16, 1e-300, 1e300]) {
+        final n = Vector3D(scale, -scale, 0).normalized();
+        expect(n.x, closeTo(0.7071067811865476, 1e-10));
+        expect(n.y, closeTo(-0.7071067811865476, 1e-10));
+        expect(n.z, 0);
+        expect(n.magnitude, closeTo(1, 1e-10));
+      }
+    });
+
     test('normalized handles zero vector gracefully', () {
       final v = Vector3D(0, 0, 0);
       final n = v.normalized();

@@ -19,6 +19,30 @@ void main() {
       expect(expr.evaluateSurface(-1, 2), closeTo(5, 1e-10));
     });
 
+    test('uppercase constants evaluate in every 3D expression type', () {
+      final surface = Expression3D.surface('PI + E + LN2 + SQRT2');
+      expect(surface.parameters, isEmpty);
+      expect(
+        surface.evaluateSurface(0, 0),
+        closeTo(
+          dart_math.pi + dart_math.e + dart_math.ln2 + dart_math.sqrt2,
+          1e-10,
+        ),
+      );
+
+      final curve = Expression3D.parametricCurve('(PI, E, t)');
+      final curvePoint = curve.evaluateCurve(2);
+      expect(curvePoint.x, closeTo(dart_math.pi, 1e-10));
+      expect(curvePoint.y, closeTo(dart_math.e, 1e-10));
+      expect(curvePoint.z, closeTo(2, 1e-10));
+
+      final parametric = Expression3D.parametricSurface('(PI, E, u+v)');
+      final surfacePoint = parametric.evaluateParametricSurface(2, 3);
+      expect(surfacePoint.x, closeTo(dart_math.pi, 1e-10));
+      expect(surfacePoint.y, closeTo(dart_math.e, 1e-10));
+      expect(surfacePoint.z, closeTo(5, 1e-10));
+    });
+
     test('scientific literals retain exponents and implicit products', () {
       final surface = Expression3D.surface('1e-3x + 2E+2y + .5e1');
       expect(surface.isValid, isTrue);

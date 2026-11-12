@@ -541,7 +541,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
         (isTargetActive?.call() ?? true) &&
         selectionToken is String) {
       await _enqueue(() async {
-        if (!_ready) return;
+        if (!_ready || !(isTargetActive?.call() ?? true)) return;
         _acceptResult(
           await _web!.evaluateJavascript(
             source:

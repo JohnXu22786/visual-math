@@ -472,9 +472,9 @@ Object3D _objectFromJson(Map<String, dynamic> j, String fallbackId) {
   final rawVertices = j['vertices'];
   final rawIndices = j['indices'];
   if (type == Object3DType.curve &&
-      (rawVertices is! List || rawVertices.length < 2)) {
+      (rawVertices is! List || rawVertices.isEmpty)) {
     throw const FormatException(
-      'Curve geometry must contain at least two points.',
+      'Curve geometry must contain at least one point.',
     );
   }
   if ((type == Object3DType.surface || type == Object3DType.polyhedron) &&
