@@ -19,6 +19,29 @@ void main() {
       expect(expr.evaluateSurface(-1, 2), closeTo(5, 1e-10));
     });
 
+    test('scientific literals retain exponents and implicit products', () {
+      final surface = Expression3D.surface('1e-3x + 2E+2y + .5e1');
+      expect(surface.isValid, isTrue);
+      expect(surface.evaluateSurface(2, 3), closeTo(605.002, 1e-10));
+      expect(surface.parameters, isEmpty);
+
+      final parameter = Expression3D.surface(
+        'a1e-3',
+        parameterValues: {'a1': 2},
+      );
+      expect(
+        parameter.evaluateSurface(0, 0),
+        closeTo(2 * dart_math.e - 3, 1e-10),
+      );
+
+      final curve = Expression3D.parametricCurve('(1e-3t, 2E+1, 1e2)');
+      expect(curve.isValid, isTrue);
+      final point = curve.evaluateCurve(2);
+      expect(point.x, closeTo(0.002, 1e-10));
+      expect(point.y, closeTo(20, 1e-10));
+      expect(point.z, closeTo(100, 1e-10));
+    });
+
     test('surface with z= prefix works', () {
       final expr = Expression3D.surface('z = x^2 + y^2');
       expect(expr.isValid, isTrue);
