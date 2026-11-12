@@ -264,6 +264,7 @@ class MathCanvasWebView extends StatefulWidget {
 
         if (!expression || expression.trim() === '') {
           stopCoordinateTracking();
+          hideError();
           return;
         }
 
