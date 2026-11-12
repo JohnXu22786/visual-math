@@ -92,6 +92,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   String? _plotError;
   List<Object3D> _lastReportedScene = const [];
   String? _currentDocumentName;
+  Map<String, dynamic> _currentDocumentExtensions = const {};
 
   @override
   void initState() {
@@ -571,7 +572,11 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     if (!mounted) return;
     var name = await _askDocumentName();
     if (!mounted || name == null || name.isEmpty) return;
-    final document = MathDrawingDocument(name: name, drawing: _makeSnapshot());
+    final document = MathDrawingDocument(
+      name: name,
+      drawing: _makeSnapshot(),
+      extensions: _currentDocumentExtensions,
+    );
     try {
       await widget.documentStorage.save(document);
     } on DuplicateDrawingException {
@@ -638,7 +643,10 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       final document = await widget.documentStorage.load(selected);
       if (document == null) return;
       _restoreSnapshot(document.drawing);
-      setState(() => _currentDocumentName = document.name);
+      setState(() {
+        _currentDocumentName = document.name;
+        _currentDocumentExtensions = document.extensions;
+      });
     } catch (error) {
       _showError('无法打开绘图：$error');
     }
