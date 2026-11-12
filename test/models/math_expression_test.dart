@@ -929,6 +929,221 @@ void main() {
       );
     });
 
+    test(
+      'zero determinant connects all four contour branches at the saddle',
+      () {
+        final expr = MathExpression.fromInput('(x-0.125)*(y-0.125)=0');
+        final segments = expr.sampleContourSegments();
+        final saddle = {'x': 0.125, 'y': 0.125};
+        final incident = segments.where(
+          (segment) => segment.any(
+            (point) => point['x'] == saddle['x'] && point['y'] == saddle['y'],
+          ),
+        );
+        expect(incident.length, 4);
+        final ends = incident.map(
+          (segment) => segment.firstWhere(
+            (point) => point['x'] != saddle['x'] || point['y'] != saddle['y'],
+          ),
+        );
+        expect(ends.map((p) => '${p['x']},${p['y']}').toSet(), {
+          '0.125,0.0',
+          '0.125,0.25',
+          '0.0,0.125',
+          '0.25,0.125',
+        });
+
+        final offCenter = MathExpression.fromInput('(x-0.1)*(y-0.1)=0')
+            .sampleContourSegments(
+              xMin: 0,
+              xMax: 0.25,
+              yMin: 0,
+              yMax: 0.25,
+              gridX: 1,
+              gridY: 1,
+            );
+        expect(
+          offCenter
+              .where(
+                (segment) => segment.any(
+                  (p) =>
+                      (p['x']! - 0.1).abs() < 1e-12 &&
+                      (p['y']! - 0.1).abs() < 1e-12,
+                ),
+              )
+              .length,
+          4,
+        );
+
+        final curved =
+            MathExpression.fromInput(
+              '(x-0.125)*(y-0.125)+x*(0.25-x)*y*(0.25-y)=0',
+            ).sampleContourSegments(
+              xMin: 0,
+              xMax: 0.25,
+              yMin: 0,
+              yMax: 0.25,
+              gridX: 1,
+              gridY: 1,
+            );
+        expect(
+          curved
+              .expand((s) => s)
+              .where((p) => p['x'] == 0.125 && p['y'] == 0.125),
+          isEmpty,
+        );
+        final cancelled = MathExpression.fromInput('(x-0.1)*(y-0.1)+1-1=0')
+            .sampleContourSegments(
+              xMin: 0,
+              xMax: 0.25,
+              yMin: 0,
+              yMax: 0.25,
+              gridX: 1,
+              gridY: 1,
+            );
+        expect(
+          cancelled
+              .where(
+                (segment) => segment.any(
+                  (p) =>
+                      (p['x']! - 0.1).abs() < 1e-7 &&
+                      (p['y']! - 0.1).abs() < 1e-7,
+                ),
+              )
+              .length,
+          4,
+        );
+
+        final rotated =
+            MathExpression.fromInput(
+              '(x-0.4+2*(y-7/15))*(2*(x-0.4)-(y-7/15))=0',
+            ).sampleContourSegments(
+              xMin: 0,
+              xMax: 1,
+              yMin: 0,
+              yMax: 1,
+              gridX: 1,
+              gridY: 1,
+            );
+        expect(
+          rotated
+              .where(
+                (segment) => segment.any(
+                  (p) =>
+                      (p['x']! - 0.4).abs() < 1e-12 &&
+                      (p['y']! - 7 / 15).abs() < 1e-12,
+                ),
+              )
+              .length,
+          4,
+        );
+
+        final closeBranches =
+            MathExpression.fromInput('(x-0.1)*(y-0.1)+1e-25=0')
+                .sampleContourSegments(
+                  xMin: 0,
+                  xMax: 0.25,
+                  yMin: 0,
+                  yMax: 0.25,
+                  gridX: 1,
+                  gridY: 1,
+                );
+        expect(
+          closeBranches.where(
+            (segment) => segment.every(
+              (p) =>
+                  (p['x']! - 0.1).abs() < 0.003 &&
+                  (p['y']! - 0.1).abs() < 0.003,
+            ),
+          ),
+          isNotEmpty,
+        );
+
+        final subtlyShifted =
+            MathExpression.fromInput('(x-0.125)*(y-0.125+0.001*x*(0.25-x))=0')
+                .sampleContourSegments(
+                  xMin: 0,
+                  xMax: 0.25,
+                  yMin: 0,
+                  yMax: 0.25,
+                  gridX: 1,
+                  gridY: 1,
+                );
+        expect(
+          subtlyShifted.where(
+            (segment) =>
+                segment.any((p) => p['x'] == 0.125 && p['y'] == 0.125) &&
+                segment.any((p) => p['x'] == 0 || p['x'] == 0.25),
+          ),
+          isEmpty,
+        );
+
+        final separated =
+            MathExpression.fromInput('(x-0.125)*(y-0.125)+1e-32=0')
+                .sampleContourSegments(
+                  xMin: 0,
+                  xMax: 0.25,
+                  yMin: 0,
+                  yMax: 0.25,
+                  gridX: 1,
+                  gridY: 1,
+                );
+        expect(
+          separated
+              .expand((s) => s)
+              .where(
+                (p) =>
+                    (p['x']! - 0.125).abs() < 1e-12 &&
+                    (p['y']! - 0.125).abs() < 1e-12,
+              ),
+          isEmpty,
+        );
+
+        final nearEdge =
+            MathExpression.fromInput(
+              'ln(x-0.999999999)*(x-1.00000001)*(y-0.1)=0',
+            ).sampleContourSegments(
+              xMin: 1,
+              xMax: 1.25,
+              yMin: 0,
+              yMax: 0.25,
+              gridX: 1,
+              gridY: 1,
+            );
+        expect(
+          nearEdge
+              .where(
+                (segment) => segment.any(
+                  (p) =>
+                      (p['x']! - 1.00000001).abs() < 1e-10 &&
+                      (p['y']! - 0.1).abs() < 1e-10,
+                ),
+              )
+              .length,
+          4,
+        );
+
+        final shifted =
+            MathExpression.fromInput('(x-0.5)*((y-0.5)+x*(1-x)*y*(1-y))=0')
+                .sampleContourSegments(
+                  xMin: 0,
+                  xMax: 1,
+                  yMin: 0,
+                  yMax: 1,
+                  gridX: 1,
+                  gridY: 1,
+                );
+        expect(
+          shifted.where(
+            (segment) =>
+                segment.any((p) => p['x'] == 0.5 && p['y'] == 0.5) &&
+                segment.any((p) => p['x'] == 0 || p['x'] == 1),
+          ),
+          isEmpty,
+        );
+      },
+    );
+
     test('marching squares segments are all finite and properly paired', () {
       final expr = MathExpression.fromInput('y^2=4x');
       final segments = expr.sampleContourSegments(
