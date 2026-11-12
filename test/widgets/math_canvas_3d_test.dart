@@ -4,6 +4,12 @@ import 'package:visual_math/visual_math.dart';
 
 class _CountingCanvas extends Fake implements Canvas {
   int lines = 0;
+  int circles = 0;
+
+  @override
+  void drawCircle(Offset center, double radius, Paint paint) {
+    circles++;
+  }
 
   @override
   void drawRect(Rect rect, Paint paint) {}
@@ -151,6 +157,27 @@ void main() {
   });
 
   group('MathCanvas3DPainter', () {
+    test('perspective points respect the near plane', () {
+      int paintPoint(double y, ProjectionType projectionType) {
+        final canvas = _CountingCanvas();
+        MathCanvas3DPainter(
+          cameraTheta: 0,
+          cameraPhi: 0,
+          projectionType: projectionType,
+          showAxes: false,
+          showPlane: false,
+          showGrid: false,
+          showLabels: false,
+          objects: [Object3D.point(Point3D(0, y, 0))],
+        ).paint(canvas, const Size(400, 400));
+        return canvas.circles;
+      }
+
+      expect(paintPoint(9.95, ProjectionType.perspective), 0);
+      expect(paintPoint(9.8, ProjectionType.perspective), 1);
+      expect(paintPoint(9.95, ProjectionType.parallel), 1);
+    });
+
     test('grid rendering remains bounded at large camera distances', () {
       for (final distance in [10.0, 10000.0, 1e20, double.maxFinite]) {
         final canvas = _CountingCanvas();

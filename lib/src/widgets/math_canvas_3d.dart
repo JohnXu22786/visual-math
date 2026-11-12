@@ -1098,8 +1098,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       if (!screen.x.isFinite || !screen.y.isFinite || !screen.z.isFinite) {
         continue;
       }
-      if (object.isTextAnnotation &&
-          _projectionType == ProjectionType.perspective &&
+      if (_projectionType == ProjectionType.perspective &&
           (screen.z < projection.near || screen.z > projection.far)) {
         continue;
       }
@@ -1258,12 +1257,10 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       return startDepth + (endDepth - startDepth) * fraction;
     }
 
-    bool isVisibleDepth(Object3D object, double depth) =>
+    bool isVisibleDepth(double depth) =>
         depth.isFinite &&
         (projection.type == ProjectionType.parallel ||
-            (object.type == Object3DType.point && !object.isTextAnnotation
-                ? depth > 0
-                : depth >= projection.near && depth <= projection.far));
+            (depth >= projection.near && depth <= projection.far));
 
     bool insideTriangle(Offset point, Offset a, Offset b, Offset c) {
       final d1 =
@@ -1452,7 +1449,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
                 );
                 if (hit != null && _pointInTriangle3D(hit, a, b, c)) {
                   final candidateDepth = depthAt(hit);
-                  if (isVisibleDepth(object, candidateDepth)) {
+                  if (isVisibleDepth(candidateDepth)) {
                     distance = 0;
                     hitDepth = dart_math
                         .min(hitDepth, candidateDepth)
@@ -1476,7 +1473,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
                   projectedDepths[next],
                 );
                 if (edgeDistance < distance &&
-                    isVisibleDepth(object, edgeDepth)) {
+                    isVisibleDepth(edgeDepth)) {
                   distance = edgeDistance;
                   hitDepth = edgeDepth;
                 }
@@ -1548,7 +1545,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           nearestDistance <= _pointMarkerRadius &&
           (hitDepth - nearestDepth).abs() <= _hitDepthTieTolerance;
       if (distance < 24 &&
-          isVisibleDepth(object, hitDepth) &&
+          isVisibleDepth(hitDepth) &&
           !nearestPointWinsMarkerOverlap &&
           (nearestIndex < 0 ||
               distance < nearestDistance - _hitScreenDistanceTieTolerance ||
@@ -4759,6 +4756,10 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       var nearestDistance = 14.0;
       for (final candidate in points) {
         final screen = worldToScreen(candidate, camera, projection);
+        if (projection.type == ProjectionType.perspective &&
+            (screen.z < projection.near || screen.z > projection.far)) {
+          continue;
+        }
         final dx = screen.x - screenX;
         final dy = screen.y - screenY;
         final pixelDistance = dart_math.sqrt(dx * dx + dy * dy);
@@ -6128,8 +6129,8 @@ class MathCanvas3DPainter extends CustomPainter {
     final screen = worldToScreen(obj.point, camera, projection);
     if (projection.type == ProjectionType.perspective &&
         (screen.z <= 0 ||
-            (obj.isTextAnnotation &&
-                (screen.z < projection.near || screen.z > projection.far)))) {
+            screen.z < projection.near ||
+            screen.z > projection.far)) {
       return;
     }
     final objAlpha = ((obj.color >> 24) & 0xFF) / 255.0;
