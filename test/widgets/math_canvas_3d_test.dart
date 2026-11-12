@@ -2,6 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:visual_math/visual_math.dart';
 
+class _CountingCanvas extends Fake implements Canvas {
+  int lines = 0;
+
+  @override
+  void drawRect(Rect rect, Paint paint) {}
+
+  @override
+  void drawLine(Offset p1, Offset p2, Paint paint) {
+    lines++;
+    if (lines > 200) throw StateError('Grid has too many lines');
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -138,6 +151,20 @@ void main() {
   });
 
   group('MathCanvas3DPainter', () {
+    test('grid rendering remains bounded at large camera distances', () {
+      for (final distance in [10.0, 10000.0, 1e20, double.maxFinite]) {
+        final canvas = _CountingCanvas();
+        MathCanvas3DPainter(
+          cameraDistance: distance,
+          cameraTarget: const Point3D(1e20, 1e20, 0),
+          showGrid: true,
+          showPlane: false,
+          showAxes: false,
+        ).paint(canvas, const Size(400, 400));
+        expect(canvas.lines, inInclusiveRange(1, 200));
+      }
+    });
+
     test('painter shouldRepaint returns true when camera changes', () {
       const painter1 = MathCanvas3DPainter(
         cameraDistance: 10,
