@@ -6788,7 +6788,7 @@ class MathCanvas3DPainter extends CustomPainter {
       ..color = color
       ..style = PaintingStyle.fill;
     final strokePaint = Paint()
-      ..color = color.withValues(alpha: 0.3)
+      ..color = color.withValues(alpha: objAlpha * obj.opacity * 0.3)
       ..strokeWidth = 0.5
       ..style = PaintingStyle.stroke;
 
