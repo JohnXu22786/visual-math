@@ -195,7 +195,7 @@ class MathCanvasWebView extends StatefulWidget {
         try {
           if (!board || !expression) return;
           var bbox = board.getBoundingBox();
-          var xMin = bbox[0], yMin = bbox[1], xMax = bbox[2], yMax = bbox[3];
+          var xMin = bbox[0], yMin = bbox[3], xMax = bbox[2], yMax = bbox[1];
           var step = (xMax - xMin) / 50;
           var points = [];
           for (var x = xMin; x <= xMax; x += step) {
@@ -240,9 +240,9 @@ class MathCanvasWebView extends StatefulWidget {
         sendToFlutter({
           type: 'viewportChange',
           xMin: bbox[0],
-          yMin: bbox[1],
+          yMin: bbox[3],
           xMax: bbox[2],
-          yMax: bbox[3]
+          yMax: bbox[1]
         });
       } catch(e) {}
     });
@@ -264,6 +264,7 @@ class MathCanvasWebView extends StatefulWidget {
 
         if (!expression || expression.trim() === '') {
           stopCoordinateTracking();
+          hideError();
           return;
         }
 
@@ -365,7 +366,7 @@ class MathCanvasWebView extends StatefulWidget {
     window.setViewport = function(xMin, yMin, xMax, yMax) {
       if (![xMin, yMin, xMax, yMax].every(Number.isFinite) ||
           xMax <= xMin || yMax <= yMin) return;
-      board.setBoundingBox([xMin, yMin, xMax, yMax]);
+      board.setBoundingBox([xMin, yMax, xMax, yMin]);
     };
 
     // ==================================================================

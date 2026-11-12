@@ -4316,6 +4316,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         _pointBeforeDrag = null;
         _pointEditPointer = null;
       });
+      if (_pointMoved) widget.onSceneChanged?.call();
       widget.onViewportChange?.call();
     }
     if (event.pointer != _mousePointer) return;
