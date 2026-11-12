@@ -420,6 +420,86 @@ class MathExpression {
       return null;
     }
 
+    // Look for an interior minimum of |f| on an edge whose endpoints have
+    // the same sign. This detects some tangential roots; finite samples cannot
+    // distinguish every root from an arbitrarily small positive minimum.
+    double? touching(
+      double x1,
+      double y1,
+      double x2,
+      double y2,
+      double a,
+      double b,
+    ) {
+      if (a == 0 || b == 0 || (a < 0) != (b < 0)) return null;
+      double value(double t) {
+        try {
+          return evaluator2D(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t).abs();
+        } catch (_) {
+          return double.nan;
+        }
+      }
+
+      final middle = value(0.5);
+      if (!middle.isFinite) return null;
+      final scale = a.abs() > b.abs() ? a.abs() : b.abs();
+      // A quadratic estimate identifies a possible interior minimum even when
+      // it is closer to an endpoint than to the middle of the edge.
+      final curvature = a.abs() - 2 * middle + b.abs();
+      final vertex = curvature > scale * 1e-12
+          ? 0.5 + (a.abs() - b.abs()) / (4 * curvature)
+          : double.nan;
+      var lo = 0.0;
+      var hi = 1.0;
+      if (!vertex.isFinite || vertex <= 0 || vertex >= 1) {
+        final samples = [a.abs(), value(0.25), middle, value(0.75), b.abs()];
+        var minimum = -1;
+        for (var i = 1; i < 4; i++) {
+          if (samples[i].isFinite &&
+              samples[i] < samples[i - 1] &&
+              samples[i] < samples[i + 1]) {
+            minimum = i;
+            break;
+          }
+        }
+        if (minimum < 0) return null;
+        lo = (minimum - 1) / 4;
+        hi = (minimum + 1) / 4;
+      }
+      const fraction = 0.3819660112501051;
+      var left = lo + (hi - lo) * fraction;
+      var right = hi - (hi - lo) * fraction;
+      var leftValue = value(left);
+      var rightValue = value(right);
+      for (var i = 0; i < 80; i++) {
+        if (!leftValue.isFinite || !rightValue.isFinite) return null;
+        if (leftValue < rightValue) {
+          hi = right;
+          right = left;
+          rightValue = leftValue;
+          left = lo + (hi - lo) * fraction;
+          leftValue = value(left);
+        } else {
+          lo = left;
+          left = right;
+          leftValue = rightValue;
+          right = hi - (hi - lo) * fraction;
+          rightValue = value(right);
+        }
+      }
+      final t = leftValue < rightValue ? left : right;
+      final residual = leftValue < rightValue ? leftValue : rightValue;
+      return residual <= scale * 1e-14 ? t : null;
+    }
+
+    bool crossingsHaveSameSign(double a, double b, double c, double d) {
+      final values = [a, b, c, d].where((v) => v != 0);
+      return values.isNotEmpty &&
+          values.every((v) => (v < 0) == (values.first < 0));
+    }
+
+    final tangentCache = <(int, int, bool), double?>{};
+
     // Marching squares: for each cell, find zero-crossing edge pairs.
     for (int ix = 0; ix < gridX; ix++) {
       for (int iy = 0; iy < gridY; iy++) {
@@ -496,6 +576,103 @@ class MathExpression {
           rightT = crossing(x + stepX, y, x + stepX, y + stepY, v10, v11);
         }
 
+        double? edgeTouch(
+          double x1,
+          double y1,
+          double x2,
+          double y2,
+          double a,
+          double b,
+        ) {
+          if (zeroEdges.isNotEmpty && (a == 0) != (b == 0)) {
+            const inset = 0.001;
+            final lo = a == 0 ? inset : 0.0;
+            final hi = b == 0 ? 1 - inset : 1.0;
+            try {
+              final xa = x1 + (x2 - x1) * lo;
+              final ya = y1 + (y2 - y1) * lo;
+              final xb = x1 + (x2 - x1) * hi;
+              final yb = y1 + (y2 - y1) * hi;
+              final t = touching(
+                xa,
+                ya,
+                xb,
+                yb,
+                evaluator2D(xa, ya),
+                evaluator2D(xb, yb),
+              );
+              return t == null ? null : lo + (hi - lo) * t;
+            } catch (_) {
+              return null;
+            }
+          }
+          return touching(x1, y1, x2, y2, a, b);
+        }
+
+        double? cachedTouch(
+          int column,
+          int row,
+          bool horizontal,
+          double x1,
+          double y1,
+          double x2,
+          double y2,
+          double a,
+          double b,
+        ) {
+          // Zero endpoint handling depends on the current cell's zero edges.
+          if (a == 0 || b == 0) return edgeTouch(x1, y1, x2, y2, a, b);
+          final key = (column, row, horizontal);
+          if (tangentCache.containsKey(key)) return tangentCache[key];
+          return tangentCache[key] = edgeTouch(x1, y1, x2, y2, a, b);
+        }
+
+        // Adjacent cells share each grid edge.
+        final tangentBottom = cachedTouch(
+          ix,
+          iy,
+          true,
+          x,
+          y,
+          x + stepX,
+          y,
+          v00,
+          v10,
+        );
+        final tangentTop = cachedTouch(
+          ix,
+          iy + 1,
+          true,
+          x,
+          y + stepY,
+          x + stepX,
+          y + stepY,
+          v01,
+          v11,
+        );
+        final tangentLeft = cachedTouch(
+          ix,
+          iy,
+          false,
+          x,
+          y,
+          x,
+          y + stepY,
+          v00,
+          v01,
+        );
+        final tangentRight = cachedTouch(
+          ix + 1,
+          iy,
+          false,
+          x + stepX,
+          y,
+          x + stepX,
+          y + stepY,
+          v10,
+          v11,
+        );
+
         bool zeroEdgeHasUndefinedInterior(List<Map<String, double>> edge) {
           for (final t in [0.25, 0.5, 0.75]) {
             try {
@@ -510,6 +687,72 @@ class MathExpression {
             } catch (_) {
               return true;
             }
+          }
+          return false;
+        }
+
+        // Probe just off a touching segment: on the zero set itself a pole can
+        // be hidden by a zero numerator. A sharp, unbounded-looking peak in
+        // the nearby values makes the segment uncertain, so refine the cell.
+        bool tangentHasSuspectedPole(List<Map<String, double>> edge) {
+          final dx = edge[1]['x']! - edge[0]['x']!;
+          final dy = edge[1]['y']! - edge[0]['y']!;
+          var side = 1.0;
+          double probe(double t) {
+            try {
+              return evaluator2D(
+                edge[0]['x']! + dx * t - dy * 0.001 * side,
+                edge[0]['y']! + dy * t + dx * 0.001 * side,
+              ).abs();
+            } catch (_) {
+              return double.infinity;
+            }
+          }
+
+          const divisions = 8;
+          var values = [
+            for (var i = 0; i <= divisions; i++) probe(i / divisions),
+          ];
+          if (values.any((v) => !v.isFinite)) {
+            side = -1;
+            values = [
+              for (var i = 0; i <= divisions; i++) probe(i / divisions),
+            ];
+          }
+          if (values.any((v) => !v.isFinite)) return true;
+          bool sharpPeak(double lo, double hi, double baseline) {
+            for (var j = 0; j < 50; j++) {
+              final left = lo + (hi - lo) / 3;
+              final right = hi - (hi - lo) / 3;
+              final a = probe(left);
+              final b = probe(right);
+              if (!a.isFinite ||
+                  !b.isFinite ||
+                  a > baseline * 1e6 ||
+                  b > baseline * 1e6)
+                return true;
+              if (a < b) {
+                lo = left;
+              } else {
+                hi = right;
+              }
+            }
+            return false;
+          }
+
+          if (values[0] > values[1] && sharpPeak(0, 1 / divisions, values[0]))
+            return true;
+          if (values[divisions] > values[divisions - 1] &&
+              sharpPeak((divisions - 1) / divisions, 1, values[divisions]))
+            return true;
+          for (var i = 1; i < divisions; i++) {
+            if (values[i] <= values[i - 1] || values[i] <= values[i + 1])
+              continue;
+            if (values[i] > values[i - 1] * 100 &&
+                values[i] > values[i + 1] * 100)
+              return true;
+            if (sharpPeak((i - 1) / divisions, (i + 1) / divisions, values[i]))
+              return true;
           }
           return false;
         }
@@ -530,6 +773,38 @@ class MathExpression {
           }
         }
 
+        bool hasMultipleMinima(double x1, double y1, double x2, double y2) {
+          try {
+            final values = [
+              for (var i = 0; i <= 8; i++)
+                evaluator2D(
+                  x1 + (x2 - x1) * i / 8,
+                  y1 + (y2 - y1) * i / 8,
+                ).abs(),
+            ];
+            var minima = 0;
+            for (var i = 1; i < 8; i++) {
+              if (values[i] < values[i - 1] && values[i] < values[i + 1])
+                minima++;
+            }
+            return minima > 1;
+          } catch (_) {
+            return false;
+          }
+        }
+
+        if (refinements > 0 &&
+            ((tangentBottom != null && hasMultipleMinima(x, y, x + stepX, y)) ||
+                (tangentTop != null &&
+                    hasMultipleMinima(x, y + stepY, x + stepX, y + stepY)) ||
+                (tangentLeft != null &&
+                    hasMultipleMinima(x, y, x, y + stepY)) ||
+                (tangentRight != null &&
+                    hasMultipleMinima(x + stepX, y, x + stepX, y + stepY)))) {
+          refineCell();
+          continue;
+        }
+
         // A rejected edge may separate two otherwise valid crossings.
         if (((s00 < 0) != (s10 < 0) && bottomT == null) ||
             ((s01 < 0) != (s11 < 0) && topT == null) ||
@@ -541,6 +816,135 @@ class MathExpression {
         }
 
         final cellSegments = <List<Map<String, double>>>[...zeroEdges];
+        final tangentPoints = <Map<String, double>>[
+          if (tangentBottom != null) {'x': x + tangentBottom * stepX, 'y': y},
+          if (tangentTop != null) {'x': x + tangentTop * stepX, 'y': y + stepY},
+          if (tangentLeft != null) {'x': x, 'y': y + tangentLeft * stepY},
+          if (tangentRight != null)
+            {'x': x + stepX, 'y': y + tangentRight * stepY},
+        ];
+        if (zeroEdges.isEmpty && crossingsHaveSameSign(v00, v10, v01, v11)) {
+          if (v00 == 0) tangentPoints.add({'x': x, 'y': y});
+          if (v10 == 0) tangentPoints.add({'x': x + stepX, 'y': y});
+          if (v01 == 0) tangentPoints.add({'x': x, 'y': y + stepY});
+          if (v11 == 0) tangentPoints.add({'x': x + stepX, 'y': y + stepY});
+        }
+        // One bounded subdivision improves separation when nearby touching
+        // roots occupy the same sampled valley on a coarse grid edge.
+        if (refinements == 3 && tangentPoints.length >= 2) {
+          refineCell();
+          continue;
+        }
+        final zeroCorners = [v00, v10, v01, v11].where((v) => v == 0).length;
+        if (refinements > 0 &&
+            zeroEdges.isEmpty &&
+            ((tangentPoints.length == 1 &&
+                    (bottomT != null ||
+                        topT != null ||
+                        leftT != null ||
+                        rightT != null)) ||
+                (zeroCorners >= 2 &&
+                    !crossingsHaveSameSign(v00, v10, v01, v11)))) {
+          refineCell();
+          continue;
+        }
+        if (tangentPoints.length > 2 && refinements > 0) {
+          refineCell();
+          continue;
+        }
+        if (tangentPoints.length == 1 && zeroEdges.length == 1) {
+          // Estimate the branch at the zero edge from two nearby parallel
+          // sections; otherwise retain the conservative refinement path.
+          final edge = zeroEdges.single;
+          final horizontal = edge[0]['y'] == edge[1]['y'];
+          final direction = horizontal
+              ? (edge[0]['y'] == y ? stepY : -stepY)
+              : (edge[0]['x'] == x ? stepX : -stepX);
+          double? section(double fraction) {
+            try {
+              final x1 =
+                  edge[0]['x']! + (horizontal ? 0 : direction * fraction);
+              final y1 =
+                  edge[0]['y']! + (horizontal ? direction * fraction : 0);
+              final x2 =
+                  edge[1]['x']! + (horizontal ? 0 : direction * fraction);
+              final y2 =
+                  edge[1]['y']! + (horizontal ? direction * fraction : 0);
+              return touching(
+                x1,
+                y1,
+                x2,
+                y2,
+                evaluator2D(x1, y1),
+                evaluator2D(x2, y2),
+              );
+            } catch (_) {
+              return null;
+            }
+          }
+
+          final a = section(0.001);
+          final b = section(0.002);
+          if (a != null && b != null) {
+            final t = 2 * a - b;
+            if (t >= 0 && t <= 1) {
+              tangentPoints.add({
+                'x': edge[0]['x']! + (edge[1]['x']! - edge[0]['x']!) * t,
+                'y': edge[0]['y']! + (edge[1]['y']! - edge[0]['y']!) * t,
+              });
+            }
+          }
+          if (tangentPoints.length == 1 && refinements > 0) {
+            refineCell();
+            continue;
+          }
+        }
+        if (tangentPoints.length == 2) {
+          final a = tangentPoints[0];
+          final b = tangentPoints[1];
+          final scale = [
+            v00.abs(),
+            v10.abs(),
+            v01.abs(),
+            v11.abs(),
+          ].reduce((a, b) => a > b ? a : b);
+          var uncertain = false;
+          for (final t in [0.25, 0.5, 0.75]) {
+            try {
+              final residual = evaluator2D(
+                a['x']! + (b['x']! - a['x']!) * t,
+                a['y']! + (b['y']! - a['y']!) * t,
+              ).abs();
+              if (!residual.isFinite ||
+                  residual > scale * (zeroCorners >= 2 ? 1e-8 : 0.01)) {
+                uncertain = true;
+                break;
+              }
+            } catch (_) {
+              uncertain = true;
+              break;
+            }
+          }
+          if (uncertain) {
+            if (refinements > 0) {
+              refineCell();
+            } else {
+              result.addAll(zeroEdges);
+            }
+            continue;
+          }
+        }
+        if (tangentPoints.length == 2) {
+          if (tangentHasSuspectedPole(tangentPoints)) {
+            if (refinements > 0) {
+              refineCell();
+            } else {
+              result.addAll(zeroEdges);
+            }
+            continue;
+          }
+          cellSegments.add(tangentPoints);
+        }
 
         // Count crossings and connect pairs
         final crossings = [
