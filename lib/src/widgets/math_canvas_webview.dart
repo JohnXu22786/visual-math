@@ -182,9 +182,10 @@ class MathCanvasWebView extends StatefulWidget {
           if (!board || !expression) return;
           var bbox = board.getBoundingBox();
           var xMin = bbox[0], yMin = bbox[3], xMax = bbox[2], yMax = bbox[1];
-          var step = (xMax - xMin) / 50;
           var points = [];
-          for (var x = xMin; x <= xMax; x += step) {
+          for (var i = 0; i <= 50; i++) {
+            var fraction = i / 50;
+            var x = xMin * (1 - fraction) + xMax * fraction;
             var func = new Function('x', paramStr + 'return ' + expression + ';');
             try {
               var y = func(x);
