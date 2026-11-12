@@ -756,7 +756,9 @@ void main() {
     },
   );
 
-  testWidgets('committing a point drag publishes the moved scene', (tester) async {
+  testWidgets('committing a point drag publishes the moved scene', (
+    tester,
+  ) async {
     final published = <Point3D>[];
     final state = await setup(
       tester,
