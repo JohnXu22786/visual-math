@@ -4,7 +4,7 @@ import 'package:flutter/material.dart' hide Viewport;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:visual_math/visual_math.dart';
 
-MathDrawingSnapshot snapshot() => MathDrawingSnapshot(
+MathDrawingSnapshot snapshot({List<Object3D>? scene}) => MathDrawingSnapshot(
   formulas: [
     FormulaEntry(
       id: 'f-17',
@@ -45,26 +45,33 @@ MathDrawingSnapshot snapshot() => MathDrawingSnapshot(
   showZeros2D: false,
   showExtrema2D: true,
   polygonSides3D: 8,
-  scene3D: [
-    Object3D.sphere(
-      center: const Point3D(2, 3, 4),
-      radius: 6,
-      color: 0xFFABCDEF,
-      opacity: 0.4,
-      label: 'sphere',
-    ).copyWith(
-      documentId: 'sphere-id',
-      visible: false,
-      edgeWidth: 4.5,
-      showEdges: false,
-    ),
-    Object3D.point(const Point3D(1, 2, 3))
-        .copyWith(documentId: 'point-id', edgeWidth: 3.25, showEdges: false),
-    Object3D.surface(
-      vertices: const [Point3D(0, 0, 0), Point3D(1, 0, 0), Point3D(0, 1, 0)],
-      indices: const [0, 1, 2],
-    ).copyWith(documentId: 'surface-id'),
-  ],
+  scene3D:
+      scene ??
+      [
+        Object3D.sphere(
+          center: const Point3D(2, 3, 4),
+          radius: 6,
+          color: 0xFFABCDEF,
+          opacity: 0.4,
+          label: 'sphere',
+        ).copyWith(
+          documentId: 'sphere-id',
+          visible: false,
+          edgeWidth: 4.5,
+          showEdges: false,
+        ),
+        Object3D.point(
+          const Point3D(1, 2, 3),
+        ).copyWith(documentId: 'point-id', edgeWidth: 3.25, showEdges: false),
+        Object3D.surface(
+          vertices: const [
+            Point3D(0, 0, 0),
+            Point3D(1, 0, 0),
+            Point3D(0, 1, 0),
+          ],
+          indices: const [0, 1, 2],
+        ).copyWith(documentId: 'surface-id'),
+      ],
   constructionDependencies3D: [
     ConstructionDependency(
       objectId: 'sphere-id',
@@ -244,42 +251,47 @@ void main() {
     );
   });
 
-  test('opens version 1 drawings written before persistence fields were added', () {
-    final json = MathDrawingDocument(name: 'legacy', drawing: snapshot())
-        .toJson();
-    final drawing = json['drawing'] as Map<String, dynamic>;
-    for (final formula in drawing['formulas'] as List<dynamic>) {
-      final fields = formula as Map<String, dynamic>;
-      fields.remove('domainStart');
-      fields.remove('domainEnd');
-      fields.remove('includeDomainStart');
-      fields.remove('includeDomainEnd');
-    }
-    drawing.remove('view2D');
-    drawing.remove('polygonSides3D');
-    final view3D = drawing['view3D'] as Map<String, dynamic>;
-    view3D.remove('pointAttachments');
-    view3D.remove('constructionDependencies');
-    for (final object in view3D['objects'] as List<dynamic>) {
-      (object as Map<String, dynamic>).remove('id');
-    }
+  test(
+    'opens version 1 drawings written before persistence fields were added',
+    () {
+      final json = MathDrawingDocument(
+        name: 'legacy',
+        drawing: snapshot(),
+      ).toJson();
+      final drawing = json['drawing'] as Map<String, dynamic>;
+      for (final formula in drawing['formulas'] as List<dynamic>) {
+        final fields = formula as Map<String, dynamic>;
+        fields.remove('domainStart');
+        fields.remove('domainEnd');
+        fields.remove('includeDomainStart');
+        fields.remove('includeDomainEnd');
+      }
+      drawing.remove('view2D');
+      drawing.remove('polygonSides3D');
+      final view3D = drawing['view3D'] as Map<String, dynamic>;
+      view3D.remove('pointAttachments');
+      view3D.remove('constructionDependencies');
+      for (final object in view3D['objects'] as List<dynamic>) {
+        (object as Map<String, dynamic>).remove('id');
+      }
 
-    final decoded = MathDrawingDocument.decode(jsonEncode(json)).drawing;
-    expect(decoded.formulas.first.domainStartExpression, '');
-    expect(decoded.formulas.first.includeDomainStart, isTrue);
-    expect(decoded.polygonSides3D, 6);
-    expect(decoded.showAxes2D, isTrue);
-    expect(decoded.showGrid2D, isTrue);
-    expect(decoded.showZeros2D, isFalse);
-    expect(decoded.showExtrema2D, isFalse);
-    expect(decoded.scene3D.map((object) => object.documentId), [
-      'object-0',
-      'object-1',
-      'object-2',
-    ]);
-    expect(decoded.pointAttachments3D, isEmpty);
-    expect(decoded.constructionDependencies3D, isEmpty);
-  });
+      final decoded = MathDrawingDocument.decode(jsonEncode(json)).drawing;
+      expect(decoded.formulas.first.domainStartExpression, '');
+      expect(decoded.formulas.first.includeDomainStart, isTrue);
+      expect(decoded.polygonSides3D, 6);
+      expect(decoded.showAxes2D, isTrue);
+      expect(decoded.showGrid2D, isTrue);
+      expect(decoded.showZeros2D, isFalse);
+      expect(decoded.showExtrema2D, isFalse);
+      expect(decoded.scene3D.map((object) => object.documentId), [
+        'object-0',
+        'object-1',
+        'object-2',
+      ]);
+      expect(decoded.pointAttachments3D, isEmpty);
+      expect(decoded.constructionDependencies3D, isEmpty);
+    },
+  );
 
   test('rejects mesh indices that cannot describe stored vertices', () {
     final json = MathDrawingDocument(name: 'x', drawing: snapshot()).toJson();
@@ -297,6 +309,27 @@ void main() {
       () => MathDrawingDocument.decode(jsonEncode(json)),
       throwsFormatException,
     );
+  });
+
+  test('round trips a curve with a single sampled point', () {
+    final points = Expression3D.parametricCurve(
+      '(t, sqrt(-t), 0)',
+      tMin: 0,
+      tMax: 1,
+    ).sampleCurve();
+    expect(points, [Point3D.origin]);
+    final drawing = snapshot(
+      scene: [
+        ...snapshot().scene3D,
+        Object3D.curve(points: points),
+      ],
+    );
+
+    final decoded = MathDrawingDocument.decode(
+      MathDrawingDocument(name: 'curve', drawing: drawing).encode(),
+    );
+    expect(decoded.drawing.scene3D.last.type, Object3DType.curve);
+    expect(decoded.drawing.scene3D.last.vertices, points);
   });
 
   test('rejects mesh and curve objects with missing geometry', () {
