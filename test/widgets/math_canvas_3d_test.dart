@@ -355,18 +355,29 @@ void main() {
       expect(painter1.shouldRepaint(painter2), isFalse);
     });
 
-    test('painter shouldRepaint returns true when objects change', () {
+    test('painter shouldRepaint returns true when objects are replaced', () {
       const painter1 = MathCanvas3DPainter(
+        objects: [Object3D.point(Point3D(1, 2, 3))],
+      );
+      const painter2 = MathCanvas3DPainter();
+      expect(painter1.shouldRepaint(painter2), isTrue);
+    });
+
+    test('painter shouldRepaint detects in-place object changes', () {
+      final objects = <Object3D>[];
+      final painter1 = MathCanvas3DPainter(
         cameraDistance: 10,
         cameraTheta: 0,
         cameraPhi: 0.785,
-        objects: [Object3D.point(Point3D(1, 2, 3))],
+        objects: objects,
         objectsVersion: 1,
       );
-      const painter2 = MathCanvas3DPainter(
+      objects.add(const Object3D.point(Point3D(1, 2, 3)));
+      final painter2 = MathCanvas3DPainter(
         cameraDistance: 10,
         cameraTheta: 0,
         cameraPhi: 0.785,
+        objects: objects,
         objectsVersion: 0,
       );
       expect(painter1.shouldRepaint(painter2), isTrue);
