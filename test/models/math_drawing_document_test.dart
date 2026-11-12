@@ -4,7 +4,7 @@ import 'package:flutter/material.dart' hide Viewport;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:visual_math/visual_math.dart';
 
-MathDrawingSnapshot snapshot() => MathDrawingSnapshot(
+MathDrawingSnapshot snapshot({List<Object3D>? scene}) => MathDrawingSnapshot(
   formulas: [
     FormulaEntry(
       id: 'f-17',
@@ -45,7 +45,7 @@ MathDrawingSnapshot snapshot() => MathDrawingSnapshot(
   showZeros2D: false,
   showExtrema2D: true,
   polygonSides3D: 8,
-  scene3D: [
+  scene3D: scene ?? [
     Object3D.sphere(
       center: const Point3D(2, 3, 4),
       radius: 6,
@@ -297,6 +297,24 @@ void main() {
       () => MathDrawingDocument.decode(jsonEncode(json)),
       throwsFormatException,
     );
+  });
+
+  test('round trips a curve with a single sampled point', () {
+    final points = Expression3D.parametricCurve(
+      '(t, sqrt(-t), 0)',
+      tMin: 0,
+      tMax: 1,
+    ).sampleCurve();
+    expect(points, [Point3D.origin]);
+    final drawing = snapshot(
+      scene: [...snapshot().scene3D, Object3D.curve(points: points)],
+    );
+
+    final decoded = MathDrawingDocument.decode(
+      MathDrawingDocument(name: 'curve', drawing: drawing).encode(),
+    );
+    expect(decoded.drawing.scene3D.last.type, Object3DType.curve);
+    expect(decoded.drawing.scene3D.last.vertices, points);
   });
 
   test('rejects mesh and curve objects with missing geometry', () {
