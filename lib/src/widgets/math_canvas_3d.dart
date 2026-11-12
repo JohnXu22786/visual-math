@@ -856,7 +856,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   }
 
   /// Set the objects to render.
-  void setObjects(List<Object3D> objects) {
+  void setObjects(List<Object3D> objects, {bool notify = true}) {
     final hadSelection =
         _selectedObjectIndex != null || _selectedPointIndex != null;
     final preservesExistingObjects =
@@ -887,12 +887,66 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         ..addAll(objects);
       _objectsVersion++;
     });
-    if (!_completingConstruction) widget.onSceneChanged?.call();
-    if (hadSelection &&
+    if (notify && !_completingConstruction) widget.onSceneChanged?.call();
+    if (notify &&
+        hadSelection &&
         _selectedObjectIndex == null &&
         _selectedPointIndex == null) {
       widget.onSelectionChanged?.call(null);
     }
+  }
+
+  /// Replace plotted objects while retaining constructed objects and their
+  /// relationships. Remove from the end so construction indices stay valid.
+  void replaceFormulaObjects(List<Object3D> objects) {
+    final hadSelection =
+        _selectedObjectIndex != null || _selectedPointIndex != null;
+    final attachments = documentPointAttachments;
+    final dependencies = documentConstructionDependencies;
+    for (var i = _objects.length - 1; i >= 0; i--) {
+      if (_objects[i].formulaRowId != null) {
+        _removeObjectAt(i, notify: false);
+      }
+    }
+    setObjects([..._objects, ...objects], notify: false);
+    final ids = _objects.map((object) => object.documentId).toSet();
+    restoreDocumentRelationships(
+      pointAttachments: attachments
+          .where(
+            (attachment) =>
+                ids.contains(attachment.pointId) &&
+                ids.contains(attachment.targetId),
+          )
+          .toList(),
+      constructionDependencies: [
+        for (final dependency in dependencies)
+          if (ids.contains(dependency.objectId))
+            ConstructionDependency(
+              objectId: dependency.objectId,
+              tool: dependency.tool,
+              inputPoints: dependency.inputPoints,
+              sourcePointIds: [
+                for (final id in dependency.sourcePointIds)
+                  if (id == null || ids.contains(id)) id else null,
+              ],
+              workingPlaneNormal: dependency.workingPlaneNormal,
+              polygonSides: dependency.polygonSides,
+            ),
+      ],
+    );
+    for (var i = 0; i < _objects.length; i++) {
+      if (objects.any(
+        (object) => object.documentId == _objects[i].documentId,
+      )) {
+        _propagateConstructionAndAttachmentMoves(i);
+      }
+    }
+    if (hadSelection &&
+        _selectedPointIndex == null &&
+        _selectedObjectIndex == null) {
+      widget.onSelectionChanged?.call(null);
+    }
+    widget.onSceneChanged?.call();
   }
 
   /// Clear all objects.
@@ -3578,7 +3632,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     );
   }
 
-  void _removeObjectAt(int index) {
+  void _removeObjectAt(int index, {bool notify = true}) {
     final hadSelection =
         _selectedObjectIndex != null || _selectedPointIndex != null;
     setState(() {
@@ -3601,6 +3655,14 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         ..clear()
         ..addAll(dependencies);
       _objects.removeAt(index);
+      for (var i = 0; i < _constructionPointSources.length; i++) {
+        final source = _constructionPointSources[i];
+        if (source == index) {
+          _constructionPointSources[i] = null;
+        } else if (source != null && source > index) {
+          _constructionPointSources[i] = source - 1;
+        }
+      }
       if (_selectedPointIndex == index) {
         _selectedPointIndex = null;
       } else if (_selectedPointIndex != null && _selectedPointIndex! > index) {
@@ -3653,13 +3715,13 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       }
       _objectsVersion++;
     });
-    if (hadSelection) {
+    if (notify && hadSelection) {
       final selectedIndex = _selectedPointIndex ?? _selectedObjectIndex;
       widget.onSelectionChanged?.call(
         selectedIndex == null ? null : _objects[selectedIndex],
       );
     }
-    widget.onSceneChanged?.call();
+    if (notify) widget.onSceneChanged?.call();
   }
 
   bool _wouldCreateAttachmentCycle(int pointIndex, int targetIndex) {

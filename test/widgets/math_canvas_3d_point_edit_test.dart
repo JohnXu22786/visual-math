@@ -583,6 +583,38 @@ void main() {
     await moveAndCheck(reopened);
   });
 
+  testWidgets('replot keeps the source of a construction in progress', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    const point = Point3D(-2, 0, 0);
+    state.setObjects([
+      Object3D.surface(
+        vertices: const [],
+        indices: const [],
+      ).copyWith(documentId: 'plot:1', formulaRowId: 'row'),
+      Object3D.point(point).copyWith(documentId: 'p'),
+    ]);
+    state.setTool(ConstructionTool.segment);
+    await tester.pump();
+    await tester.tapAt(screen(state, point));
+    await tester.pump();
+    expect(state.constructionState!.points, [point]);
+    state.replaceFormulaObjects([
+      Object3D.surface(
+        vertices: const [],
+        indices: const [],
+      ).copyWith(documentId: 'plot:1', formulaRowId: 'row'),
+    ]);
+    await tester.pump();
+    await tester.tapAt(screen(state, const Point3D(2, 2, 0)));
+    await tester.pump();
+    expect(
+      state.documentConstructionDependencies.single.sourcePointIds.first,
+      'p',
+    );
+  });
+
   testWidgets('a snapped solid vertex can begin a later construction', (
     tester,
   ) async {
