@@ -21,6 +21,17 @@ void main() {
       expect(evaluate({}), closeTo(13.414213562373096, 1e-12));
     });
 
+    test('factorial stops after overflow for very large inputs', () {
+      final evaluate = MathExpressionParser.parse('fact(x)', variables: ['x']);
+
+      expect(evaluate({'x': 0}), 1);
+      expect(evaluate({'x': 170}).isFinite, isTrue);
+      expect(evaluate({'x': 171}), double.infinity);
+      expect(evaluate({'x': 10000000000}), double.infinity);
+      expect(() => evaluate({'x': -1}), throwsArgumentError);
+      expect(() => evaluate({'x': 1.5}), throwsArgumentError);
+    });
+
     test('reports unsupported functions, identifiers, and function arity', () {
       expect(
         () => MathExpressionParser.parse('unknown(1)', variables: const []),

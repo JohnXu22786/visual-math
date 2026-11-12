@@ -315,6 +315,7 @@ class MathExpressionParser {
     var result = 1.0;
     for (var factor = 2; factor <= value; factor++) {
       result *= factor;
+      if (!result.isFinite) return result;
     }
     return result;
   }

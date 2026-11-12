@@ -608,7 +608,14 @@ class MathExpression {
     // Try y = (with optional spaces)
     final yMatch = RegExp(r'^y\s*=\s*').firstMatch(expr);
     if (yMatch != null) {
-      return expr.substring(yMatch.end);
+      final rhs = expr.substring(yMatch.end);
+      try {
+        final normalized = _normalizeExpression(rhs);
+        if (RegExp(r'\by\b').hasMatch(normalized)) return expr;
+      } on FormatException {
+        // Parsing below reports invalid input through the normal error path.
+      }
+      return rhs;
     }
     return expr;
   }

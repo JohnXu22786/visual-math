@@ -21,6 +21,32 @@ void main() {
       expect(expr.evaluator(2), closeTo(4, 1e-10));
     });
 
+    test('y prefix retains equations that depend on y', () {
+      for (final input in ['y=x+y', 'y=2y+x', r'y=\frac{y}{2}+x', 'y=xy']) {
+        final expr = MathExpression.fromInput(input);
+        expect(expr.isValid, isTrue, reason: input);
+        expect(expr.type, MathExpressionType.implicit, reason: input);
+        expect(expr.parameters, isEmpty, reason: input);
+        expect(
+          expr.implicitEvaluator!(0, 2),
+          closeTo(
+            input == r'y=\frac{y}{2}+x'
+                ? 1
+                : input == 'y=2y+x'
+                ? -2
+                : input == 'y=xy'
+                ? 2
+                : 0,
+            1e-10,
+          ),
+          reason: input,
+        );
+      }
+      final explicit = MathExpression.fromInput('y=yellow+x');
+      expect(explicit.type, MathExpressionType.explicit);
+      expect(explicit.parameters, {'yellow'});
+    });
+
     test('evaluates expression with f(x)= prefix', () {
       final expr = MathExpression.fromInput('f(x) = x^2');
       expect(expr.isValid, isTrue);
