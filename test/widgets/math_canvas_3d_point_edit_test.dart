@@ -776,6 +776,61 @@ void main() {
     expect(segment.pointA.z, closeTo(1, 1e-9));
   });
 
+  testWidgets('construction closure ignores clipped perspective first points', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    state.setProjectionType(ProjectionType.perspective);
+    final eye = state.camera.position;
+    final projection = Projection3D.perspective(width: 800, height: 600);
+    for (final tool in [
+      ConstructionTool.polygon,
+      ConstructionTool.area,
+      ConstructionTool.polyline,
+      ConstructionTool.locus,
+    ]) {
+      for (final factor in [-0.1, 0.005, 200.0]) {
+        final first = eye + (Point3D.origin - eye) * factor;
+        final projected = worldToScreen(first, state.camera, projection);
+        expect(
+          projected.z < projection.near || projected.z > projection.far,
+          isTrue,
+        );
+        state.setTool(tool);
+        state.constructionState!.addPoint(first);
+        state.constructionState!.addPoint(const Point3D(2, 0, 0));
+        state.constructionState!.addPoint(const Point3D(0, 2, 0));
+        await tester.pump();
+        await tester.tapAt(Offset(projected.x, projected.y));
+        await tester.pump();
+        expect(
+          state.constructionState!.points,
+          hasLength(4),
+          reason: '$tool, $factor',
+        );
+        expect(state.objects, isEmpty);
+        state.setTool(ConstructionTool.move);
+      }
+      final view = state.camera.viewMatrix();
+      final right = Vector3D(view[0], view[4], view[8]).normalized();
+      final first = eye + (Point3D.origin - eye) * 0.005 + right * 0.01;
+      state.setTool(tool);
+      state.constructionState!.addPoint(first);
+      state.constructionState!.addPoint(first + right * 0.5);
+      state.constructionState!.addPoint(first + right * 1.0);
+      await tester.pump();
+      await tester.tapAt(screen(state, first));
+      await tester.pump();
+      expect(
+        state.constructionState!.points,
+        hasLength(4),
+        reason: '$tool same plane',
+      );
+      expect(state.objects, isEmpty);
+      state.setTool(ConstructionTool.move);
+    }
+  });
+
   testWidgets('perspective construction ignores hidden snap geometry', (
     tester,
   ) async {

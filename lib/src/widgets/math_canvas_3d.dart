@@ -5152,16 +5152,28 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         position == null) {
       return false;
     }
-    final first = worldToScreen(
-      construction.points.first,
-      camera,
-      _currentProjection(),
-    );
+    final projection = _currentProjection();
+    final first = worldToScreen(construction.points.first, camera, projection);
     if (!first.x.isFinite || !first.y.isFinite) return false;
+    if (projection.type == ProjectionType.perspective &&
+        (first.z < projection.near || first.z > projection.far)) {
+      return false;
+    }
     const closureRadius = 14.0;
     final dx = first.x - position.dx;
     final dy = first.y - position.dy;
     return dx * dx + dy * dy <= closureRadius * closureRadius;
+  }
+
+  bool _isFirstConstructionPointInDepthRange() {
+    final points = _construction?.points;
+    if (points == null || points.isEmpty) return true;
+    final projection = _currentProjection();
+    if (projection.type != ProjectionType.perspective) return true;
+    final depth = worldToScreen(points.first, camera, projection).z;
+    return depth.isFinite &&
+        depth >= projection.near &&
+        depth <= projection.far;
   }
 
   void _handleConstructionPoint(Point3D worldPt) {
@@ -5199,6 +5211,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       worldPt,
       workingPlaneNormal: _constPlaneNormal,
       closeToFirstPoint: closeToFirstPoint,
+      allowWorldClosure: _isFirstConstructionPointInDepthRange(),
     );
     if (construction.points.length > previousPointCount) {
       _constructionPointSources.add(sourcePointIndex);
