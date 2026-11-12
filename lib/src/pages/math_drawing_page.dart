@@ -694,13 +694,14 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     if (!mounted || selected == null) return;
     try {
       final document = await widget.documentStorage.load(selected);
-      if (document == null) return;
+      if (!mounted || document == null) return;
       _restoreSnapshot(document.drawing);
       setState(() {
         _currentDocumentName = document.name;
         _currentDocumentExtensions = document.extensions;
       });
     } catch (error) {
+      if (!mounted) return;
       _showError('无法打开绘图：$error');
     }
   }
