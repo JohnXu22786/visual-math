@@ -1,7 +1,7 @@
 import 'dart:math' as dart_math;
 
 import 'package:flutter/gestures.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Viewport;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:visual_math/visual_math.dart';
@@ -35,6 +35,37 @@ void main() {
     await tester.pump();
     return key.currentState!;
   }
+
+  testWidgets('restores a zoomed-out camera from a .vm document', (
+    tester,
+  ) async {
+    final state = await setupCanvas(tester);
+    for (var i = 0; i < 30; i++) {
+      state.zoomOut();
+    }
+    final savedCamera = state.camera;
+    expect(savedCamera.distance, greaterThan(1000));
+    final document = MathDrawingDocument(
+      name: 'zoomed out',
+      drawing: MathDrawingSnapshot(
+        formulas: const [],
+        parameters: const {},
+        activeView: ViewMode.mode3D,
+        activeTool: ConstructionTool.move,
+        viewport2D: const Viewport(xMin: -5, yMin: -5, xMax: 5, yMax: 5),
+        camera3D: savedCamera,
+        projection3D: ProjectionType.parallel,
+        scene3D: const [],
+      ),
+    );
+    final restored = MathDrawingDocument.decode(document.encode())
+        .drawing
+        .camera3D;
+    state.resetView();
+    state.setCamera(restored);
+    await tester.pump();
+    expect(state.camera.distance, savedCamera.distance);
+  });
 
   group('MathCanvas3D - gesture direction fixes', () {
     testWidgets('dragging right increases the orbit angle', (tester) async {
