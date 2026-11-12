@@ -644,14 +644,7 @@ class MathCanvasState extends State<MathCanvas> {
   }
 
   double? _resolveDomainValue(String? source, Map<String, double> parameters) {
-    if (source == null || source.trim().isEmpty) return null;
-    final expression = MathExpression.fromInput(
-      source,
-      parameterValues: parameters,
-    );
-    if (!expression.isValid) return null;
-    final value = expression.evaluator(0);
-    return value.isFinite ? value : null;
+    return MathExpression.resolveDomainBound(source, parameters);
   }
 
   // ==================================================================
