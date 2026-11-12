@@ -127,6 +127,87 @@ void main() {
     },
   );
 
+  testWidgets('replacing the native editor resets its lifecycle', (
+    tester,
+  ) async {
+    await _withTargetPlatformOverride(TargetPlatform.android, () async {
+      final originalPlatform = InAppWebViewPlatform.instance;
+      final platform = _EditorPlatform();
+      InAppWebViewPlatform.instance = platform;
+      addTearDown(
+        () => InAppWebViewPlatform.instance =
+            originalPlatform ?? _EditorPlatform(),
+      );
+      final source = TextEditingController(text: 'x');
+      final key = GlobalKey<MathFormulaFieldState>();
+      var readinessNotifications = 0;
+      Widget app(bool showWebView) => MaterialApp(
+        home: Scaffold(
+          body: MathFormulaField(
+            key: key,
+            controller: source,
+            showWebView: showWebView,
+            onReadyChanged: () => readinessNotifications++,
+            mathematical: true,
+            onModeChanged: (_) {},
+            onActivate: () {},
+            onChanged: () {},
+            onSubmitted: () {},
+            label: 'formula',
+          ),
+        ),
+      );
+      await tester.pumpWidget(app(true));
+      final old = platform.editor!;
+      final oldController = old.controllerFromPlatform<InAppWebViewController>(
+        old.controller,
+      );
+      old.params.onWebViewCreated!(oldController);
+      old.params.onLoadStop!(oldController, null);
+      await tester.pump();
+      final pending = Completer<dynamic>();
+      old.controller.commandResult = pending;
+      final command = key.currentState!.command('insert', 'z');
+      await tester.pump();
+      final oldScriptCount = old.controller.scripts.length;
+      final notificationsBeforeToggle = readinessNotifications;
+      await tester.pumpWidget(app(false));
+      expect(readinessNotifications, notificationsBeforeToggle + 1);
+      source.text = 'y';
+      await tester.pump();
+      expect(old.controller.scripts.length, oldScriptCount);
+      await tester.pumpWidget(app(true));
+      expect(readinessNotifications, notificationsBeforeToggle + 2);
+      expect(key.currentState!.ready, isFalse);
+      final current = platform.editor!;
+      final currentController = current
+          .controllerFromPlatform<InAppWebViewController>(current.controller);
+      current.params.onWebViewCreated!(currentController);
+      current.params.onLoadStop!(
+        current.controllerFromPlatform<InAppWebViewController>(
+          current.controller,
+        ),
+        null,
+      );
+      await tester.pump();
+      expect(key.currentState!.ready, isTrue);
+      pending.complete({
+        'revision': key.currentState!.revision,
+        'sequence': 1,
+        'edited': true,
+        'latex': 'stale',
+      });
+      await command;
+      expect(source.text, 'y');
+      expect(
+        current.controller.scripts.any((s) => s.contains('setSource("y"')),
+        isTrue,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      source.dispose();
+    });
+  });
+
   testWidgets('native clipboard writer errors leave MathLive ready', (
     tester,
   ) async {
@@ -840,6 +921,7 @@ class _NativeEditor extends PlatformInAppWebViewWidget {
 class _EditorController extends PlatformInAppWebViewController {
   final scripts = <String>[];
   String? cutSelectionResponse;
+  Completer<dynamic>? commandResult;
   Future<void>? snapshotBlock;
   _EditorController()
     : super.implementation(
@@ -852,6 +934,9 @@ class _EditorController extends PlatformInAppWebViewController {
     ContentWorld? contentWorld,
   }) async {
     scripts.add(source);
+    if (source.contains('command(') && commandResult != null) {
+      return commandResult!.future;
+    }
     if (source.contains('cutSelection')) return cutSelectionResponse;
     if (source.contains('snapshot()')) await snapshotBlock;
     return null;

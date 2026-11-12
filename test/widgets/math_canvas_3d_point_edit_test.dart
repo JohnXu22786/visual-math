@@ -813,6 +813,47 @@ void main() {
     await moveAndCheck(reopened);
   });
 
+  testWidgets('scene replacement detaches sources in a construction', (
+    tester,
+  ) async {
+    for (final clearFirst in [false, true]) {
+      final state = await setup(tester);
+      const original = Point3D(-2, 0, 0);
+      const replacement = Point3D(0, 0, 0);
+      const second = Point3D(2, 0, 0);
+      state.setObjects([Object3D.point(original).copyWith(documentId: 'old')]);
+      state.setTool(ConstructionTool.segment);
+      await tester.pump();
+      await tester.tapAt(screen(state, original));
+      await tester.pump();
+      expect(state.constructionState!.points, [original]);
+
+      if (clearFirst) state.clearObjects();
+      state.setObjects([
+        Object3D.point(replacement).copyWith(documentId: 'replacement'),
+        Object3D.point(second).copyWith(documentId: 'second'),
+      ]);
+      await tester.pump();
+      await tester.tapAt(screen(state, second));
+      await tester.pump();
+      expect(state.documentConstructionDependencies.single.sourcePointIds, [
+        null,
+        'second',
+      ]);
+      final segment = state.objects.last;
+      state.setTool(ConstructionTool.move);
+      await tester.pump();
+      await tester.dragFrom(screen(state, replacement), const Offset(-45, 24));
+      await tester.pump();
+      expect(
+        state.objects.first.point.distanceTo(replacement),
+        greaterThan(0.1),
+      );
+      expect(state.objects.last.pointA, segment.pointA);
+      expect(state.objects.last.pointB, segment.pointB);
+    }
+  });
+
   testWidgets('replot keeps the source of a construction in progress', (
     tester,
   ) async {
