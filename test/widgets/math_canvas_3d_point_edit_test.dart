@@ -756,6 +756,26 @@ void main() {
     },
   );
 
+  testWidgets('committing a point drag publishes the moved scene', (tester) async {
+    final published = <Point3D>[];
+    final state = await setup(
+      tester,
+      captureScene: (state) => published.add(state.objects.single.point),
+    );
+    state.setObjects([const Object3D.point(Point3D(1, 1, 2))]);
+    await tester.pump();
+    final initial = state.objects.single.point;
+    published.clear();
+    final pointer = await tester.startGesture(screen(state, initial));
+    await pointer.moveBy(const Offset(70, 20));
+    await tester.pump();
+    expect(published, isEmpty);
+    await pointer.up();
+    await tester.pump();
+    expect(state.objects.single.point.distanceTo(initial), greaterThan(0.1));
+    expect(published, [state.objects.single.point]);
+  });
+
   testWidgets('cancelling a point drag restores it without creating objects', (
     tester,
   ) async {
