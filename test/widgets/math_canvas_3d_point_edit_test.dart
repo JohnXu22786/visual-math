@@ -811,6 +811,37 @@ void main() {
     expect(segment.pointA.z, closeTo(1, 1e-9));
   });
 
+  testWidgets('construction closure ignores first points beyond the viewport', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    for (final projection in ProjectionType.values) {
+      state.setProjectionType(projection);
+      final view = state.camera.viewMatrix();
+      final right = Vector3D(view[0], view[4], view[8]).normalized();
+      final center = screen(state, Point3D.origin);
+      final unit = screen(state, Point3D.origin + right);
+      final first =
+          Point3D.origin + right * ((-10 - center.dx) / (unit.dx - center.dx));
+      final projected = screen(state, first);
+      expect(projected.dx, closeTo(-10, 1e-6));
+      state.setTool(ConstructionTool.polyline);
+      state.constructionState!.addPoint(first);
+      state.constructionState!.addPoint(const Point3D(2, 0, 0));
+      state.constructionState!.addPoint(const Point3D(0, 2, 0));
+      await tester.pump();
+      await tester.tapAt(Offset(1, projected.dy));
+      await tester.pump();
+      expect(
+        state.constructionState!.points,
+        hasLength(4),
+        reason: '$projection',
+      );
+      expect(state.objects, isEmpty);
+      state.setTool(ConstructionTool.move);
+    }
+  });
+
   testWidgets('construction closure ignores clipped perspective first points', (
     tester,
   ) async {

@@ -5155,26 +5155,32 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     }
     final projection = _currentProjection();
     final first = worldToScreen(construction.points.first, camera, projection);
-    if (!first.x.isFinite || !first.y.isFinite) return false;
-    if (projection.type == ProjectionType.perspective &&
-        (first.z < projection.near || first.z > projection.far)) {
-      return false;
-    }
+    if (!_isConstructionPointVisible(first, projection)) return false;
     const closureRadius = 14.0;
     final dx = first.x - position.dx;
     final dy = first.y - position.dy;
     return dx * dx + dy * dy <= closureRadius * closureRadius;
   }
 
-  bool _isFirstConstructionPointInDepthRange() {
+  bool _isConstructionPointVisible(ScreenPoint point, Projection3D projection) {
+    return point.x.isFinite &&
+        point.y.isFinite &&
+        point.x >= 0 &&
+        point.x <= projection.width &&
+        point.y >= 0 &&
+        point.y <= projection.height &&
+        (projection.type != ProjectionType.perspective ||
+            (point.z.isFinite &&
+                point.z >= projection.near &&
+                point.z <= projection.far));
+  }
+
+  bool _isFirstConstructionPointVisible() {
     final points = _construction?.points;
     if (points == null || points.isEmpty) return true;
     final projection = _currentProjection();
-    if (projection.type != ProjectionType.perspective) return true;
-    final depth = worldToScreen(points.first, camera, projection).z;
-    return depth.isFinite &&
-        depth >= projection.near &&
-        depth <= projection.far;
+    final first = worldToScreen(points.first, camera, projection);
+    return _isConstructionPointVisible(first, projection);
   }
 
   void _handleConstructionPoint(Point3D worldPt) {
@@ -5212,7 +5218,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       worldPt,
       workingPlaneNormal: _constPlaneNormal,
       closeToFirstPoint: closeToFirstPoint,
-      allowWorldClosure: _isFirstConstructionPointInDepthRange(),
+      allowWorldClosure: _isFirstConstructionPointVisible(),
     );
     if (construction.points.length > previousPointCount) {
       _constructionPointSources.add(sourcePointIndex);
