@@ -270,9 +270,29 @@ class _MathKeyboardState extends State<MathKeyboard> {
 
   static const _latinRows = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
 
+  static const _greekUpperLatin = {
+    'Alpha': 'A',
+    'Beta': 'B',
+    'Epsilon': 'E',
+    'Zeta': 'Z',
+    'Eta': 'H',
+    'Iota': 'I',
+    'Kappa': 'K',
+    'Mu': 'M',
+    'Nu': 'N',
+    'Omicron': 'O',
+    'Rho': 'P',
+    'Tau': 'T',
+    'Chi': 'X',
+  };
+
   static final _greekUpperKeys = [
     for (final name in mathGreekUpperNames)
-      _MathKey('\\$name', '\\$name', description: name),
+      _MathKey(
+        _greekUpperLatin[name] ?? '\\$name',
+        _greekUpperLatin[name] ?? '\\$name',
+        description: name,
+      ),
   ];
 
   @override
