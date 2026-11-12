@@ -1,4 +1,5 @@
 import 'dart:ui' as ui;
+import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' hide Viewport;
@@ -141,6 +142,63 @@ void main() {
     );
     return Offset(projected.x, projected.y);
   }
+
+  testWidgets('circle intersections include points between sampled vertices', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    final circle = Object3D.curve(
+      points: [
+        for (var i = 0; i <= 32; i++)
+          Point3D(
+            math.cos(2 * math.pi * i / 32),
+            math.sin(2 * math.pi * i / 32),
+            0,
+          ),
+      ],
+      conic: const Conic3D(
+        origin: Point3D.origin,
+        axisU: Vector3D.unitX,
+        axisV: Vector3D.unitY,
+        quadraticX: 1,
+        quadraticXY: 0,
+        quadraticY: 1,
+        linearX: 0,
+        linearY: 0,
+        constant: -1,
+      ),
+    );
+    final angle = math.pi / 32;
+    final direction = Vector3D(math.cos(angle), math.sin(angle), 0);
+    final line = Object3D.line(
+      Point3D.origin + direction * -2,
+      Point3D.origin + direction * 2,
+    );
+    state.setObjects([circle, line]);
+    state.setTool(ConstructionTool.intersectionPoint);
+    await tester.pump();
+    await tester.tapAt(screen(state, const Point3D(0, 1, 0)));
+    await tester.pump();
+    await tester.tapAt(screen(state, Point3D.origin));
+    await tester.pump();
+    final points = state.objects
+        .where((object) => object.type == Object3DType.point)
+        .toList();
+    expect(points, hasLength(2));
+    expect(
+      points.any(
+        (object) => object.point.distanceTo(Point3D.origin + direction) < 1e-8,
+      ),
+      isTrue,
+    );
+    expect(
+      points.any(
+        (object) =>
+            object.point.distanceTo(Point3D.origin + direction * -1) < 1e-8,
+      ),
+      isTrue,
+    );
+  });
 
   testWidgets('snapshot during creation retains point and construction links', (
     tester,
