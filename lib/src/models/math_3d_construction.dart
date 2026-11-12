@@ -184,6 +184,9 @@ class ConstructionState {
             tool == ConstructionTool.circleCenterNormalRadius) &&
         _points.length == 2) {
       final axis = _points[1] - _points[0];
+      if (_stableNormalize(axis).magnitude == 0) {
+        return _reject('无法表示圆的轴线或法向量，请重新选择点');
+      }
       final axisSquared = axis.dot(axis);
       final offset = point - _points[0];
       if ((tool == ConstructionTool.circleAxisPoint &&
@@ -248,9 +251,16 @@ class ConstructionState {
           ConstructionTool.circumcircleSector,
         }.contains(tool) &&
         _points.length == 2) {
-      final center = _circumcenter(_points[0], _points[1], point);
-      if (!_isFinitePoint(center) ||
-          !_representableRoundRadius(center, _points[0])) {
+      final candidate = tool == ConstructionTool.circleThreePoints
+          ? _createThreePointCircle(_points[0], _points[1], point)
+          : _createCircumcircleArc(_points[0], _points[1], point);
+      if ((tool != ConstructionTool.circumcircleSector &&
+              candidate.conic?.quadraticX != 1) ||
+          !candidate.vertices.every(_isFinitePoint) ||
+          candidate.conic == null ||
+          !candidate.conic!.constant.isFinite ||
+          !candidate.conic!.quadraticX.isFinite ||
+          candidate.conic!.quadraticX == 0) {
         return _reject('半径过大，无法表示圆或圆弧，请重新选择点');
       }
     }
@@ -1767,12 +1777,12 @@ class ConstructionState {
     Vector3D? planeNormal,
     int color = 0xFF2196F3,
   }) {
-    final radius = center.distanceTo(onCircle);
+    final radius = _scaledMagnitude(onCircle - center);
     // Generate circle vertices as a polyline
     final segments = 32;
     final points = <Point3D>[];
     // Direction from center to onCircle
-    final dir = (onCircle - center).normalized();
+    final dir = _stableNormalize(onCircle - center);
     var perp = (planeNormal ?? Vector3D.unitZ).cross(dir).normalized();
     if (perp.magnitude < 1e-9) {
       perp = _stablePerpendicular(dir);
@@ -1812,12 +1822,12 @@ class ConstructionState {
     origin: center,
     axisU: axisU,
     axisV: axisV,
-    quadraticX: 1,
+    quadraticX: (radius * radius).isFinite ? 1 : 1 / radius,
     quadraticXY: 0,
-    quadraticY: 1,
+    quadraticY: (radius * radius).isFinite ? 1 : 1 / radius,
     linearX: 0,
     linearY: 0,
-    constant: -radius * radius,
+    constant: (radius * radius).isFinite ? -radius * radius : -radius,
   );
 
   /// Create a cube from two base edge points.
@@ -2065,9 +2075,13 @@ class ConstructionState {
     final sweep = angle <= 0 ? angle + 2 * dart_math.pi : angle;
     final points = List.generate(49, (i) {
       final theta = sweep * i / 48;
-      return center +
-          u * (radius * dart_math.cos(theta)) +
-          v * (radius * dart_math.sin(theta));
+      final cosTheta = dart_math.cos(theta);
+      final sinTheta = dart_math.sin(theta);
+      return Point3D(
+        center.x + radius * (u.x * cosTheta + v.x * sinTheta),
+        center.y + radius * (u.y * cosTheta + v.y * sinTheta),
+        center.z + radius * (u.z * cosTheta + v.z * sinTheta),
+      );
     });
     return Object3D.curve(
       points: points,
@@ -2079,8 +2093,13 @@ class ConstructionState {
   Point3D? _projectArcEndpoint(Point3D center, Point3D start, Point3D end) {
     final radius = center.distanceTo(start);
     final direction = end - center;
-    if (radius < 1e-9 || direction.magnitude < 1e-9) return null;
-    return center + direction.normalized() * radius;
+    final unitDirection = _stableNormalize(direction);
+    if (radius < 1e-9 || unitDirection.magnitude == 0) return null;
+    final projected = center + unitDirection * radius;
+    if (!_isFinitePoint(projected) || projected.distanceTo(center) < 1e-9) {
+      return null;
+    }
+    return projected;
   }
 
   static Point3D _circumcenter(Point3D a, Point3D b, Point3D c) {
@@ -2116,6 +2135,19 @@ class ConstructionState {
     );
   }
 
+  static double _scaledMagnitude(Vector3D vector) {
+    final scale = dart_math
+        .max(vector.x.abs(), dart_math.max(vector.y.abs(), vector.z.abs()))
+        .toDouble();
+    if (scale == 0 || !scale.isFinite) return scale;
+    return scale *
+        Vector3D(
+          vector.x / scale,
+          vector.y / scale,
+          vector.z / scale,
+        ).magnitude;
+  }
+
   static Vector3D _stableNormalize(Vector3D vector) {
     final scale = dart_math
         .max(vector.x.abs(), dart_math.max(vector.y.abs(), vector.z.abs()))
@@ -2138,10 +2170,10 @@ class ConstructionState {
   Object3D _createCircumcircleArc(Point3D a, Point3D b, Point3D c) {
     final center = _circumcenter(a, b, c);
     final normal = _triangleUnitNormal(a, b, c);
-    final u = (a - center).normalized();
+    final u = _stableNormalize(a - center);
     final v = normal.cross(u).normalized();
     double angleFor(Point3D point) {
-      final radial = point - center;
+      final radial = _stableNormalize(point - center);
       var angle = dart_math.atan2(radial.dot(v), radial.dot(u));
       if (angle < 0) angle += 2 * dart_math.pi;
       return angle;
@@ -2152,12 +2184,16 @@ class ConstructionState {
     final sweep = middleAngle <= endAngle
         ? endAngle
         : endAngle - 2 * dart_math.pi;
-    final radius = center.distanceTo(a);
+    final radius = _scaledMagnitude(a - center);
     final points = List.generate(49, (i) {
       final theta = sweep * i / 48;
-      return center +
-          u * (radius * dart_math.cos(theta)) +
-          v * (radius * dart_math.sin(theta));
+      final cosTheta = dart_math.cos(theta);
+      final sinTheta = dart_math.sin(theta);
+      return Point3D(
+        center.x + radius * (u.x * cosTheta + v.x * sinTheta),
+        center.y + radius * (u.y * cosTheta + v.y * sinTheta),
+        center.z + radius * (u.z * cosTheta + v.z * sinTheta),
+      );
     });
     return Object3D.curve(
       points: points,

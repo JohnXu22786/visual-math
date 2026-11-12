@@ -110,7 +110,7 @@ void main() {
       }
     });
 
-    test('three-point round constructions reject overflowing circumradii', () {
+    test('three-point round constructions handle large radii safely', () {
       for (final tool in [
         ConstructionTool.circleThreePoints,
         ConstructionTool.circumcircleArc,
@@ -119,12 +119,20 @@ void main() {
         final construction = ConstructionState(tool: tool);
         construction.addPoint(Point3D.origin);
         construction.addPoint(const Point3D(1e155, 0, 0));
-        expect(
-          construction.addPoint(const Point3D(0, 1e155, 0)),
-          ConstructionAction.awaitInput,
-          reason: '$tool',
-        );
-        expect(construction.result, isNull, reason: '$tool');
+        final action = construction.addPoint(const Point3D(0, 1e155, 0));
+        if (tool == ConstructionTool.circumcircleSector) {
+          expect(action, ConstructionAction.complete, reason: '$tool');
+          expect(
+            construction.result!.vertices.every(
+              (p) => p.x.isFinite && p.y.isFinite && p.z.isFinite,
+            ),
+            isTrue,
+            reason: '$tool',
+          );
+        } else {
+          expect(action, ConstructionAction.awaitInput, reason: '$tool');
+          expect(construction.result, isNull, reason: '$tool');
+        }
       }
     });
 
@@ -179,6 +187,38 @@ void main() {
         ConstructionAction.complete,
       );
       expect(construction.result!.vertices.any((p) => p.y.abs() > 0.9), isTrue);
+    });
+
+    test('large arc endpoint direction retains the requested sweep', () {
+      for (final tool in [
+        ConstructionTool.arc,
+        ConstructionTool.circularSector,
+      ]) {
+        final construction = ConstructionState(tool: tool);
+        construction.addPoint(Point3D.origin);
+        construction.addPoint(const Point3D(1e150, 0, 0));
+        expect(
+          construction.addPoint(const Point3D(0, 1e155, 0)),
+          ConstructionAction.complete,
+          reason: '$tool',
+        );
+        final last = construction.result!.vertices.last;
+        expect(last.x / 1e150, closeTo(0, 1e-12));
+        expect(last.y / 1e150, closeTo(1, 1e-12));
+      }
+    });
+
+    test('normal circle rejects an unrepresentable normal difference', () {
+      final construction = ConstructionState(
+        tool: ConstructionTool.circleCenterNormalRadius,
+      );
+      construction.addPoint(const Point3D(0, 0, 1e308));
+      construction.addPoint(const Point3D(0, 0, -1e308));
+      expect(
+        construction.addPoint(const Point3D(1, 0, 1e308)),
+        ConstructionAction.awaitInput,
+      );
+      expect(construction.result, isNull);
     });
 
     test('sphere keeps a spatial radius point instead of flattening it', () {
