@@ -1020,10 +1020,20 @@ class ConstructionState {
         return finishWhenReady(3, () {
           final a = _points[0] - _points[1];
           final b = _points[2] - _points[1];
-          final cosine = (a.dot(b) / (a.magnitude * b.magnitude)).clamp(
-            -1.0,
-            1.0,
-          );
+          Vector3D unitVector(Vector3D vector) {
+            final scale = dart_math.max(
+              dart_math.max(vector.x.abs(), vector.y.abs()),
+              vector.z.abs(),
+            );
+            final scaled = Vector3D(
+              vector.x / scale,
+              vector.y / scale,
+              vector.z / scale,
+            );
+            return scaled * (1 / scaled.magnitude);
+          }
+
+          final cosine = unitVector(a).dot(unitVector(b)).clamp(-1.0, 1.0);
           final degrees = dart_math.acos(cosine) * 180 / dart_math.pi;
           return Object3D.point(
             _points[1],
