@@ -3948,6 +3948,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
             closesCurve ? dependency.points.first : dependency.points[i],
             workingPlaneNormal: dependency.workingPlaneNormal,
             closeToFirstPoint: closesCurve,
+            allowWorldClosure: false,
           );
           if (construction.points.length != previousCount + 1 ||
               (dependency.tool == ConstructionTool.polygon &&
@@ -5174,16 +5175,34 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         position == null) {
       return false;
     }
-    final first = worldToScreen(
-      construction.points.first,
-      camera,
-      _currentProjection(),
-    );
-    if (!first.x.isFinite || !first.y.isFinite) return false;
+    final projection = _currentProjection();
+    final first = worldToScreen(construction.points.first, camera, projection);
+    if (!_isConstructionPointVisible(first, projection)) return false;
     const closureRadius = 14.0;
     final dx = first.x - position.dx;
     final dy = first.y - position.dy;
     return dx * dx + dy * dy <= closureRadius * closureRadius;
+  }
+
+  bool _isConstructionPointVisible(ScreenPoint point, Projection3D projection) {
+    return point.x.isFinite &&
+        point.y.isFinite &&
+        point.x >= 0 &&
+        point.x <= projection.width &&
+        point.y >= 0 &&
+        point.y <= projection.height &&
+        (projection.type != ProjectionType.perspective ||
+            (point.z.isFinite &&
+                point.z >= projection.near &&
+                point.z <= projection.far));
+  }
+
+  bool _isFirstConstructionPointVisible() {
+    final points = _construction?.points;
+    if (points == null || points.isEmpty) return true;
+    final projection = _currentProjection();
+    final first = worldToScreen(points.first, camera, projection);
+    return _isConstructionPointVisible(first, projection);
   }
 
   void _handleConstructionPoint(Point3D worldPt) {
@@ -5221,6 +5240,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       worldPt,
       workingPlaneNormal: _constPlaneNormal,
       closeToFirstPoint: closeToFirstPoint,
+      allowWorldClosure: _isFirstConstructionPointVisible(),
     );
     if (construction.points.length > previousPointCount) {
       _constructionPointSources.add(sourcePointIndex);

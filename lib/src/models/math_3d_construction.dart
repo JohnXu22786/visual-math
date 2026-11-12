@@ -94,6 +94,7 @@ class ConstructionState {
     Point3D point, {
     Vector3D? workingPlaneNormal,
     bool closeToFirstPoint = false,
+    bool allowWorldClosure = true,
   }) {
     if (!_isFinitePoint(point)) {
       return _reject('无法放置无效坐标，请重新选择位置');
@@ -118,7 +119,8 @@ class ConstructionState {
           ConstructionTool.area,
         }.contains(tool) &&
         _points.isNotEmpty &&
-        (_points.first.distanceTo(point) < _closureTolerance() ||
+        ((allowWorldClosure &&
+                _points.first.distanceTo(point) < _closureTolerance()) ||
             closeToFirstPoint) &&
         !_hasThreeDistinctVertices()) {
       return _reject('至少选择三个不同的顶点后才能点击首点闭合');
@@ -450,6 +452,7 @@ class ConstructionState {
 
     final extendedAction = _addExtendedTool(
       closeToFirstPoint: closeToFirstPoint,
+      allowWorldClosure: allowWorldClosure,
     );
     if (extendedAction != null) return extendedAction;
 
@@ -527,7 +530,9 @@ class ConstructionState {
       case ConstructionTool.polygon:
         // Check if we closed the polygon (clicked near first point)
         if (_points.length >= 4 &&
-            (_points.first.distanceTo(_points.last) < _closureTolerance() ||
+            ((allowWorldClosure &&
+                    _points.first.distanceTo(_points.last) <
+                        _closureTolerance()) ||
                 closeToFirstPoint)) {
           // Remove the duplicate closing point
           final vertices = List<Point3D>.from(_points)..removeLast();
@@ -673,7 +678,10 @@ class ConstructionState {
     }
   }
 
-  ConstructionAction? _addExtendedTool({required bool closeToFirstPoint}) {
+  ConstructionAction? _addExtendedTool({
+    required bool closeToFirstPoint,
+    required bool allowWorldClosure,
+  }) {
     final count = _points.length;
 
     ConstructionAction finishWhenReady(
@@ -691,7 +699,9 @@ class ConstructionState {
 
     ConstructionAction finishOpenCurve({required bool filled}) {
       if (count >= 4 &&
-          (_points.first.distanceTo(_points.last) < _closureTolerance() ||
+          ((allowWorldClosure &&
+                  _points.first.distanceTo(_points.last) <
+                      _closureTolerance()) ||
               closeToFirstPoint)) {
         if (filled) {
           _points.removeLast();
@@ -912,7 +922,9 @@ class ConstructionState {
         return finishOpenCurve(filled: false);
       case ConstructionTool.polyline:
         if (count >= 4 &&
-            (_points.first.distanceTo(_points.last) < _closureTolerance() ||
+            ((allowWorldClosure &&
+                    _points.first.distanceTo(_points.last) <
+                        _closureTolerance()) ||
                 closeToFirstPoint)) {
           _points[_points.length - 1] = _points.first;
           _result = Object3D.curve(

@@ -757,6 +757,86 @@ void main() {
     expect(state.objects.last.vertices, vertices);
   });
 
+  testWidgets(
+    'polygon replay retains a near-first vertex after a source moves',
+    (tester) async {
+      final state = await setup(tester);
+      const first = Point3D(0, 0, 0);
+      const nearFirst = Point3D(0.0000000005, 0, 0);
+      const source = Point3D(2, 0, 0);
+      const other = Point3D(0, 2, 0);
+      const vertices = [first, nearFirst, source, other];
+      final construction = ConstructionState(tool: ConstructionTool.polygon);
+      for (final point in vertices) {
+        construction.addPoint(point, allowWorldClosure: false);
+      }
+      construction.addPoint(first, closeToFirstPoint: true);
+      state.setObjects([
+        Object3D.point(source).copyWith(documentId: 'source'),
+        construction.result!.copyWith(documentId: 'polygon'),
+      ]);
+      state.restoreDocumentRelationships(
+        pointAttachments: const [],
+        constructionDependencies: [
+          ConstructionDependency(
+            objectId: 'polygon',
+            tool: ConstructionTool.polygon,
+            inputPoints: vertices,
+            sourcePointIds: [null, null, 'source', null],
+            workingPlaneNormal: Vector3D.unitZ,
+            polygonSides: 3,
+          ),
+        ],
+      );
+      state.setTool(ConstructionTool.move);
+      await tester.pump();
+      await tester.dragFrom(screen(state, source), const Offset(45, 24));
+      await tester.pump();
+      expect(state.objects.first.point.distanceTo(source), greaterThan(0.1));
+      expect(state.objects.last.vertices, [
+        first,
+        nearFirst,
+        state.objects.first.point,
+        other,
+      ]);
+    },
+  );
+
+  testWidgets('replaying a curve preserves vertices near its first point', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    const first = Point3D(0, 0, 0);
+    const nearFirst = Point3D(0.0000000005, 0, 0);
+    const source = Point3D(2, 0, 0);
+    const other = Point3D(0, 2, 0);
+    const vertices = [first, nearFirst, source, other, first];
+    state.setObjects([
+      Object3D.point(source).copyWith(documentId: 'source'),
+      Object3D.curve(points: vertices).copyWith(documentId: 'curve'),
+    ]);
+    state.restoreDocumentRelationships(
+      pointAttachments: const [],
+      constructionDependencies: [
+        ConstructionDependency(
+          objectId: 'curve',
+          tool: ConstructionTool.polyline,
+          inputPoints: vertices,
+          sourcePointIds: [null, null, 'source', null, null],
+          workingPlaneNormal: Vector3D.unitZ,
+          polygonSides: 3,
+        ),
+      ],
+    );
+    state.setTool(ConstructionTool.move);
+    await tester.pump();
+    await tester.dragFrom(screen(state, source), const Offset(45, 24));
+    await tester.pump();
+    expect(state.objects.first.point.distanceTo(source), greaterThan(0.1));
+    expect(state.objects.last.vertices[2], state.objects.first.point);
+    expect(state.objects.last.vertices[1], nearFirst);
+  });
+
   testWidgets('area follows its source vertices before and after reopening', (
     tester,
   ) async {
@@ -971,6 +1051,92 @@ void main() {
       (o) => o.type == Object3DType.line,
     );
     expect(segment.pointA.z, closeTo(1, 1e-9));
+  });
+
+  testWidgets('construction closure ignores first points beyond the viewport', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    for (final projection in ProjectionType.values) {
+      state.setProjectionType(projection);
+      final view = state.camera.viewMatrix();
+      final right = Vector3D(view[0], view[4], view[8]).normalized();
+      final center = screen(state, Point3D.origin);
+      final unit = screen(state, Point3D.origin + right);
+      final first =
+          Point3D.origin + right * ((-10 - center.dx) / (unit.dx - center.dx));
+      final projected = screen(state, first);
+      expect(projected.dx, closeTo(-10, 1e-6));
+      state.setTool(ConstructionTool.polyline);
+      state.constructionState!.addPoint(first);
+      state.constructionState!.addPoint(const Point3D(2, 0, 0));
+      state.constructionState!.addPoint(const Point3D(0, 2, 0));
+      await tester.pump();
+      await tester.tapAt(Offset(1, projected.dy));
+      await tester.pump();
+      expect(
+        state.constructionState!.points,
+        hasLength(4),
+        reason: '$projection',
+      );
+      expect(state.objects, isEmpty);
+      state.setTool(ConstructionTool.move);
+    }
+  });
+
+  testWidgets('construction closure ignores clipped perspective first points', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    state.setProjectionType(ProjectionType.perspective);
+    final eye = state.camera.position;
+    final projection = Projection3D.perspective(width: 800, height: 600);
+    for (final tool in [
+      ConstructionTool.polygon,
+      ConstructionTool.area,
+      ConstructionTool.polyline,
+      ConstructionTool.locus,
+    ]) {
+      for (final factor in [-0.1, 0.005, 200.0]) {
+        final first = eye + (Point3D.origin - eye) * factor;
+        final projected = worldToScreen(first, state.camera, projection);
+        expect(
+          projected.z < projection.near || projected.z > projection.far,
+          isTrue,
+        );
+        state.setTool(tool);
+        state.constructionState!.addPoint(first);
+        state.constructionState!.addPoint(const Point3D(2, 0, 0));
+        state.constructionState!.addPoint(const Point3D(0, 2, 0));
+        await tester.pump();
+        await tester.tapAt(Offset(projected.x, projected.y));
+        await tester.pump();
+        expect(
+          state.constructionState!.points,
+          hasLength(4),
+          reason: '$tool, $factor',
+        );
+        expect(state.objects, isEmpty);
+        state.setTool(ConstructionTool.move);
+      }
+      final view = state.camera.viewMatrix();
+      final right = Vector3D(view[0], view[4], view[8]).normalized();
+      final first = eye + (Point3D.origin - eye) * 0.005 + right * 0.01;
+      state.setTool(tool);
+      state.constructionState!.addPoint(first);
+      state.constructionState!.addPoint(first + right * 0.5);
+      state.constructionState!.addPoint(first + right * 1.0);
+      await tester.pump();
+      await tester.tapAt(screen(state, first));
+      await tester.pump();
+      expect(
+        state.constructionState!.points,
+        hasLength(4),
+        reason: '$tool same plane',
+      );
+      expect(state.objects, isEmpty);
+      state.setTool(ConstructionTool.move);
+    }
   });
 
   testWidgets('perspective construction ignores hidden snap geometry', (
