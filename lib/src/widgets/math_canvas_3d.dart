@@ -350,6 +350,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   final List<Object3D> _objects = [];
   int? _selectedObjectIndex;
   int _objectsVersion = 0;
+  bool _completingConstruction = false;
   final Map<int, int> _pointAttachments = {};
   final Map<int, _SolidSourceDependency> _constructionDependencies = {};
   int _nextDocumentObjectId = 0;
@@ -362,6 +363,14 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   /// Get the list of objects (unmodifiable).
   List<Object3D> get objects => List.unmodifiable(_objects);
 
+  String _newDocumentObjectId(Set<String> used) {
+    String id;
+    do {
+      id = 'object-${_nextDocumentObjectId++}';
+    } while (used.contains(id));
+    return id;
+  }
+
   void ensureDocumentIds() {
     final used = _objects
         .map((object) => object.documentId)
@@ -369,10 +378,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         .toSet();
     for (var i = 0; i < _objects.length; i++) {
       if (_objects[i].documentId.isNotEmpty) continue;
-      String id;
-      do {
-        id = 'object-${_nextDocumentObjectId++}';
-      } while (used.contains(id));
+      final id = _newDocumentObjectId(used);
       used.add(id);
       _objects[i] = _objects[i].copyWith(documentId: id);
     }
@@ -881,7 +887,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         ..addAll(objects);
       _objectsVersion++;
     });
-    widget.onSceneChanged?.call();
+    if (!_completingConstruction) widget.onSceneChanged?.call();
     if (hadSelection &&
         _selectedObjectIndex == null &&
         _selectedPointIndex == null) {
@@ -4930,9 +4936,17 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           }.contains(_currentTool);
           final obj = result.copyWith(
             label: keepMeasurement ? result.label : '$name$number',
+            documentId: _newDocumentObjectId(
+              _objects.map((object) => object.documentId).toSet(),
+            ),
           );
           if (widget.onObjectCreated != null) {
-            widget.onObjectCreated!(obj);
+            _completingConstruction = true;
+            try {
+              widget.onObjectCreated!(obj);
+            } finally {
+              _completingConstruction = false;
+            }
           } else {
             setState(() {
               _objects.add(obj);
@@ -4964,6 +4978,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
               widget.onSelectionChanged?.call(obj);
             }
           }
+          widget.onSceneChanged?.call();
         }
         _construction = ConstructionState(
           tool: _currentTool,

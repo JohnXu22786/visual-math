@@ -2109,7 +2109,6 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                             ...?_canvas3DKey.currentState?.objects,
                             obj,
                           ]);
-                          _publish3DChange();
                         },
                         onToolInstruction: (instruction) {
                           setState(() {
