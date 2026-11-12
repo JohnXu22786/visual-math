@@ -153,6 +153,29 @@ void main() {
       expect(expr.evaluator(0), closeTo(2, 1e-10)); // (0+1)*(0+2)=2
     });
 
+    test('preserves parser precedence and maps supported functions', () {
+      expect(MathExpression.toJsExpression('ln(x)'), 'Math.log(x)');
+      expect(MathExpression.toJsExpression('010'), 'Number("010")');
+      expect(
+        MathExpression.toJsExpression('class+Math'),
+        '__vmParams["class"]+__vmParams["Math"]',
+      );
+      expect(MathExpression.toJsExpression('-(-x)'), '-(-x)');
+      expect(MathExpression.toJsExpression('x- -x'), 'x-(-x)');
+      expect(
+        MathExpression.toJsExpression('x^2^3'),
+        'Math.pow(x,Math.pow(2,3))',
+      );
+      expect(
+        MathExpression.toJsExpression('sin(x)^(1+x)'),
+        'Math.pow(Math.sin(x),1+x)',
+      );
+      expect(
+        MathExpression.toJsExpression('log(2,x)'),
+        '(Math.log(x)/Math.log(2))',
+      );
+    });
+
     test('handles empty string', () {
       final expr = MathExpression.fromInput('');
       expect(expr.isValid, isFalse);

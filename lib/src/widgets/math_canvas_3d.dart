@@ -1776,7 +1776,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
             object.type == Object3DType.polyhedron) &&
         object.indices.length >= 3) {
       var nearest = point;
-      var nearestDistance = double.infinity;
+      var found = false;
       for (var i = 0; i + 2 < object.indices.length; i += 3) {
         final ia = object.indices[i];
         final ib = object.indices[i + 1];
@@ -1794,17 +1794,20 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           object.vertices[ib],
           object.vertices[ic],
         );
-        final distance = point.distanceTo(candidate);
-        if (distance < nearestDistance) {
+        if (!candidate.x.isFinite ||
+            !candidate.y.isFinite ||
+            !candidate.z.isFinite) {
+          continue;
+        }
+        if (!found || _isCloserTo(point, candidate, nearest)) {
           nearest = candidate;
-          nearestDistance = distance;
+          found = true;
         }
       }
-      if (nearestDistance.isFinite) return nearest;
+      if (found) return nearest;
     }
     if (object.vertices.length >= 2) {
       var nearest = object.vertices.first;
-      var nearestDistance = point.distanceTo(nearest);
       for (var i = 1; i < object.vertices.length; i++) {
         if (object.type == Object3DType.curve &&
             object.curveStarts.contains(i)) {
@@ -1815,10 +1818,8 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           object.vertices[i - 1],
           object.vertices[i],
         );
-        final distance = point.distanceTo(candidate);
-        if (distance < nearestDistance) {
+        if (_isCloserTo(point, candidate, nearest)) {
           nearest = candidate;
-          nearestDistance = distance;
         }
       }
       if (object.type == Object3DType.curve && object.conic != null) {
@@ -1989,12 +1990,65 @@ class MathCanvas3DState extends State<MathCanvas3D> {
 
   Point3D _closestPointOnSegment(Point3D point, Point3D a, Point3D b) {
     final direction = b - a;
-    final lengthSquared = direction.dot(direction);
-    if (lengthSquared < 1e-12) return a;
-    final t = ((point - a).dot(direction) / lengthSquared)
-        .clamp(0.0, 1.0)
-        .toDouble();
+    final scale = dart_math.max(
+      direction.x.abs(),
+      dart_math.max(direction.y.abs(), direction.z.abs()),
+    );
+    if (scale == 0) return a;
+    final scaledDirection = Vector3D(
+      direction.x / scale,
+      direction.y / scale,
+      direction.z / scale,
+    );
+    final offset = point - a;
+    final t =
+        (offset.dot(scaledDirection) /
+                scale /
+                scaledDirection.dot(scaledDirection))
+            .clamp(0.0, 1.0)
+            .toDouble();
     return a + direction * t;
+  }
+
+  double _projectionDistance(Point3D a, Point3D b) {
+    final d = a - b;
+    final scale = dart_math.max(d.x.abs(), dart_math.max(d.y.abs(), d.z.abs()));
+    if (scale == 0 || !scale.isFinite) return scale;
+    final x = d.x / scale;
+    final y = d.y / scale;
+    final z = d.z / scale;
+    return scale * dart_math.sqrt(x * x + y * y + z * z);
+  }
+
+  bool _isCloserTo(Point3D point, Point3D candidate, Point3D nearest) {
+    final candidateDistance = _projectionDistance(point, candidate);
+    final nearestDistance = _projectionDistance(point, nearest);
+    if (candidateDistance != nearestDistance) {
+      return candidateDistance < nearestDistance;
+    }
+    final difference = candidate - nearest;
+    final scale = dart_math.max(
+      difference.x.abs(),
+      dart_math.max(difference.y.abs(), difference.z.abs()),
+    );
+    if (scale == 0 || !scale.isFinite) return false;
+    final fromCandidate = point - candidate;
+    final fromNearest = point - nearest;
+    final offsetScale = dart_math.max(
+      dart_math.max(fromCandidate.x.abs(), fromNearest.x.abs()),
+      dart_math.max(
+        dart_math.max(fromCandidate.y.abs(), fromNearest.y.abs()),
+        dart_math.max(fromCandidate.z.abs(), fromNearest.z.abs()),
+      ),
+    );
+    final divisor = offsetScale > 8e307 ? 2.0 : 1.0;
+    return (difference.x / scale) *
+                (fromCandidate.x / divisor + fromNearest.x / divisor) +
+            (difference.y / scale) *
+                (fromCandidate.y / divisor + fromNearest.y / divisor) +
+            (difference.z / scale) *
+                (fromCandidate.z / divisor + fromNearest.z / divisor) >
+        0;
   }
 
   Point3D _closestPointOnTriangle(
@@ -2016,9 +2070,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       ];
       return candidates.reduce(
         (nearest, candidate) =>
-            point.distanceTo(candidate) < point.distanceTo(nearest)
-            ? candidate
-            : nearest,
+            _isCloserTo(point, candidate, nearest) ? candidate : nearest,
       );
     }
     final ap = point - a;
@@ -5986,13 +6038,18 @@ class MathCanvas3DPainter extends CustomPainter {
     final gridCenter = camera.target;
     const maxHalfLines = 50;
     final step = dart_math.max(1.0, gridRange / maxHalfLines);
-    final halfLines = dart_math.min(maxHalfLines, (gridRange / step).floor());
     final lines = <List<Offset>>[];
+    final startX = gridCenter.x - gridRange;
+    final startY = gridCenter.y - gridRange;
+    final remainderX = startX.remainder(step);
+    final remainderY = startY.remainder(step);
+    final anchorX = startX - remainderX + (remainderX > 0 ? step : 0);
+    final anchorY = startY - remainderY + (remainderY > 0 ? step : 0);
 
     // Lines along X (constant Y).
-    for (var i = -halfLines; i <= halfLines; i++) {
-      if (i == 0) continue;
-      final y = gridCenter.y + i * step;
+    for (var i = 0; i <= 2 * maxHalfLines; i++) {
+      final y = anchorY + i * step;
+      if (y > gridCenter.y + gridRange) break;
       final p1 = worldToScreen(
         Point3D(gridCenter.x - gridRange, y, 0),
         camera,
@@ -6007,9 +6064,9 @@ class MathCanvas3DPainter extends CustomPainter {
     }
 
     // Lines along Y (constant X).
-    for (var i = -halfLines; i <= halfLines; i++) {
-      if (i == 0) continue;
-      final x = gridCenter.x + i * step;
+    for (var i = 0; i <= 2 * maxHalfLines; i++) {
+      final x = anchorX + i * step;
+      if (x > gridCenter.x + gridRange) break;
       final p1 = worldToScreen(
         Point3D(x, gridCenter.y - gridRange, 0),
         camera,
