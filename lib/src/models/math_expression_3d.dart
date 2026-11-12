@@ -692,7 +692,7 @@ class Expression3D {
     for (final m in matches) {
       final name = m[1]!;
       final normalizedName = name.toLowerCase();
-      if (independentVariables.contains(normalizedName) ||
+      if (independentVariables.contains(name) ||
           builtinConstants.contains(normalizedName)) {
         continue;
       }

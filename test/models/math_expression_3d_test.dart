@@ -352,6 +352,33 @@ void main() {
   });
 
   group('Expression3D - parameters', () {
+    test(
+      'uppercase independent variable names remain adjustable parameters',
+      () {
+        final surface = Expression3D.surface('X+x+Y+y');
+        expect(surface.parameters, {'X', 'Y'});
+        expect(surface.evaluateSurface(2, 3), 7);
+        expect(
+          surface.withParameters({'X': 4, 'Y': 5}).evaluateSurface(2, 3),
+          14,
+        );
+
+        final curve = Expression3D.parametricCurve('(T+t, t, 0)');
+        expect(curve.parameters, {'T'});
+        expect(curve.evaluateCurve(2).x, 3);
+        expect(curve.withParameters({'T': 4}).evaluateCurve(2).x, 6);
+
+        final parametric = Expression3D.parametricSurface('(U+u, V+v, 0)');
+        expect(parametric.parameters, {'U', 'V'});
+        expect(parametric.evaluateParametricSurface(2, 3).x, 3);
+        final point = parametric
+            .withParameters({'U': 4, 'V': 5})
+            .evaluateParametricSurface(2, 3);
+        expect(point.x, 6);
+        expect(point.y, 8);
+      },
+    );
+
     test('extracts parameters from surface expression', () {
       final expr = Expression3D.surface('a*x^2 + b*y^2');
       expect(expr.parameters, contains('a'));
