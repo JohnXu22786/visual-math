@@ -615,6 +615,41 @@ void main() {
     );
   });
 
+  testWidgets('replot updates a moved source in an active construction', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    Object3D surface(double z) => Object3D.surface(
+      vertices: [Point3D(-5, -5, z), Point3D(5, -5, z), Point3D(0, 5, z)],
+      indices: const [0, 1, 2],
+    ).copyWith(documentId: 'plot', formulaRowId: 'row');
+    state.setObjects([
+      surface(0),
+      Object3D.point(Point3D.origin).copyWith(documentId: 'p'),
+    ]);
+    state.restoreDocumentRelationships(
+      pointAttachments: const [PointAttachment(pointId: 'p', targetId: 'plot')],
+      constructionDependencies: const [],
+    );
+    state.setTool(ConstructionTool.segment);
+    await tester.pump();
+    await tester.tapAt(screen(state, Point3D.origin));
+    await tester.pump();
+    state.replaceFormulaObjects([surface(1)]);
+    await tester.pump();
+    expect(
+      state.objects.singleWhere((o) => o.documentId == 'p').point.z,
+      closeTo(1, 1e-9),
+    );
+    expect(state.constructionState!.points.first.z, closeTo(1, 1e-9));
+    await tester.tapAt(screen(state, const Point3D(2, 2, 0)));
+    await tester.pump();
+    final segment = state.objects.singleWhere(
+      (o) => o.type == Object3DType.line,
+    );
+    expect(segment.pointA.z, closeTo(1, 1e-9));
+  });
+
   testWidgets('a snapped solid vertex can begin a later construction', (
     tester,
   ) async {

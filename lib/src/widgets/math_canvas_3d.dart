@@ -941,6 +941,19 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         _propagateConstructionAndAttachmentMoves(i);
       }
     }
+    final construction = _construction;
+    if (construction != null) {
+      for (var i = 0; i < _constructionPointSources.length; i++) {
+        final source = _constructionPointSources[i];
+        if (source != null &&
+            source >= 0 &&
+            source < _objects.length &&
+            _objects[source].type == Object3DType.point) {
+          construction.updatePoint(i, _objects[source].point);
+        }
+      }
+      _constructionPreview = null;
+    }
     if (hadSelection &&
         _selectedPointIndex == null &&
         _selectedObjectIndex == null) {
