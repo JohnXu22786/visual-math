@@ -156,6 +156,26 @@ class MathExpression {
     );
   }
 
+  /// Evaluate a scalar domain bound without treating coordinates as constants.
+  static double? resolveDomainBound(
+    String? source,
+    Map<String, double> parameterValues,
+  ) {
+    if (source == null || source.trim().isEmpty || source.contains('=')) {
+      return null;
+    }
+    final expression = MathExpression.fromInput(
+      source,
+      parameterValues: parameterValues,
+    );
+    if (!expression.isValid ||
+        RegExp(r'\b[xy]\b').hasMatch(expression.normalizedExpression)) {
+      return null;
+    }
+    final value = expression.evaluator(0);
+    return value.isFinite ? value : null;
+  }
+
   /// Create an updated evaluator with new parameter values.
   MathExpression withParameters(Map<String, double> parameterValues) {
     if (!isValid) return this;

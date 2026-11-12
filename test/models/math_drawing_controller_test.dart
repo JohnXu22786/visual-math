@@ -455,4 +455,36 @@ void main() {
     expect(canvas.curvePoints, isNotEmpty);
     expect(canvas.curvePoints.every((point) => point['x']! >= 1), isTrue);
   });
+  testWidgets('coordinate-dependent domain bounds report an error', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    String? error;
+    controller.onError = (message) => error = message;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          initialShowWebView: false,
+          initialMathematicalMode: false,
+          options: const MathWorkspaceOptions(
+            show3D: false,
+            showFormulaEditor: false,
+            showKeyboard: false,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    for (final bound in ['x+1', r'\frac{y}{2}']) {
+      error = null;
+      controller.setFormulas([
+        FormulaEntry(rawExpression: 'x', domainStartExpression: bound),
+      ]);
+      await controller.plot();
+      await tester.pump();
+      expect(error, contains('定义域表达式无效'));
+      expect(controller.snapshot!.formulas.first.domainStartExpression, bound);
+    }
+  });
 }
