@@ -240,6 +240,39 @@ void main() {
     expect(controller.formulas, hasLength(2));
   });
 
+  testWidgets('auto colors continue cycling after the palette is exhausted', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          initialShowWebView: false,
+          initialMathematicalMode: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    controller.setFormulas([
+      for (final color in formulaPalette)
+        FormulaEntry(rawExpression: '', color: color),
+    ]);
+    await tester.pumpAndSettle();
+
+    for (var i = 0; i < 3; i++) {
+      await tester.tap(find.byTooltip('添加公式'));
+      await tester.pumpAndSettle();
+      expect(controller.formulas.last.color, formulaPalette[i]);
+    }
+    final formulas = controller.formulas.toList()..removeAt(10);
+    controller.setFormulas(formulas);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('添加公式'));
+    await tester.pumpAndSettle();
+    expect(controller.formulas.last.color, formulaPalette[3]);
+  });
+
   testWidgets('snapshot restore preserves formula visibility', (tester) async {
     final controller = MathDrawingController();
     await tester.pumpWidget(

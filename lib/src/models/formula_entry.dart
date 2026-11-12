@@ -104,11 +104,13 @@ class FormulaEntry {
 }
 
 /// Assign the next auto-color from the palette, skipping [usedColors].
-/// Cycles through the palette if all colors are used.
-Color nextFormulaColor(Set<Color> usedColors) {
+/// Cycles after [lastAutoColor] if all colors are used.
+Color nextFormulaColor(Set<Color> usedColors, {Color? lastAutoColor}) {
   for (final c in formulaPalette) {
     if (!usedColors.contains(c)) return c;
   }
-  // All colors used — cycle from start
-  return formulaPalette[usedColors.length % formulaPalette.length];
+  final lastIndex = lastAutoColor == null
+      ? -1
+      : formulaPalette.indexOf(lastAutoColor);
+  return formulaPalette[(lastIndex + 1) % formulaPalette.length];
 }

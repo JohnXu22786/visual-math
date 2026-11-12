@@ -1070,11 +1070,12 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   }
 
   void _addFormula() {
-    final used = _formulas
-        .where((f) => f.autoColor)
-        .map((f) => f.color)
-        .toSet();
-    final color = nextFormulaColor(used);
+    final autoColored = _formulas.where((f) => f.autoColor).toList();
+    final used = autoColored.map((f) => f.color).toSet();
+    final color = nextFormulaColor(
+      used,
+      lastAutoColor: autoColored.isEmpty ? null : autoColored.last.color,
+    );
 
     setState(() {
       _formulas.add(
