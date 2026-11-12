@@ -216,6 +216,11 @@ void main() {
       expect(surface.parameters, isEmpty);
       final negativeRoot = Expression3D.surface(r'\sqrt[3]{x}');
       expect(negativeRoot.evaluateSurface(-8, 0), closeTo(-2, 1e-10));
+      final adjacentNumber = Expression3D.surface(
+        r'\sqrt[3]{x}2+\left(y\right)!3',
+      );
+      expect(adjacentNumber.isValid, isTrue, reason: adjacentNumber.parseError);
+      expect(adjacentNumber.evaluateSurface(8, 3), closeTo(22, 1e-10));
       final adjacent = Expression3D.surface(
         r'\pi x + \alpha y',
         parameterValues: {'alpha': 2},

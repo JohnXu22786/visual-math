@@ -720,7 +720,7 @@ class Expression3D {
     }
     result = withProducts.toString();
     result = result.replaceAllMapped(
-      RegExp(r'(\))\s*([a-zA-Z(])'),
+      RegExp(r'(\))\s*([a-zA-Z0-9.(])'),
       (m) => '${m[1]!}*${m[2]!}',
     );
     result = result.replaceAllMapped(
