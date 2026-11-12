@@ -358,8 +358,9 @@ class Projection3D {
       final focalScale = 1 / dart_math.tan(fovRad / 2);
       // Camera space looks down -Z. Keep values finite for points on or
       // behind the eye plane; clipping is handled by the painter.
-      final safeDepth =
-          depth.abs() < 1e-9 ? (depth.isNegative ? -1e-9 : 1e-9) : depth;
+      final safeDepth = depth.abs() < 1e-9
+          ? (depth.isNegative ? -1e-9 : 1e-9)
+          : depth;
       final ndcX = worldPoint.x * focalScale / (aspect * safeDepth);
       final ndcY = worldPoint.y * focalScale / safeDepth;
       return ScreenPoint(
@@ -561,7 +562,11 @@ class Scene3D {
         final viewMatrix = camera.viewMatrix();
         final right = Vector3D(viewMatrix[0], viewMatrix[4], viewMatrix[8]);
         final up = Vector3D(viewMatrix[1], viewMatrix[5], viewMatrix[9]);
-        final forward = Vector3D(-viewMatrix[2], -viewMatrix[6], -viewMatrix[10]);
+        final forward = Vector3D(
+          -viewMatrix[2],
+          -viewMatrix[6],
+          -viewMatrix[10],
+        );
         final focalScale = 1 / tangent;
         var requiredDistance = 0.0;
         var farthestDepthOffset = double.negativeInfinity;
@@ -594,10 +599,7 @@ class Scene3D {
         }
       }
     }
-    camera = camera.copyWith(
-      target: center,
-      distance: fittedDistance,
-    );
+    camera = camera.copyWith(target: center, distance: fittedDistance);
     return fittedProjection;
   }
 }
@@ -640,15 +642,18 @@ List<double> multiplyMatrix4(List<double> a, List<double> b) {
 /// Returns the transformed point in homogeneous space (z is the w component
 /// for perspective divide).
 Point3D _transformPoint(List<double> matrix, Point3D point) {
-  final x = matrix[0] * point.x +
+  final x =
+      matrix[0] * point.x +
       matrix[4] * point.y +
       matrix[8] * point.z +
       matrix[12];
-  final y = matrix[1] * point.x +
+  final y =
+      matrix[1] * point.x +
       matrix[5] * point.y +
       matrix[9] * point.z +
       matrix[13];
-  final z = matrix[2] * point.x +
+  final z =
+      matrix[2] * point.x +
       matrix[6] * point.y +
       matrix[10] * point.z +
       matrix[14];
@@ -683,8 +688,9 @@ List<Point3D> clipLineToView(
   final view = camera.viewMatrix();
   final a = _transformPoint(view, object.pointA);
   final direction = _transformPoint(view, object.pointB) - a;
-  var lower =
-      object.lineKind == Line3DKind.line ? double.negativeInfinity : 0.0;
+  var lower = object.lineKind == Line3DKind.line
+      ? double.negativeInfinity
+      : 0.0;
   var upper = object.lineKind == Line3DKind.segment ? 1.0 : double.infinity;
 
   bool clip(double value, double slope) {
@@ -701,14 +707,16 @@ List<Point3D> clipLineToView(
   // Parallel projection displays geometry on either side of the camera.
   if (projection.type == ProjectionType.perspective &&
       (!clip(-a.z - projection.near, -direction.z) ||
-          !clip(projection.far + a.z, direction.z))) return const [];
+          !clip(projection.far + a.z, direction.z)))
+    return const [];
   final aspect = projection.width / projection.height;
   if (projection.type == ProjectionType.parallel) {
     final width = projection.scale * aspect;
     if (!clip(width + a.x, direction.x) ||
         !clip(width - a.x, -direction.x) ||
         !clip(projection.scale + a.y, direction.y) ||
-        !clip(projection.scale - a.y, -direction.y)) return const [];
+        !clip(projection.scale - a.y, -direction.y))
+      return const [];
   } else {
     final height = dart_math.tan(projection.fov * dart_math.pi / 360);
     final width = height * aspect;
