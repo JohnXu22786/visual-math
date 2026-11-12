@@ -744,10 +744,17 @@ void main() {
     final eye = state.camera.position;
     final hidden = eye + (eye - visible);
     final tangent = Vector3D(0, 0, 0.2);
+    final visibleDepth = worldToScreen(
+      visible,
+      state.camera,
+      Projection3D.perspective(width: 800, height: 600),
+    ).z;
+    final justClipped = eye + (visible - eye) * ((0.1 - 5e-10) / visibleDepth);
     final objects = [
       Object3D.point(hidden),
       Object3D.polyhedron(vertices: [hidden], indices: const []),
       Object3D.curve(points: [hidden + tangent, hidden + tangent * -1]),
+      Object3D.curve(points: [justClipped]),
     ];
     for (final object in objects) {
       state.setObjects([object]);

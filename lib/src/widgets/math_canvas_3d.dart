@@ -4797,6 +4797,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       }
     }
     final surfaceCandidates = <Point3D>[];
+    final segmentCandidates = Set<Point3D>.identity();
 
     void addSegmentCandidate(Point3D a, Point3D b) {
       if (projection.type == ProjectionType.perspective) {
@@ -4835,13 +4836,13 @@ class MathCanvas3DState extends State<MathCanvas3D> {
             aScreen.z /
             ((1 - clampedT) * bScreen.z + clampedT * aScreen.z);
       }
-      candidates.add(
-        Point3D(
-          a.x + (b.x - a.x) * clampedT,
-          a.y + (b.y - a.y) * clampedT,
-          a.z + (b.z - a.z) * clampedT,
-        ),
+      final candidate = Point3D(
+        a.x + (b.x - a.x) * clampedT,
+        a.y + (b.y - a.y) * clampedT,
+        a.z + (b.z - a.z) * clampedT,
       );
+      candidates.add(candidate);
+      segmentCandidates.add(candidate);
     }
 
     final ray = _screenRay(screenX, screenY);
@@ -4943,14 +4944,16 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       var nearestDistance = 14.0;
       for (final candidate in points) {
         final screen = worldToScreen(candidate, camera, projection);
+        final nearTolerance = segmentCandidates.contains(candidate)
+            ? 1e-9 * dart_math.max(1.0, projection.near.abs())
+            : 0.0;
+        final farTolerance = segmentCandidates.contains(candidate)
+            ? 1e-9 * dart_math.max(1.0, projection.far.abs())
+            : 0.0;
         if (projection.type == ProjectionType.perspective &&
             (!screen.z.isFinite ||
-                screen.z <
-                    projection.near -
-                        1e-9 * dart_math.max(1.0, projection.near.abs()) ||
-                screen.z >
-                    projection.far +
-                        1e-9 * dart_math.max(1.0, projection.far.abs()))) {
+                screen.z < projection.near - nearTolerance ||
+                screen.z > projection.far + farTolerance)) {
           continue;
         }
         final dx = screen.x - screenX;
