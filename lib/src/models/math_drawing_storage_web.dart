@@ -67,7 +67,10 @@ Future<void> deleteDocument(String name) async {
   }
 }
 
-Future<void> importLegacyDocuments(Map<String, String> documents) async {
+Future<Map<String, String>> importLegacyDocuments(
+  Map<String, String> documents,
+) async {
+  final remaining = <String, String>{};
   final database = await _open();
   try {
     final transaction = database.transaction(_storeName, idbModeReadWrite);
@@ -75,9 +78,12 @@ Future<void> importLegacyDocuments(Map<String, String> documents) async {
     for (final entry in documents.entries) {
       if (await store.getObject(entry.key) == null) {
         await store.put(entry.value, entry.key);
+      } else {
+        remaining[entry.key] = entry.value;
       }
     }
     await transaction.completed;
+    return remaining;
   } finally {
     database.close();
   }

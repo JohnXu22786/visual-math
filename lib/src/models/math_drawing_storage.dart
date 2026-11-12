@@ -26,7 +26,10 @@ class MathDrawingStorage {
     return backend.loadDocument(name);
   }
 
-  Future<void> save(MathDrawingDocument document, {bool overwrite = false}) async {
+  Future<void> save(
+    MathDrawingDocument document, {
+    bool overwrite = false,
+  }) async {
     await _ensureLegacyDocumentsMigrated();
     await backend.saveDocument(document, overwrite: overwrite);
   }
@@ -56,8 +59,16 @@ class MathDrawingStorage {
         decoded.values.any((value) => value is! String)) {
       throw const FormatException('Saved drawing index is damaged.');
     }
-    await backend.importLegacyDocuments(decoded.cast<String, String>());
-    if (!await preferences.remove(_legacyDocumentsKey)) {
+    final remaining = await backend.importLegacyDocuments(
+      decoded.cast<String, String>(),
+    );
+    final saved = remaining.isEmpty
+        ? await preferences.remove(_legacyDocumentsKey)
+        : await preferences.setString(
+            _legacyDocumentsKey,
+            jsonEncode(remaining),
+          );
+    if (!saved) {
       throw StateError('Migrated drawings but could not remove the old index.');
     }
   }
