@@ -603,6 +603,44 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('reverting a formula publishes its committed expression', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    final edits = <String>[];
+    final snapshotsAtEdit = <String>[];
+    controller.onFormulaEdited = (_, expression) {
+      edits.add(expression);
+      snapshotsAtEdit.add(controller.formulas.single.rawExpression);
+    };
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          initialExpression: 'x',
+          initialMathematicalMode: false,
+          initialShowWebView: false,
+          options: const MathWorkspaceOptions(show3D: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('绘制'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'x+1');
+    await tester.pumpAndSettle();
+    expect(controller.formulas.single.rawExpression, 'x+1');
+
+    await tester.tap(find.byIcon(Icons.undo));
+    await tester.pumpAndSettle();
+
+    expect(controller.formulas.single.rawExpression, 'x');
+    expect(edits, ['x+1', 'x']);
+    expect(snapshotsAtEdit, ['x+1', 'x']);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('custom regions compose in a host-owned body', (tester) async {
     await tester.pumpWidget(
       _app(

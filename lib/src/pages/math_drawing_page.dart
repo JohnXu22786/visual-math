@@ -1763,10 +1763,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                 if (mounted && _activeFormula == f) setState(() {});
               },
               onRevert: hasChanged
-                  ? () {
-                      f.controller.text = f.committedText;
-                      setState(() {});
-                    }
+                  ? () => _setFormulaExpression(index, f.committedText)
                   : null,
             ),
           ),
