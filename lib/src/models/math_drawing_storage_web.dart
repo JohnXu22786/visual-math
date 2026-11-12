@@ -24,13 +24,33 @@ Future<List<String>> listDocumentNames() async {
   }
 }
 
+Future<Object?> loadDocumentSource(String name) async {
+  final database = await _open();
+  try {
+    final transaction = database.transaction(_storeName, idbModeReadOnly);
+    final value = await transaction.objectStore(_storeName).getObject(name);
+    await transaction.completed;
+    return value;
+  } finally {
+    database.close();
+  }
+}
+
 Future<MathDrawingDocument?> loadDocument(String name) async {
   final database = await _open();
   try {
     final transaction = database.transaction(_storeName, idbModeReadOnly);
     final value = await transaction.objectStore(_storeName).getObject(name);
     await transaction.completed;
-    return value is String ? MathDrawingDocument.decode(value) : null;
+    if (value is! String) return null;
+    final document = MathDrawingDocument.decode(value);
+    return document.name == name
+        ? document
+        : MathDrawingDocument(
+            name: name,
+            drawing: document.drawing,
+            extensions: document.extensions,
+          );
   } finally {
     database.close();
   }
