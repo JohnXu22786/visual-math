@@ -1,3 +1,5 @@
+import 'dart:ui' show Paragraph;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:visual_math/visual_math.dart';
@@ -5,6 +7,14 @@ import 'package:visual_math/visual_math.dart';
 class _CountingCanvas extends Fake implements Canvas {
   int lines = 0;
   int circles = 0;
+  int paths = 0;
+  int paragraphs = 0;
+
+  @override
+  void drawPath(Path path, Paint paint) => paths++;
+
+  @override
+  void drawParagraph(Paragraph paragraph, Offset offset) => paragraphs++;
 
   @override
   void drawCircle(Offset center, double radius, Paint paint) {
@@ -160,6 +170,35 @@ void main() {
   });
 
   group('MathCanvas3DPainter', () {
+    test('reference geometry behind the camera is hidden in perspective', () {
+      _CountingCanvas paint(ProjectionType projection) {
+        final canvas = _CountingCanvas();
+        MathCanvas3DPainter(
+          cameraDistance: 1,
+          cameraTheta: 0,
+          cameraPhi: -1.5,
+          cameraTarget: const Point3D(0, 0, 20),
+          projectionType: projection,
+          showPlane: true,
+          showGrid: true,
+          showAxes: true,
+        ).paint(canvas, const Size(400, 400));
+        return canvas;
+      }
+
+      final perspective = paint(ProjectionType.perspective);
+      expect(perspective.paths, 0);
+      expect(perspective.lines, 0);
+      expect(perspective.circles, 0);
+      expect(perspective.paragraphs, 0);
+
+      final parallel = paint(ProjectionType.parallel);
+      expect(parallel.paths, greaterThan(0));
+      expect(parallel.lines, greaterThan(0));
+      expect(parallel.circles, 1);
+      expect(parallel.paragraphs, greaterThan(0));
+    });
+
     test('perspective points respect the near plane', () {
       int paintPoint(double y, ProjectionType projectionType) {
         final canvas = _CountingCanvas();
@@ -237,8 +276,29 @@ void main() {
                 Point3D(coordinates.$2, target.y + range, 0),
               ),
             ]) {
-              final a = worldToScreen(endpoints.$1, camera, projection);
-              final b = worldToScreen(endpoints.$2, camera, projection);
+              var start = endpoints.$1;
+              var end = endpoints.$2;
+              final startDepth = worldToScreen(start, camera, projection).z;
+              final endDepth = worldToScreen(end, camera, projection).z;
+              if (startDepth < projection.near && endDepth < projection.near) {
+                continue;
+              }
+              final delta = end - start;
+              if (startDepth < projection.near) {
+                start =
+                    start +
+                    delta *
+                        ((projection.near - startDepth) /
+                            (endDepth - startDepth));
+              } else if (endDepth < projection.near) {
+                end =
+                    start +
+                    delta *
+                        ((projection.near - startDepth) /
+                            (endDepth - startDepth));
+              }
+              final a = worldToScreen(start, camera, projection);
+              final b = worldToScreen(end, camera, projection);
               expect(
                 canvas.segments.any(
                   (line) =>
