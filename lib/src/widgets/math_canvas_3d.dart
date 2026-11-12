@@ -5874,19 +5874,21 @@ class MathCanvas3DPainter extends CustomPainter {
       ..strokeWidth = 0.5;
 
     // Keep the grid around the view target so panning does not reveal a blank
-    // canvas while retaining the same world-unit spacing.
-    final gridRange = dart_math.max(10.0, camera.distance * 1.5);
+    // canvas. Increase spacing at larger scales to bound painting work.
+    final gridRange = dart_math.max(
+      10.0,
+      dart_math.min(camera.distance, double.maxFinite / 4) * 1.5,
+    );
     final gridCenter = camera.target;
-    const step = 1.0;
+    const maxHalfLines = 50;
+    final step = dart_math.max(1.0, gridRange / maxHalfLines);
+    final halfLines = dart_math.min(maxHalfLines, (gridRange / step).floor());
     final lines = <List<Offset>>[];
 
     // Lines along X (constant Y).
-    for (
-      double y = gridCenter.y - gridRange;
-      y <= gridCenter.y + gridRange;
-      y += step
-    ) {
-      if ((y - gridCenter.y).abs() < 1e-10) continue;
+    for (var i = -halfLines; i <= halfLines; i++) {
+      if (i == 0) continue;
+      final y = gridCenter.y + i * step;
       final p1 = worldToScreen(
         Point3D(gridCenter.x - gridRange, y, 0),
         camera,
@@ -5901,12 +5903,9 @@ class MathCanvas3DPainter extends CustomPainter {
     }
 
     // Lines along Y (constant X).
-    for (
-      double x = gridCenter.x - gridRange;
-      x <= gridCenter.x + gridRange;
-      x += step
-    ) {
-      if ((x - gridCenter.x).abs() < 1e-10) continue;
+    for (var i = -halfLines; i <= halfLines; i++) {
+      if (i == 0) continue;
+      final x = gridCenter.x + i * step;
       final p1 = worldToScreen(
         Point3D(x, gridCenter.y - gridRange, 0),
         camera,
