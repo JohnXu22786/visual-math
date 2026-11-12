@@ -429,7 +429,7 @@ void main() {
           'next:',
           'insert:7',
           'insert:Q',
-          r'insert:\Alpha',
+          'insert:A',
           'insert:q',
         ]);
         expect(tester.getRect(find.byTooltip('光标右移')), navigation);
@@ -438,6 +438,76 @@ void main() {
       },
     );
   }
+
+  testWidgets('shifted Greek keys insert supported uppercase forms', (
+    tester,
+  ) async {
+    final commands = <String>[];
+    await _pumpKeyboard(tester, commands);
+    await _selectCategory(tester, '希腊字母');
+    await tester.tap(find.byKey(const ValueKey('math-keyboard-shift')));
+    await tester.pump();
+    const names = [
+      'Alpha',
+      'Beta',
+      'Gamma',
+      'Delta',
+      'Epsilon',
+      'Zeta',
+      'Eta',
+      'Theta',
+      'Iota',
+      'Kappa',
+      'Lambda',
+      'Mu',
+      'Nu',
+      'Xi',
+      'Omicron',
+      'Pi',
+      'Rho',
+      'Sigma',
+      'Tau',
+      'Upsilon',
+      'Phi',
+      'Chi',
+      'Psi',
+      'Omega',
+    ];
+    const values = [
+      'A',
+      'B',
+      r'\Gamma',
+      r'\Delta',
+      'E',
+      'Z',
+      'H',
+      r'\Theta',
+      'I',
+      'K',
+      r'\Lambda',
+      'M',
+      'N',
+      r'\Xi',
+      'O',
+      r'\Pi',
+      'P',
+      r'\Sigma',
+      'T',
+      r'\Upsilon',
+      r'\Phi',
+      'X',
+      r'\Psi',
+      r'\Omega',
+    ];
+    for (var index = 0; index < names.length; index++) {
+      if (index == 12) {
+        await tester.drag(find.byTooltip('Alpha'), const Offset(-100, 0));
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.byTooltip(names[index]));
+    }
+    expect(commands, [for (final value in values) 'insert:$value']);
+  });
 
   testWidgets(
     'Greek page swipes preserve Shift slots and reset on category changes',
@@ -488,8 +558,20 @@ void main() {
       await tester.tap(find.byTooltip('nu'));
       expect(commands, [
         for (final name in secondPage) 'insert:\\$name',
-        for (final name in secondPage)
-          'insert:\\${name[0].toUpperCase()}${name.substring(1)}',
+        ...[
+          'N',
+          r'\Xi',
+          'O',
+          r'\Pi',
+          'P',
+          r'\Sigma',
+          'T',
+          r'\Upsilon',
+          r'\Phi',
+          'X',
+          r'\Psi',
+          r'\Omega',
+        ].map((value) => 'insert:$value'),
         r'insert:\nu',
       ]);
       await tester.tap(shift);
@@ -501,7 +583,7 @@ void main() {
       await tester.tap(find.byTooltip('Alpha'));
       expect(commands.sublist(commands.length - 2), [
         r'insert:\varkappa',
-        r'insert:\Alpha',
+        'insert:A',
       ]);
       expect(tester.takeException(), isNull);
     },
@@ -602,7 +684,7 @@ void main() {
         ),
       );
       await tester.tap(find.byTooltip('Alpha'));
-      expect(commands.last, r'insert:\Alpha');
+      expect(commands.last, 'insert:A');
       await tester.drag(find.byTooltip('Alpha'), const Offset(0, 200));
       await tester.pumpAndSettle();
       expect(tester.getRect(seven), before);

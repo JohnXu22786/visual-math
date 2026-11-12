@@ -303,6 +303,26 @@ class MathExpression {
     double yMax = 10,
     int gridX = 80,
     int gridY = 80,
+  }) => _sampleContourSegments(
+    xMin: xMin,
+    xMax: xMax,
+    yMin: yMin,
+    yMax: yMax,
+    gridX: gridX,
+    gridY: gridY,
+    refinements: 3,
+  );
+
+  // Finite sampling cannot prove continuity; limit local refinement near a
+  // suspected discontinuity and leave a gap if it cannot resolve the cell.
+  List<List<Map<String, double>>> _sampleContourSegments({
+    required double xMin,
+    required double xMax,
+    required double yMin,
+    required double yMax,
+    required int gridX,
+    required int gridY,
+    required int refinements,
   }) {
     final result = <List<Map<String, double>>>[];
     if (!isValid ||
@@ -341,6 +361,65 @@ class MathExpression {
       }
     }
 
+    // A sign change alone also occurs at poles. Refine the bracket and only
+    // accept it when the residual approaches zero relative to its endpoints.
+    double? crossing(
+      double x1,
+      double y1,
+      double x2,
+      double y2,
+      double a,
+      double b,
+    ) {
+      if (a == 0) return 0;
+      if (b == 0) return 1;
+      final scale = a.abs() > b.abs() ? a.abs() : b.abs();
+      final ratioA = a.abs() / scale;
+      final ratioB = b.abs() / scale;
+      final estimate = ratioA / (ratioA + ratioB);
+      try {
+        if (evaluator2D(x1 + (x2 - x1) * estimate, y1 + (y2 - y1) * estimate) ==
+            0) {
+          return estimate;
+        }
+      } catch (_) {
+        // Continue with bracket refinement if interpolation is undefined.
+      }
+      var lo = 0.0;
+      var hi = 1.0;
+      var left = a;
+      var right = b;
+      final smaller = a.abs() < b.abs() ? a.abs() : b.abs();
+      final larger = a.abs() > b.abs() ? a.abs() : b.abs();
+      // Floating-point evaluation can leave a small residual at a real root.
+      final roundingAllowance = larger * 1e-14;
+      final threshold = roundingAllowance < smaller
+          ? smaller * 0.001 + roundingAllowance
+          : smaller;
+      for (var i = 0; i < 1100; i++) {
+        final t = (lo + hi) / 2;
+        if (t == lo || t == hi) break;
+        double value;
+        try {
+          value = evaluator2D(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t);
+        } catch (_) {
+          return null;
+        }
+        if (!value.isFinite) return null;
+        if (value == 0) return t;
+        if ((value < 0) == (left < 0)) {
+          lo = t;
+          left = value;
+        } else {
+          hi = t;
+          right = value;
+        }
+      }
+      if (lo > 0 && left.abs() <= threshold) return lo;
+      if (hi < 1 && right.abs() <= threshold) return hi;
+      return null;
+    }
+
     // Marching squares: for each cell, find zero-crossing edge pairs.
     for (int ix = 0; ix < gridX; ix++) {
       for (int iy = 0; iy < gridY; iy++) {
@@ -356,8 +435,9 @@ class MathExpression {
         final x = xMin + ix * stepX;
         final y = yMin + iy * stepY;
 
+        final zeroEdges = <List<Map<String, double>>>[];
         void addZeroEdge(double x1, double y1, double x2, double y2) {
-          result.add([
+          zeroEdges.add([
             {'x': x1, 'y': y1},
             {'x': x2, 'y': y2},
           ]);
@@ -401,20 +481,66 @@ class MathExpression {
 
         // Bottom edge (v00-v10)
         if ((s00 < 0) != (s10 < 0)) {
-          bottomT = _zeroCrossingT(v00, v10);
+          bottomT = crossing(x, y, x + stepX, y, v00, v10);
         }
         // Top edge (v01-v11)
         if ((s01 < 0) != (s11 < 0)) {
-          topT = _zeroCrossingT(v01, v11);
+          topT = crossing(x, y + stepY, x + stepX, y + stepY, v01, v11);
         }
         // Left edge (v00-v01)
         if ((s00 < 0) != (s01 < 0)) {
-          leftT = _zeroCrossingT(v00, v01);
+          leftT = crossing(x, y, x, y + stepY, v00, v01);
         }
         // Right edge (v10-v11)
         if ((s10 < 0) != (s11 < 0)) {
-          rightT = _zeroCrossingT(v10, v11);
+          rightT = crossing(x + stepX, y, x + stepX, y + stepY, v10, v11);
         }
+
+        bool zeroEdgeHasUndefinedInterior(List<Map<String, double>> edge) {
+          for (final t in [0.25, 0.5, 0.75]) {
+            try {
+              final a = edge[0];
+              final b = edge[1];
+              if (!evaluator2D(
+                a['x']! + (b['x']! - a['x']!) * t,
+                a['y']! + (b['y']! - a['y']!) * t,
+              ).isFinite) {
+                return true;
+              }
+            } catch (_) {
+              return true;
+            }
+          }
+          return false;
+        }
+
+        void refineCell() {
+          if (refinements > 0) {
+            result.addAll(
+              _sampleContourSegments(
+                xMin: x,
+                xMax: x + stepX,
+                yMin: y,
+                yMax: y + stepY,
+                gridX: 4,
+                gridY: 4,
+                refinements: refinements - 1,
+              ),
+            );
+          }
+        }
+
+        // A rejected edge may separate two otherwise valid crossings.
+        if (((s00 < 0) != (s10 < 0) && bottomT == null) ||
+            ((s01 < 0) != (s11 < 0) && topT == null) ||
+            ((s00 < 0) != (s01 < 0) && leftT == null) ||
+            ((s10 < 0) != (s11 < 0) && rightT == null) ||
+            zeroEdges.any(zeroEdgeHasUndefinedInterior)) {
+          refineCell();
+          continue;
+        }
+
+        final cellSegments = <List<Map<String, double>>>[...zeroEdges];
 
         // Count crossings and connect pairs
         final crossings = [
@@ -451,7 +577,7 @@ class MathExpression {
             stepY,
           );
           if (p1 != null && p2 != null) {
-            result.add([p1, p2]);
+            cellSegments.add([p1, p2]);
           }
         } else if (crossings.length == 4) {
           final pBottom = _crossingPoint(
@@ -508,15 +634,21 @@ class MathExpression {
               (v00 / scale) * (v11 / scale) - (v10 / scale) * (v01 / scale);
           if (determinant >= 0) {
             if (pBottom != null && pRight != null) {
-              result.add([pBottom, pRight]);
+              cellSegments.add([pBottom, pRight]);
             }
-            if (pTop != null && pLeft != null) result.add([pTop, pLeft]);
+            if (pTop != null && pLeft != null) cellSegments.add([pTop, pLeft]);
           } else {
             if (pBottom != null && pLeft != null) {
-              result.add([pBottom, pLeft]);
+              cellSegments.add([pBottom, pLeft]);
             }
-            if (pTop != null && pRight != null) result.add([pTop, pRight]);
+            if (pTop != null && pRight != null)
+              cellSegments.add([pTop, pRight]);
           }
+        }
+        if (cellSegments.any(zeroEdgeHasUndefinedInterior)) {
+          refineCell();
+        } else {
+          result.addAll(cellSegments);
         }
       }
     }
@@ -525,16 +657,6 @@ class MathExpression {
   }
 
   /// Compute the (x,y) coordinates of a crossing on the specified edge.
-  double _zeroCrossingT(double a, double b) {
-    final absA = a.abs();
-    final absB = b.abs();
-    final scale = absA > absB ? absA : absB;
-    if (scale == 0) return 0.5;
-    final scaledA = absA / scale;
-    final scaledB = absB / scale;
-    return scaledA / (scaledA + scaledB);
-  }
-
   Map<String, double>? _crossingPoint(
     String edge,
     double? bT,

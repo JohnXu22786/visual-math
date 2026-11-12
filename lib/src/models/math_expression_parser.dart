@@ -300,11 +300,7 @@ class MathExpressionParser {
 
   static final Map<String, double Function(double, double)> _binaryFunctions = {
     'log': (base, value) => math.log(value) / math.log(base),
-    'nrt': (root, value) =>
-        value < 0 &&
-            root.isFinite &&
-            root.truncateToDouble() == root &&
-            root % 2 != 0
+    'nrt': (root, value) => value < 0 && root.isFinite && root % 2 == 1
         ? -math.pow(-value, 1 / root).toDouble()
         : math.pow(value, 1 / root).toDouble(),
     'pow': (base, exponent) => math.pow(base, exponent).toDouble(),

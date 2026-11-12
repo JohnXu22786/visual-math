@@ -42,3 +42,27 @@ test('JSXGraph bounds drive coordinates and round-trip viewport changes', () => 
   context.window.setViewport(-8, -3, 9, 5);
   assert.deepEqual(bounds, [-8, 5, 9, -3]);
 });
+
+test('clearing an invalid expression hides its error', () => {
+  const source = fs.readFileSync(path.join(__dirname,
+    '../../lib/src/widgets/math_canvas_webview.dart'), 'utf8');
+  const script = source.match(/<script>\s*([\s\S]*?)<\/script>/)[1]
+    .replaceAll('$boardId', 'board')
+    .replaceAll('$escapedExpr', '')
+    .replaceAll('$encodedInitialParameters', '{}');
+  const error = {style: {display: 'none'}, textContent: ''};
+  const board = {on: () => {}, removeObject: () => {}, create: () => ({})};
+  const context = {
+    JXG: {JSXGraph: {initBoard: () => board}},
+    window: {flutter_inappwebview: {callHandler: () => {}}},
+    document: {getElementById: () => error},
+    setInterval: () => 1,
+    clearInterval: () => {},
+    console,
+  };
+  vm.runInNewContext(script, context);
+  context.window.setExpression('x +', null);
+  assert.equal(error.style.display, 'block');
+  context.window.setExpression('', null);
+  assert.equal(error.style.display, 'none');
+});

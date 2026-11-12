@@ -3,6 +3,35 @@ import 'package:visual_math/visual_math.dart';
 
 void main() {
   group('3D construction geometry', () {
+    test('parabola does not connect its divergent path to the vertex', () {
+      final construction = ConstructionState(tool: ConstructionTool.conic);
+      for (final point in const [
+        Point3D(-1, 1, 0),
+        Point3D(1, 1, 0),
+        Point3D(-2, 4, 0),
+        Point3D(0, 0, 0),
+        Point3D(2, 4, 0),
+      ]) {
+        construction.addPoint(point);
+      }
+      final curve = construction.result!;
+      final points = curve.vertices;
+      expect(points.any((point) => point.x < -4), isTrue);
+      expect(points.any((point) => point.x > 4), isTrue);
+      for (var i = 1; i < points.length; i++) {
+        if (curve.curveStarts.contains(i)) continue;
+        final a = points[i - 1];
+        final b = points[i];
+        final midpointX = (a.x + b.x) / 2;
+        final midpointY = (a.y + b.y) / 2;
+        // A chord joining infinity to the vertex cuts far across the parabola.
+        expect(
+          (midpointY - midpointX * midpointX).abs(),
+          lessThan(0.1 * (1 + midpointY.abs())),
+        );
+      }
+    });
+
     test('intersects a ray with a working plane in front of the camera', () {
       const ray = Ray3D(Point3D(1, 2, 5), Vector3D(0, 0, -1));
 

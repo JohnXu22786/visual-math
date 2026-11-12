@@ -959,4 +959,57 @@ void main() {
       await tester.pump();
     });
   });
+
+  testWidgets('moving pinch keeps the original focal point under the fingers', (
+    tester,
+  ) async {
+    final key = GlobalKey<MathCanvasState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 400,
+              height: 300,
+              child: MathCanvas(key: key),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final detector = tester.widget<GestureDetector>(
+      find
+          .descendant(
+            of: find.byType(MathCanvas),
+            matching: find.byWidgetPredicate(
+              (widget) =>
+                  widget is GestureDetector && widget.onScaleUpdate != null,
+            ),
+          )
+          .first,
+    );
+    final before = key.currentState!.viewport;
+    const oldFocal = Offset(170, 120);
+    const newFocal = Offset(210, 140);
+    final oldX = before.$1 + oldFocal.dx / 400 * (before.$3 - before.$1);
+    final oldY =
+        (before.$2 + before.$4) / 2 +
+        (150 - oldFocal.dy) / 400 * (before.$3 - before.$1);
+    detector.onScaleStart!(ScaleStartDetails(localFocalPoint: oldFocal));
+    detector.onScaleUpdate!(
+      ScaleUpdateDetails(
+        localFocalPoint: newFocal,
+        scale: 1.5,
+        pointerCount: 2,
+      ),
+    );
+    final after = key.currentState!.viewport;
+    final screenX = (oldX - after.$1) / (after.$3 - after.$1) * 400;
+    final screenY =
+        150 - (oldY - (after.$2 + after.$4) / 2) / (after.$3 - after.$1) * 400;
+    expect(screenX, closeTo(newFocal.dx, 1e-9));
+    expect(screenY, closeTo(newFocal.dy, 1e-9));
+    expect(after.$3 - after.$1, closeTo((before.$3 - before.$1) / 1.5, 1e-9));
+  });
 }
