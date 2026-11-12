@@ -615,6 +615,58 @@ void main() {
     );
   });
 
+  testWidgets('replot preserves attachment along a short segment', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    for (final (length, offset) in [
+      (1e-7, 1e-8),
+      (1e-162, 1e-163),
+      (1e-162, 1.0),
+      (1e-320, 1e-10),
+      (1e-323, 1.0),
+      (1e-7, 1e308),
+    ]) {
+      final end = Point3D(length, 0, 0);
+      for (final mesh in [false, true]) {
+        Object3D target() =>
+            (mesh
+                    ? Object3D.surface(
+                        vertices: [Point3D.origin, end, end],
+                        indices: const [0, 1, 2],
+                      )
+                    : Object3D.curve(points: [Point3D.origin, end]))
+                .copyWith(documentId: 'plot', formulaRowId: 'row');
+        state.setObjects([
+          target(),
+          Object3D.point(Point3D(length / 2, offset, 0))
+              .copyWith(documentId: 'p'),
+        ]);
+        state.restoreDocumentRelationships(
+          pointAttachments: const [
+            PointAttachment(pointId: 'p', targetId: 'plot'),
+          ],
+          constructionDependencies: const [],
+        );
+        state.replaceFormulaObjects([target()]);
+        await tester.pump();
+        final point = state.objects
+            .singleWhere((o) => o.documentId == 'p')
+            .point;
+        expect(
+          point.x / length,
+          closeTo(0.5, 1e-5),
+          reason: 'mesh: $mesh, length: $length',
+        );
+        expect(
+          point.y / length,
+          closeTo(0, 1e-5),
+          reason: 'mesh: $mesh, length: $length',
+        );
+      }
+    }
+  });
+
   testWidgets('replot updates a moved source in an active construction', (
     tester,
   ) async {
