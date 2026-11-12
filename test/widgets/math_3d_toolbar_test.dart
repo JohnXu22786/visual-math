@@ -3,6 +3,47 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:visual_math/visual_math.dart';
 
 void main() {
+  testWidgets('command feedback follows the current label resolver', (
+    tester,
+  ) async {
+    var language = 'English';
+    final selected = <ConstructionTool>[];
+    late StateSetter update;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              update = setState;
+              return Math3DToolbar(
+                activeTool: ConstructionTool.move,
+                onToolSelected: selected.add,
+                labelResolver: (source) => '$language:$source',
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('English:编辑'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('English:切换场景中对象标签的显示'));
+    await tester.pump();
+    expect(selected.last, ConstructionTool.showHideLabels);
+    expect(find.text('English:命令：English:切换场景中对象标签的显示'), findsOneWidget);
+
+    update(() => language = 'French');
+    await tester.pump();
+    expect(find.text('French:命令：French:切换场景中对象标签的显示'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('French:切换到标准等轴测视图'));
+    await tester.pump();
+    expect(selected.last, ConstructionTool.viewDirection);
+    expect(find.text('French:命令：French:切换到标准等轴测视图'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.text('French:命令：French:切换到标准等轴测视图'), findsNothing);
+  });
+
   testWidgets(
     'group selection creates a regular polygon and changing sides resets partial input',
     (tester) async {
