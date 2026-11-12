@@ -7472,6 +7472,7 @@ class MathCanvas3DPainter extends CustomPainter {
         oldDelegate.showPlane != showPlane ||
         oldDelegate.showGrid != showGrid ||
         oldDelegate.showLabels != showLabels ||
+        oldDelegate.objects != objects ||
         oldDelegate.objectsVersion != objectsVersion ||
         oldDelegate.canvasWidth != canvasWidth ||
         oldDelegate.canvasHeight != canvasHeight ||
