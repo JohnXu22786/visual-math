@@ -99,6 +99,7 @@ void main() {
   Future<MathCanvas3DState> setup(
     WidgetTester tester, {
     VoidCallback? onSceneChanged,
+    void Function(MathCanvas3DState)? captureScene,
   }) async {
     final key = GlobalKey<MathCanvas3DState>();
     await tester.pumpWidget(
@@ -107,12 +108,16 @@ void main() {
           body: MathCanvas3D(
             key: key,
             currentTool: ConstructionTool.point,
-            onSceneChanged: onSceneChanged,
+            onSceneChanged: () {
+              onSceneChanged?.call();
+              captureScene?.call(key.currentState!);
+            },
             onObjectCreated: (object) {
               key.currentState!.setObjects([
                 ...key.currentState!.objects,
                 object,
               ]);
+              if (captureScene != null) key.currentState!.ensureDocumentIds();
             },
           ),
         ),
@@ -136,6 +141,52 @@ void main() {
     );
     return Offset(projected.x, projected.y);
   }
+
+  testWidgets('snapshot during creation retains point and construction links', (
+    tester,
+  ) async {
+    var publishedDependencies = 0;
+    var publishedAttachments = 0;
+    var incompletePublication = false;
+    final state = await setup(
+      tester,
+      captureScene: (canvas) {
+        canvas.ensureDocumentIds();
+        publishedDependencies = canvas.documentConstructionDependencies.length;
+        publishedAttachments = canvas.documentPointAttachments.length;
+        if (canvas.objects.any(
+              (object) => object.type == Object3DType.polyhedron,
+            ) &&
+            publishedDependencies == 0) {
+          incompletePublication = true;
+        }
+      },
+    );
+    const first = Point3D(-2, 0, 0);
+    const second = Point3D(-1, 0, 0);
+    state.setObjects([
+      const Object3D.point(first),
+      const Object3D.point(second),
+    ]);
+    state.setTool(ConstructionTool.tetrahedron);
+    await tester.pump();
+    await tester.tapAt(screen(state, first));
+    await tester.pump();
+    await tester.tapAt(screen(state, second));
+    await tester.pump();
+    expect(state.documentConstructionDependencies, hasLength(1));
+    expect(publishedDependencies, 1);
+    expect(incompletePublication, isFalse);
+
+    state.setObjects([const Object3D.plane(c: 1, d: 0)]);
+    state.setTool(ConstructionTool.pointOnObject);
+    await tester.pump();
+    await tester.tapAt(const Offset(400, 300));
+    await tester.pump();
+    expect(state.documentPointAttachments, hasLength(1));
+    expect(state.selectedPoint, same(state.objects.last));
+    expect(publishedAttachments, 1);
+  });
 
   testWidgets('free point starts on z=0 even over an elevated surface', (
     tester,
@@ -206,6 +257,61 @@ void main() {
       expect(preservedSolid.vertices, movedSolid.vertices);
     },
   );
+
+  testWidgets('moving source points refreshes measurement labels', (
+    tester,
+  ) async {
+    for (final tool in [ConstructionTool.distance, ConstructionTool.angle]) {
+      final state = await setup(tester);
+      const points = [Point3D(-2, 0, 0), Point3D(-1, 0, 0), Point3D(-1, 1, 0)];
+      final count = tool == ConstructionTool.distance ? 2 : 3;
+      state.setObjects(
+        points.take(count).map((p) => Object3D.point(p)).toList(),
+      );
+      state.setTool(tool);
+      await tester.pump();
+      for (final point in points.take(count)) {
+        await tester.tapAt(screen(state, point));
+        await tester.pump();
+      }
+      final originalLabel = state.objects.last.label;
+      state.setTool(ConstructionTool.move);
+      await tester.pump();
+      await tester.dragFrom(screen(state, points.first), const Offset(-45, 24));
+      await tester.pump();
+
+      final rebuilt = ConstructionState(tool: tool);
+      for (final object in state.objects.take(count)) {
+        rebuilt.addPoint(object.point);
+      }
+      expect(rebuilt.result!.label, isNot(originalLabel));
+      expect(state.objects.last.label, rebuilt.result!.label);
+      state.ensureDocumentIds();
+      final document = MathDrawingDocument(
+        name: 'measurement',
+        drawing: MathDrawingSnapshot(
+          formulas: const [],
+          parameters: const {},
+          activeView: ViewMode.mode3D,
+          activeTool: ConstructionTool.move,
+          viewport2D: Viewport.defaultViewport(),
+          camera3D: state.camera,
+          projection3D: state.projectionType,
+          scene3D: state.objects,
+          pointAttachments3D: state.documentPointAttachments,
+          constructionDependencies3D: state.documentConstructionDependencies,
+        ),
+      );
+      expect(
+        MathDrawingDocument.decode(document.encode())
+            .drawing
+            .scene3D
+            .last
+            .label,
+        rebuilt.result!.label,
+      );
+    }
+  });
 
   testWidgets('restored construction dependencies remain editable', (
     tester,
@@ -341,26 +447,141 @@ void main() {
           ),
         ],
       );
-      state.setTool(ConstructionTool.move);
+      final document = MathDrawingDocument(
+        name: 'chain',
+        drawing: MathDrawingSnapshot(
+          formulas: const [],
+          parameters: const {},
+          activeView: ViewMode.mode3D,
+          activeTool: ConstructionTool.move,
+          viewport2D: Viewport.defaultViewport(),
+          camera3D: state.camera,
+          projection3D: state.projectionType,
+          scene3D: state.objects,
+          pointAttachments3D: state.documentPointAttachments,
+          constructionDependencies3D: state.documentConstructionDependencies,
+        ),
+      );
+      final snapshot = MathDrawingDocument.decode(document.encode()).drawing;
+      final reopened = await setup(tester);
+      reopened.setObjects(snapshot.scene3D);
+      reopened.restoreDocumentRelationships(
+        pointAttachments: snapshot.pointAttachments3D,
+        constructionDependencies: snapshot.constructionDependencies3D,
+      );
+      reopened.setTool(ConstructionTool.move);
       await tester.pump();
-      await tester.dragFrom(screen(state, a), const Offset(-45, 24));
+      await tester.dragFrom(screen(reopened, a), const Offset(-45, 24));
       await tester.pump();
 
-      final movedA = state.objects[0].point;
-      final movedMidpoint = state.objects[2].point;
-      final movedAttached = state.objects[4].point;
+      final movedA = reopened.objects[0].point;
+      final movedMidpoint = reopened.objects[2].point;
+      final movedAttached = reopened.objects[4].point;
       expect(movedA.distanceTo(a), greaterThan(0.1));
       expect(movedMidpoint, movedA.midpoint(b));
-      expect(state.objects[3].pointA, movedMidpoint);
+      expect(reopened.objects[3].pointA, movedMidpoint);
       expect(movedAttached.distanceTo(attached), greaterThan(0.001));
-      expect(state.objects[5].pointA, movedA);
-      expect(state.objects[5].pointB, movedAttached);
-      expect(state.objects[6].label, startsWith('面积 '));
-      expect(state.objects[8].vertices.first, movedA);
-      expect(state.objects[8].vertices.last, movedA);
-      expect(state.objects[9].point, movedAttached);
+      expect(reopened.objects[5].pointA, movedA);
+      expect(reopened.objects[5].pointB, movedAttached);
+      expect(reopened.objects[6].label, startsWith('面积 '));
+      expect(reopened.objects[8].vertices.first, movedA);
+      expect(reopened.objects[8].vertices.last, movedA);
+      expect(reopened.objects[9].point, movedAttached);
     },
   );
+  testWidgets('cyclic construction relationships terminate on drag', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    const a = Point3D(-2, 0, 0);
+    const b = Point3D(2, 0, 0);
+    state.setObjects([
+      Object3D.point(a).copyWith(documentId: 'a'),
+      Object3D.point(b).copyWith(documentId: 'b'),
+      Object3D.point(Point3D.origin).copyWith(documentId: 'm'),
+    ]);
+    ConstructionDependency midpoint(
+      String id,
+      List<Point3D> points,
+      List<String> sources,
+    ) => ConstructionDependency(
+      objectId: id,
+      tool: ConstructionTool.midpoint,
+      inputPoints: points,
+      sourcePointIds: sources,
+      workingPlaneNormal: Vector3D.unitZ,
+      polygonSides: 3,
+    );
+    state.restoreDocumentRelationships(
+      pointAttachments: const [],
+      constructionDependencies: [
+        midpoint('m', [a, b], ['a', 'b']),
+        midpoint('a', [Point3D.origin, b], ['m', 'b']),
+      ],
+    );
+    state.setTool(ConstructionTool.move);
+    await tester.pump();
+    await tester.dragFrom(screen(state, a), const Offset(-45, 24));
+    await tester.pump();
+    expect(state.objects[0].point.distanceTo(a), greaterThan(0.1));
+    expect(state.objects[2].point, state.objects[0].point.midpoint(b));
+  });
+
+  testWidgets('area follows its source vertices before and after reopening', (
+    tester,
+  ) async {
+    final original = await setup(tester);
+    const vertices = [Point3D(-2, 0, 0), Point3D(0, 0, 0), Point3D(0, 2, 0)];
+    original.setObjects([for (final point in vertices) Object3D.point(point)]);
+    original.setTool(ConstructionTool.area);
+    await tester.pump();
+    for (final point in [...vertices, vertices.first]) {
+      await tester.tapAt(screen(original, point));
+      await tester.pump();
+    }
+    expect(original.objects, hasLength(4));
+    expect(original.objects.last.label, '面积 2.000');
+
+    Future<void> moveAndCheck(MathCanvas3DState state) async {
+      state.setTool(ConstructionTool.move);
+      await tester.pump();
+      final oldPoint = state.objects.first.point;
+      final oldArea = state.objects.last;
+      await tester.dragFrom(screen(state, oldPoint), const Offset(-45, 24));
+      await tester.pump();
+      expect(state.objects.first.point.distanceTo(oldPoint), greaterThan(0.1));
+      expect(
+        state.objects.last.point.distanceTo(oldArea.point),
+        greaterThan(0.01),
+      );
+      expect(state.objects.last.label, isNot(oldArea.label));
+    }
+
+    await moveAndCheck(original);
+    original.ensureDocumentIds();
+    final document = MathDrawingDocument(
+      name: 'area',
+      drawing: MathDrawingSnapshot(
+        formulas: const [],
+        parameters: const {},
+        activeView: ViewMode.mode3D,
+        activeTool: ConstructionTool.move,
+        viewport2D: Viewport.defaultViewport(),
+        camera3D: original.camera,
+        projection3D: original.projectionType,
+        scene3D: original.objects,
+        constructionDependencies3D: original.documentConstructionDependencies,
+      ),
+    );
+    final snapshot = MathDrawingDocument.decode(document.encode()).drawing;
+    final reopened = await setup(tester);
+    reopened.setObjects(snapshot.scene3D);
+    reopened.restoreDocumentRelationships(
+      pointAttachments: snapshot.pointAttachments3D,
+      constructionDependencies: snapshot.constructionDependencies3D,
+    );
+    await moveAndCheck(reopened);
+  });
 
   testWidgets('a snapped solid vertex can begin a later construction', (
     tester,
