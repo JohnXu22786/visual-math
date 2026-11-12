@@ -265,15 +265,21 @@ Future<void> _deleteDocument(String name) async {
   }
 }
 
-Future<void> importLegacyDocuments(Map<String, String> documents) =>
-    _locked(() => _importLegacyDocuments(documents));
+Future<Map<String, String>> importLegacyDocuments(
+  Map<String, String> documents,
+) => _locked(() => _importLegacyDocuments(documents));
 
-Future<void> _importLegacyDocuments(Map<String, String> documents) async {
+Future<Map<String, String>> _importLegacyDocuments(
+  Map<String, String> documents,
+) async {
+  final remaining = <String, String>{};
   for (final entry in documents.entries) {
     final target = await _fileFor(entry.key);
     if (await target.exists() ||
-        (await _legacyFiles(target.parent, entry.key)).isNotEmpty)
+        (await _legacyFiles(target.parent, entry.key)).isNotEmpty) {
+      remaining[entry.key] = entry.value;
       continue;
+    }
     final temp = File(
       '${target.path}.${pid}.${DateTime.now().microsecondsSinceEpoch}.migration.tmp',
     );
@@ -283,8 +289,10 @@ Future<void> _importLegacyDocuments(Map<String, String> documents) async {
       await temp.rename(target.path);
     } catch (_) {
       if (!await target.exists()) rethrow;
+      remaining[entry.key] = entry.value;
     } finally {
       if (await temp.exists()) await temp.delete();
     }
   }
+  return remaining;
 }
