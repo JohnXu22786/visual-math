@@ -123,6 +123,32 @@ void main() {
   );
 
   group('MathCanvas - initial state', () {
+    testWidgets(
+      'invalid initial expression reports an error and remains usable',
+      (tester) async {
+        final key = GlobalKey<MathCanvasState>();
+        final errors = <String>[];
+        var ready = false;
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MathCanvas(
+              key: key,
+              initialExpression: 'x ^^ 2',
+              onError: errors.add,
+              onReady: () => ready = true,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(errors, hasLength(1));
+        expect(errors.single, isNotEmpty);
+        expect(ready, isTrue);
+        await key.currentState!.setExpression('x', null);
+        expect(key.currentState!.curvePoints, isNotEmpty);
+      },
+    );
+
     testWidgets('canvas is ready callback fires', (tester) async {
       bool ready = false;
       await tester.pumpWidget(

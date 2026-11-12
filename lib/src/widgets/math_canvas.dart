@@ -141,6 +141,8 @@ class MathCanvasState extends State<MathCanvas> {
           _formulaCurves.add(
             _FormulaCurve(formula: formula, polylines: _sampleCurve(formula)),
           );
+        } else {
+          widget.onError?.call(expr.parseError ?? '表达式错误');
         }
       }
       if (!_isReady) {
