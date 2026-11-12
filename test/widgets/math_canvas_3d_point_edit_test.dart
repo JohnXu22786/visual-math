@@ -1422,6 +1422,43 @@ void main() {
     },
   );
 
+  testWidgets('sphere snapping survives formula refresh during construction', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    state.setProjectionType(ProjectionType.parallel);
+    final eye = state.camera.position;
+    final forward = (state.camera.target - eye).normalized();
+    final center = eye + forward * 4;
+    const first = Point3D(-2, 0, 0);
+    Object3D plot() => Object3D.surface(
+      vertices: const [],
+      indices: const [],
+    ).copyWith(documentId: 'plot', formulaRowId: 'row');
+    state.setObjects([
+      Object3D.point(first).copyWith(documentId: 'first'),
+      Object3D.sphere(center: center, radius: 2).copyWith(documentId: 'sphere'),
+      plot(),
+    ]);
+    state.setTool(ConstructionTool.segment);
+    await tester.pump();
+    await tester.tapAt(screen(state, first));
+    await tester.pump();
+    expect(state.constructionState!.points.single, first);
+    state.replaceFormulaObjects([plot()]);
+    await tester.pump();
+    await tester.tapAt(const Offset(430, 300));
+    await tester.pump();
+    final line = state.objects.last;
+    expect(line.type, Object3DType.line);
+    expect(line.pointB.distanceTo(center), closeTo(2, 1e-6));
+    expect((line.pointB - center).dot(forward), lessThan(0));
+    expect(
+      state.documentConstructionDependencies.single.sourcePointIds.first,
+      'first',
+    );
+  });
+
   testWidgets('parallel snaps to a large representable sphere', (tester) async {
     final state = await setup(tester);
     state.setProjectionType(ProjectionType.parallel);
