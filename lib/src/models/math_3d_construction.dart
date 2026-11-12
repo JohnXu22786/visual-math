@@ -1500,14 +1500,8 @@ class ConstructionState {
   }
 
   static Object3D _createThreePointCircle(Point3D a, Point3D b, Point3D c) {
-    final u = b - a;
-    final v = c - a;
-    final normal = u.cross(v);
-    final offset =
-        (v.cross(normal) * u.dot(u) + normal.cross(u) * v.dot(v)) *
-        (1 / (2 * normal.dot(normal)));
     return _createCircle(
-      a + offset,
+      _circumcenter(a, b, c),
       a,
       planeNormal: _triangleUnitNormal(a, b, c),
     );
@@ -2012,14 +2006,22 @@ class ConstructionState {
   }
 
   static Point3D _circumcenter(Point3D a, Point3D b, Point3D c) {
-    final u = b - a;
-    final v = c - a;
-    final normal = u.cross(v);
-    final normalSquared = normal.dot(normal);
     if (!_isNonCollinear(a, b, c)) return a;
-    final offset =
-        (v.cross(normal) * u.dot(u) + normal.cross(u) * v.dot(v)) *
-        (1 / (2 * normalSquared));
+    final edgeU = b - a;
+    final edgeV = c - a;
+    final unitU = _stableNormalize(edgeU);
+    final unitV = _stableNormalize(edgeV);
+    final normal = _stableNormalize(unitU.cross(unitV));
+    final perpendicular = normal.cross(unitU);
+    final halfU = (edgeU * 0.5).dot(unitU);
+    final halfV = edgeV * 0.5;
+    final parallel = halfV.dot(unitU);
+    final across = halfV.dot(perpendicular);
+    final difference = parallel - halfU;
+    final perpendicularOffset = difference == 0
+        ? across
+        : across + (parallel / across) * difference;
+    final offset = unitU * halfU + perpendicular * perpendicularOffset;
     return a + offset;
   }
 
