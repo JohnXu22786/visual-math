@@ -605,6 +605,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     setState(() {
       _showAxes = !_showAxes;
     });
+    widget.onViewportChange?.call();
   }
 
   /// Toggle grid visibility.
@@ -612,6 +613,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     setState(() {
       _showGrid = !_showGrid;
     });
+    widget.onViewportChange?.call();
   }
 
   /// Toggle xOy-plane visibility.
@@ -619,6 +621,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     setState(() {
       _showPlane = !_showPlane;
     });
+    widget.onViewportChange?.call();
   }
 
   /// Run a toolbox command that does not need a canvas click.
