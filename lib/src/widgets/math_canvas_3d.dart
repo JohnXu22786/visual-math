@@ -2972,23 +2972,117 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     Point3D? linePlaneIntersection(
       ({Point3D origin, Vector3D direction, double minT, double maxT}) line,
       Object3D plane,
+      Object3D lineObject,
     ) {
       final equation = _normalizedPlaneEquation(plane);
       if (equation == null) return null;
-      final normal = equation.normal;
-      final denominator = normal.dot(line.direction);
-      final normalMagnitude = normal.magnitude;
-      final directionMagnitude = line.direction.magnitude;
-      if (!denominator.isFinite ||
-          !normalMagnitude.isFinite ||
-          !directionMagnitude.isFinite ||
-          normalMagnitude == 0 ||
-          directionMagnitude == 0 ||
-          (denominator / normalMagnitude / directionMagnitude).abs() <= 1e-12) {
-        return null;
+      // Keep the supplied binary coefficients exact while summing products:
+      // normalization and rounded dot products can turn parallel into crossing
+      // (or vice versa) when their components nearly cancel.
+      (BigInt, int) binary(double value) {
+        final bytes = ByteData(8)..setFloat64(0, value);
+        final high = bytes.getUint32(0);
+        final low = bytes.getUint32(4);
+        final exponent = (high >> 20) & 0x7ff;
+        var significand =
+            (BigInt.from(high & 0xfffff) << 32) | BigInt.from(low);
+        if (exponent != 0) significand |= BigInt.one << 52;
+        if ((high & 0x80000000) != 0) significand = -significand;
+        return (significand, exponent == 0 ? -1074 : exponent - 1075);
       }
-      final t = (equation.d - normal.dot(line.origin.toVector())) / denominator;
+
+      (BigInt, int) sumProducts(List<(double, double)> terms) {
+        final products = <(BigInt, int)>[];
+        for (final (left, right) in terms) {
+          final (a, aExponent) = binary(left);
+          final (b, bExponent) = binary(right);
+          if (a != BigInt.zero && b != BigInt.zero) {
+            products.add((a * b, aExponent + bExponent));
+          }
+        }
+        if (products.isEmpty) return (BigInt.zero, 0);
+        final exponent = products.map((p) => p.$2).reduce(dart_math.min);
+        var sum = BigInt.zero;
+        for (final (value, power) in products) {
+          sum += value << (power - exponent);
+        }
+        return (sum, exponent);
+      }
+
+      final direction = line.direction;
+      final origin = line.origin;
+      if (![
+        direction.x,
+        direction.y,
+        direction.z,
+        origin.x,
+        origin.y,
+        origin.z,
+      ].every((value) => value.isFinite))
+        return null;
+      final (denominator, denominatorExponent) = sumProducts([
+        if (lineObject.type == Object3DType.line) ...[
+          (plane.planeA, lineObject.pointB.x),
+          (plane.planeB, lineObject.pointB.y),
+          (plane.planeC, lineObject.pointB.z),
+          (-plane.planeA, lineObject.pointA.x),
+          (-plane.planeB, lineObject.pointA.y),
+          (-plane.planeC, lineObject.pointA.z),
+        ] else ...[
+          (plane.planeA, direction.x),
+          (plane.planeB, direction.y),
+          (plane.planeC, direction.z),
+        ],
+      ]);
+      if (denominator == BigInt.zero) return null;
+      final (numerator, numeratorExponent) = sumProducts([
+        (plane.planeD, 1),
+        (-plane.planeA, origin.x),
+        (-plane.planeB, origin.y),
+        (-plane.planeC, origin.z),
+      ]);
+      double ratio(BigInt value, BigInt divisor, int exponent) {
+        if (value == BigInt.zero) return 0;
+        final valueShift = dart_math.max(0, value.abs().bitLength - 53);
+        final divisorShift = dart_math.max(0, divisor.abs().bitLength - 53);
+        final fraction =
+            (value.abs() >> valueShift).toDouble() /
+            (divisor.abs() >> divisorShift).toDouble();
+        final sign = value.isNegative == divisor.isNegative ? 1 : -1;
+        final power = exponent + valueShift - divisorShift;
+        // Split the scale so a representable result does not overflow or
+        // underflow merely because an intermediate power of two does.
+        final firstPower = power.clamp(-1022, 1023);
+        return sign *
+            fraction *
+            dart_math.pow(2, firstPower) *
+            dart_math.pow(2, power - firstPower);
+      }
+
+      final t = ratio(
+        numerator,
+        denominator,
+        numeratorExponent - denominatorExponent,
+      );
       if (!inRange(line, t)) return null;
+      if (lineObject.type == Object3DType.line) {
+        final a = lineObject.pointA;
+        final b = lineObject.pointB;
+        double interpolate(double start, double end) {
+          final (value, exponent) = sumProducts([
+            (start, 1),
+            (end, t),
+            (-start, t),
+          ]);
+          return ratio(value, BigInt.one, exponent);
+        }
+
+        return Point3D(
+          interpolate(a.x, b.x),
+          interpolate(a.y, b.y),
+          interpolate(a.z, b.z),
+        );
+      }
       return line.origin + line.direction * t;
     }
 
@@ -3619,7 +3713,11 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     final other = firstLine == null ? first : second;
     if (line == null) return const [];
     if (other.type == Object3DType.plane) {
-      final point = linePlaneIntersection(line, other);
+      final point = linePlaneIntersection(
+        line,
+        other,
+        firstLine != null ? first : second,
+      );
       return point == null ? const [] : [point];
     }
     if (other.type == Object3DType.sphere) {
