@@ -142,6 +142,7 @@ class MathCanvasState extends State<MathCanvas> {
           _formulaCurves.add(
             _FormulaCurve(formula: formula, polylines: _sampleCurve(formula)),
           );
+          widget.onCoordinateUpdate?.call(curvePoints);
         } else {
           widget.onError?.call(expr.parseError ?? '表达式错误');
         }
@@ -804,6 +805,9 @@ class MathCanvasState extends State<MathCanvas> {
         }
         if (dimensionsChanged && _formulaCurves.isNotEmpty) {
           _resampleAll();
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) widget.onCoordinateUpdate?.call(curvePoints);
+          });
         }
 
         final supportedDevices =

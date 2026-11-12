@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:visual_math/visual_math.dart';
 
@@ -217,6 +218,43 @@ void main() {
       expect((await zeros('x')).single.$1, closeTo(0, 1e-5));
     },
   );
+
+  testWidgets('publishes initial and resized curve samples after layout', (
+    tester,
+  ) async {
+    final key = GlobalKey<MathCanvasState>();
+    final updates = <List<Map<String, double>>>[];
+    Widget canvas(double height) => MaterialApp(
+      home: Center(
+        child: SizedBox(
+          width: 300,
+          height: height,
+          child: MathCanvas(
+            key: key,
+            initialExpression: 'x^2+y^2=25',
+            onCoordinateUpdate: (points) {
+              expect(
+                WidgetsBinding.instance.schedulerPhase,
+                isNot(SchedulerPhase.persistentCallbacks),
+              );
+              updates.add(points);
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(canvas(300));
+    expect(updates, hasLength(1));
+    expect(updates.last, isNotEmpty);
+    expect(updates.last, key.currentState!.curvePoints);
+    final initial = updates.last;
+
+    await tester.pumpWidget(canvas(150));
+    expect(updates, hasLength(2));
+    expect(updates.last, key.currentState!.curvePoints);
+    expect(updates.last, isNot(equals(initial)));
+  });
 
   group('MathCanvas - initial state', () {
     testWidgets(
