@@ -851,75 +851,77 @@ class MathNumericKeyboard extends StatelessWidget {
       color: colors.surfaceContainer,
       child: SafeArea(
         top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                height: 44,
-                child: Row(
-                  children: [
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '$activeLabel · ${label('数学键盘（仅数值）')}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: colors.onSurfaceVariant,
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  height: 44,
+                  child: Row(
+                    children: [
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '$activeLabel · ${label('数学键盘（仅数值）')}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colors.onSurfaceVariant,
+                          ),
                         ),
                       ),
-                    ),
-                    IconButton(
-                      onPressed: onDismiss,
-                      tooltip: label('收起数学键盘'),
-                      icon: const Icon(Icons.keyboard_hide),
-                    ),
-                  ],
+                      IconButton(
+                        onPressed: onDismiss,
+                        tooltip: label('收起数学键盘'),
+                        icon: const Icon(Icons.keyboard_hide),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              for (final row in _rows)
-                Row(
-                  children: [
-                    for (final key in row)
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.all(2),
-                          child: SizedBox(
-                            height: 44,
-                            child: Tooltip(
-                              message: label(key.description ?? key.label),
-                              child: FilledButton.tonal(
-                                style: FilledButton.styleFrom(
-                                  padding: const EdgeInsets.all(2),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(
-                                      MathUiTokens.cornerRadius,
+                for (final row in _rows)
+                  Row(
+                    children: [
+                      for (final key in row)
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.all(2),
+                            child: SizedBox(
+                              height: 44,
+                              child: Tooltip(
+                                message: label(key.description ?? key.label),
+                                child: FilledButton.tonal(
+                                  style: FilledButton.styleFrom(
+                                    padding: const EdgeInsets.all(2),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(
+                                        MathUiTokens.cornerRadius,
+                                      ),
                                     ),
                                   ),
+                                  onPressed: () => _press(key),
+                                  child:
+                                      key.action == _NumericMathAction.backspace
+                                      ? const Icon(
+                                          Icons.backspace_outlined,
+                                          size: 20,
+                                        )
+                                      : Text(
+                                          key.label,
+                                          maxLines: 1,
+                                          style: const TextStyle(fontSize: 18),
+                                        ),
                                 ),
-                                onPressed: () => _press(key),
-                                child:
-                                    key.action == _NumericMathAction.backspace
-                                    ? const Icon(
-                                        Icons.backspace_outlined,
-                                        size: 20,
-                                      )
-                                    : Text(
-                                        key.label,
-                                        maxLines: 1,
-                                        style: const TextStyle(fontSize: 18),
-                                      ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                  ],
-                ),
-            ],
+                    ],
+                  ),
+              ],
+            ),
           ),
         ),
       ),
