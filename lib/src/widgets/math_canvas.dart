@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 
 import '../models/math_expression.dart' show MathExpression, MathExpressionType;
+import '../models/math_expression_parser.dart' show MathExpressionParser;
 import '../models/formula_entry.dart';
 import 'math_ui_tokens.dart';
 
@@ -404,8 +405,19 @@ class MathCanvasState extends State<MathCanvas> {
     final result = <(double, double, Color)>[];
     for (final curve in _formulaCurves) {
       if (curve.formula.parsed?.type != MathExpressionType.explicit) continue;
+      final expression = curve.formula.parsed!;
+      final factors = MathExpressionParser.touchingRootFactors(
+        expression.normalizedExpression,
+        variables: {'x', ...expression.parameters},
+      );
+      final powerBases = <double Function(double)>[];
+      for (final factor in factors) {
+        final base = MathExpression.fromInput(factor)
+            .withParameters(curve.formula.parameterValues);
+        if (base.isValid) powerBases.add(base.evaluator);
+      }
       for (final points in curve.polylines) {
-        double? lastTouchingZero;
+        final touchingZeros = <double>[];
         for (var i = 1; i < points.length; i++) {
           final p0 = points[i - 1];
           final p1 = points[i];
@@ -445,17 +457,63 @@ class MathCanvasState extends State<MathCanvas> {
                     left = a;
                   }
                 }
-                // Only emit an evaluated zero. A small residual could also be
-                // a nonzero extremum, so uncertain candidates are omitted.
-                final x = x0 <= 0 && p2['x']! >= 0 && evaluate(0) == 0
+                var x = x0 <= 0 && p2['x']! >= 0 && evaluate(0) == 0
                     ? 0.0
                     : (left + right) / 2;
-                if (evaluate(x) == 0 &&
-                    (lastTouchingZero == null ||
-                        (x - lastTouchingZero).abs() >
-                            (x1 - x0).abs() * 1e-6)) {
+                final residual = evaluate(x).abs();
+                var baseCrosses = false;
+                if (residual.isFinite) {
+                  for (final powerBase in powerBases) {
+                    var lo = x0;
+                    var hi = p2['x']!;
+                    var a = powerBase(lo);
+                    final b = powerBase(hi);
+                    if (!a.isFinite ||
+                        !b.isFinite ||
+                        (a != 0 && b != 0 && a.sign == b.sign))
+                      continue;
+                    if (a == 0) {
+                      x = lo;
+                    } else if (b == 0) {
+                      x = hi;
+                    } else {
+                      for (var step = 0; step < 100; step++) {
+                        final mid = lo + (hi - lo) / 2;
+                        if (mid == lo || mid == hi) break;
+                        final value = powerBase(mid);
+                        if (!value.isFinite)
+                          throw const FormatException('Invalid root probe');
+                        if (value == 0) {
+                          lo = hi = mid;
+                          break;
+                        }
+                        if (value.sign == a.sign) {
+                          lo = mid;
+                          a = value;
+                        } else {
+                          hi = mid;
+                        }
+                      }
+                      x = lo + (hi - lo) / 2;
+                    }
+                    baseCrosses = true;
+                    if (touchingZeros.every(
+                      (previous) =>
+                          (x - previous).abs() > (x1 - x0).abs() * 1e-6,
+                    )) {
+                      result.add((x, 0, curve.formula.color));
+                      touchingZeros.add(x);
+                    }
+                  }
+                }
+                if (residual == 0 &&
+                    !baseCrosses &&
+                    touchingZeros.every(
+                      (previous) =>
+                          (x - previous).abs() > (x1 - x0).abs() * 1e-6,
+                    )) {
                   result.add((x, 0, curve.formula.color));
-                  lastTouchingZero = x;
+                  touchingZeros.add(x);
                 }
               } catch (_) {
                 // An invalid probe leaves this extremum uncertain.

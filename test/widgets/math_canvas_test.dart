@@ -249,6 +249,51 @@ void main() {
         expect(points, hasLength(1), reason: expression);
         expect(points.single.$1, closeTo(expression == 'x^2' ? 0 : 1.23, 1e-5));
       }
+      final irrational = await zeros('(x^2-2)^2');
+      expect(irrational, hasLength(2));
+      expect(irrational[0].$1, closeTo(-1.4142135623730951, 1e-5));
+      expect(irrational[1].$1, closeTo(1.4142135623730951, 1e-5));
+      expect(await zeros('(x^2-2)^2+0'), hasLength(2));
+      expect(await zeros('(x^2-2)^2+1e-30'), isEmpty);
+      expect(await zeros('(x^2-2)^2+1e-100'), isEmpty);
+      expect(await zeros('(x^2-2)^8'), hasLength(2));
+      expect(await zeros('2*(x^2-2)^2'), hasLength(2));
+      expect(await zeros('((x^2-2)^2)'), hasLength(2));
+      expect(await zeros('(x^2-a)^2'), hasLength(2));
+      expect(await zeros('(x^2-2)*(x^2-2)'), hasLength(2));
+      expect(await zeros('(x^2-2)^2*(x^2+1)'), hasLength(2));
+      expect(await zeros('(x^2-2)^2*(x^2-3)^2'), hasLength(4));
+      final closeRoots = await zeros('(x-0.1)^2*(x-0.104)^2');
+      expect(closeRoots, hasLength(2));
+      expect(closeRoots.any((point) => (point.$1 - 0.1).abs() < 1e-5), isTrue);
+      expect(
+        closeRoots.any((point) => (point.$1 - 0.104).abs() < 1e-5),
+        isTrue,
+      );
+      final adjacent = await zeros('((x-0.1)^2+1e-30)*(x-0.104)^2');
+      expect(adjacent, isNotEmpty);
+      expect(
+        adjacent.every((point) => (point.$1 - 0.104).abs() < 1e-5),
+        isTrue,
+      );
+      final nearby = await zeros('((x-0.3)^2+1e-30)*(x-0.32)^2');
+      expect(nearby, isNotEmpty);
+      expect(nearby.every((point) => (point.$1 - 0.32).abs() < 1e-5), isTrue);
+      expect(await zeros('abs(x^2-2)'), hasLength(2));
+      expect(await zeros('abs(x^2-2)+1e-100'), isEmpty);
+      final sineRoots = await zeros('(sin(x))^2');
+      expect(
+        sineRoots.any((p) => (p.$1 - 3.141592653589793).abs() < 1e-5),
+        isTrue,
+      );
+      expect(
+        sineRoots.any((p) => (p.$1 + 3.141592653589793).abs() < 1e-5),
+        isTrue,
+      );
+      expect(
+        await zeros('(((x^2-2)^2+1e-30)*(2*floor(x-1.4142135623730951)+1))^2'),
+        isEmpty,
+      );
       expect(await zeros('(x-1.23)^2+0.0001'), isEmpty);
       expect(await zeros('(x-1.23)^2+0.000000000000001'), isEmpty);
       expect(await zeros('(x-1.23)^2+1e-30'), isEmpty);
@@ -256,6 +301,15 @@ void main() {
       expect(await zeros('abs(x-1.23)+1e-16'), isEmpty);
       expect(await zeros('-(x-1.23)^2-1e-100'), isEmpty);
       expect((await zeros('x')).single.$1, closeTo(0, 1e-5));
+      await key.currentState!.setViewport(
+        1.4142134623730951,
+        -1,
+        1.4142136623730951,
+        1,
+      );
+      final zoomed = await zeros('abs(x^2-2)');
+      expect(zoomed, hasLength(1));
+      expect(zoomed.single.$1, closeTo(1.4142135623730951, 1e-10));
     },
   );
 

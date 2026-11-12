@@ -28,6 +28,24 @@ class MathExpressionParser {
     return (values) => expression(values).toDouble();
   }
 
+  /// Return a continuous factor whose sign change proves a touching zero.
+  ///
+  /// This deliberately recognizes a bounded set of structures: neutral zero
+  /// additions, products of continuous expressions, positive integer powers,
+  /// and absolute values. It does not infer zeros from a small residual alone.
+  static List<String> touchingRootFactors(
+    String source, {
+    required Iterable<String> variables,
+  }) {
+    try {
+      final parser = _RootEvidenceParser(_tokenize(source), variables.toSet());
+      final node = parser.parse();
+      return node.rootFactors.map((factor) => factor.code).toList();
+    } on FormatException {
+      return const [];
+    }
+  }
+
   /// Compile the same expression grammar to a JavaScript expression.
   static String toJavaScript(
     String source, {
@@ -488,4 +506,188 @@ class _JsExpression {
   final String code;
   final int precedence;
   String wrap(int required) => precedence < required ? '($code)' : code;
+}
+
+// A conservative structural analysis, separate from numerical evaluation.
+// Unknown operations are parsed but never treated as continuous evidence.
+class _RootEvidenceNode {
+  _RootEvidenceNode(
+    this.kind,
+    this.code, {
+    this.left,
+    this.right,
+    this.continuous = false,
+    this.zero = false,
+    this.integer,
+  });
+  final String kind;
+  final String code;
+  final _RootEvidenceNode? left, right;
+  final bool continuous, zero;
+  final int? integer;
+
+  List<_RootEvidenceNode> get rootFactors {
+    switch (kind) {
+      case '+':
+        if (right!.zero) return left!.rootFactors;
+        if (left!.zero) return right!.rootFactors;
+      case '-':
+        if (right == null || right!.zero) return left!.rootFactors;
+      case 'abs':
+        if (left!.continuous) return [left!];
+      case '^':
+        final exponent = right!.integer;
+        if (left!.continuous &&
+            exponent != null &&
+            exponent > 0 &&
+            exponent.isEven)
+          return [left!];
+      case '*':
+        if (left!.continuous && right!.continuous) {
+          if (left!.code == right!.code) return [left!];
+          return [...left!.rootFactors, ...right!.rootFactors];
+        }
+    }
+    return const [];
+  }
+}
+
+class _RootEvidenceParser {
+  _RootEvidenceParser(this.tokens, this.variables);
+  final List<_Token> tokens;
+  final Set<String> variables;
+  int position = 0;
+  _Token get current => tokens[position];
+  bool take(String text) {
+    if (current.text != text) return false;
+    position++;
+    return true;
+  }
+
+  void require(String text) {
+    if (!take(text)) throw const FormatException('Unexpected token');
+  }
+
+  _RootEvidenceNode parse() {
+    final node = sum();
+    if (current.kind != _TokenKind.end)
+      throw const FormatException('Unexpected token');
+    return node;
+  }
+
+  _RootEvidenceNode sum() {
+    var node = product();
+    while (current.text == '+' || current.text == '-') {
+      final op = current.text;
+      position++;
+      final rhs = product();
+      node = _RootEvidenceNode(
+        op,
+        '(${node.code}$op${rhs.code})',
+        left: node,
+        right: rhs,
+        continuous: node.continuous && rhs.continuous,
+      );
+    }
+    return node;
+  }
+
+  _RootEvidenceNode product() {
+    var node = unary();
+    while (current.text == '*' || current.text == '/' || current.text == '%') {
+      final op = current.text;
+      position++;
+      final rhs = unary();
+      node = _RootEvidenceNode(
+        op,
+        '(${node.code}$op${rhs.code})',
+        left: node,
+        right: rhs,
+        continuous: op == '*' && node.continuous && rhs.continuous,
+      );
+    }
+    return node;
+  }
+
+  _RootEvidenceNode unary() {
+    if (take('+')) return unary();
+    if (take('-')) {
+      final node = unary();
+      return _RootEvidenceNode(
+        '-',
+        '(-${node.code})',
+        left: node,
+        continuous: node.continuous,
+        zero: node.zero,
+      );
+    }
+    return power();
+  }
+
+  _RootEvidenceNode power() {
+    final node = primary();
+    if (!take('^')) return node;
+    final exponent = unary();
+    final n = exponent.integer;
+    return _RootEvidenceNode(
+      '^',
+      '(${node.code}^${exponent.code})',
+      left: node,
+      right: exponent,
+      continuous: node.continuous && n != null && n >= 0,
+    );
+  }
+
+  _RootEvidenceNode primary() {
+    final token = current;
+    if (token.kind == _TokenKind.number) {
+      position++;
+      final value = double.tryParse(token.text);
+      final zero = RegExp(r'^(?:0+(?:\.0*)?|\.0+)(?:[eE][+-]?\d+)?$')
+          .hasMatch(token.text);
+      final integer = RegExp(r'^\d+$').hasMatch(token.text)
+          ? int.tryParse(token.text)
+          : null;
+      return _RootEvidenceNode(
+        'number',
+        token.text,
+        continuous: value != null && value.isFinite,
+        zero: zero,
+        integer: integer,
+      );
+    }
+    if (take('(')) {
+      final node = sum();
+      require(')');
+      return node;
+    }
+    if (token.kind == _TokenKind.identifier) {
+      position++;
+      if (take('(')) {
+        final args = <_RootEvidenceNode>[];
+        if (!take(')')) {
+          do {
+            args.add(sum());
+          } while (take(','));
+          require(')');
+        }
+        final supported =
+            {'sin', 'cos', 'abs'}.contains(token.text) && args.length == 1;
+        return _RootEvidenceNode(
+          token.text,
+          '${token.text}(${args.map((arg) => arg.code).join(',')})',
+          left: args.length == 1 ? args.single : null,
+          continuous: supported && args.single.continuous,
+        );
+      }
+      return _RootEvidenceNode(
+        'identifier',
+        token.text,
+        continuous:
+            variables.contains(token.text) ||
+            MathExpressionParser._constants.containsKey(token.text),
+      );
+    }
+    throw const FormatException('Expected expression');
+  }
 }
