@@ -390,6 +390,7 @@ class MathCanvasState extends State<MathCanvas> {
     for (final curve in _formulaCurves) {
       if (curve.formula.parsed?.type != MathExpressionType.explicit) continue;
       for (final points in curve.polylines) {
+        double? lastTouchingZero;
         for (var i = 1; i < points.length; i++) {
           final p0 = points[i - 1];
           final p1 = points[i];
@@ -400,6 +401,51 @@ class MathCanvasState extends State<MathCanvas> {
           if (_showZeros && (y0 == 0 || y1 == 0 || y0.sign != y1.sign)) {
             final t = y1 == y0 ? 0.0 : (-y0 / (y1 - y0)).clamp(0.0, 1.0);
             result.add((x0 + (x1 - x0) * t, 0, curve.formula.color));
+          }
+          if (_showZeros && i + 1 < points.length) {
+            final p2 = points[i + 1];
+            final y2 = p2['y']!;
+            // A touching root is a local minimum of |f| with no sign change.
+            if (y0 != 0 &&
+                y1 != 0 &&
+                y2 != 0 &&
+                y0.sign == y1.sign &&
+                y1.sign == y2.sign &&
+                y1.abs() <= y0.abs() &&
+                y1.abs() <= y2.abs() &&
+                (y1.abs() < y0.abs() || y1.abs() < y2.abs())) {
+              try {
+                final evaluate = curve.formula.parsed!.evaluator;
+                var left = x0;
+                var right = p2['x']!;
+                for (var step = 0; step < 256; step++) {
+                  final a = left + (right - left) / 3;
+                  final b = right - (right - left) / 3;
+                  final ya = evaluate(a).abs();
+                  final yb = evaluate(b).abs();
+                  if (!ya.isFinite || !yb.isFinite) break;
+                  if (ya < yb) {
+                    right = b;
+                  } else {
+                    left = a;
+                  }
+                }
+                // Only emit an evaluated zero. A small residual could also be
+                // a nonzero extremum, so uncertain candidates are omitted.
+                final x = x0 <= 0 && p2['x']! >= 0 && evaluate(0) == 0
+                    ? 0.0
+                    : (left + right) / 2;
+                if (evaluate(x) == 0 &&
+                    (lastTouchingZero == null ||
+                        (x - lastTouchingZero).abs() >
+                            (x1 - x0).abs() * 1e-6)) {
+                  result.add((x, 0, curve.formula.color));
+                  lastTouchingZero = x;
+                }
+              } catch (_) {
+                // An invalid probe leaves this extremum uncertain.
+              }
+            }
           }
           if (_showExtrema && i + 1 < points.length) {
             final y2 = points[i + 1]['y']!;
@@ -451,6 +497,12 @@ class MathCanvasState extends State<MathCanvas> {
       formula.domainEndExpression,
       formula.parameterValues,
     );
+    if ((formula.domainStartExpression?.trim().isNotEmpty == true &&
+            domainStart == null) ||
+        (formula.domainEndExpression?.trim().isNotEmpty == true &&
+            domainEnd == null)) {
+      return [];
+    }
     final sampleMin = dart_math.max(
       _xMin - marginX,
       domainStart ?? double.negativeInfinity,
