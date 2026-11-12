@@ -21,18 +21,21 @@ void main() {
       expect(evaluate({}), closeTo(13.414213562373096, 1e-12));
     });
 
-    test('evaluates odd roots of negative values and preserves domain limits', () {
-      final evaluate = MathExpressionParser.parse(
-        'nrt(root, value)',
-        variables: ['root', 'value'],
-      );
+    test(
+      'evaluates odd roots of negative values and preserves domain limits',
+      () {
+        final evaluate = MathExpressionParser.parse(
+          'nrt(root, value)',
+          variables: ['root', 'value'],
+        );
 
-      expect(evaluate({'root': 3, 'value': -8}), closeTo(-2, 1e-12));
-      expect(evaluate({'root': -3, 'value': -8}), closeTo(-0.5, 1e-12));
-      expect(evaluate({'root': 2, 'value': -8}).isNaN, isTrue);
-      expect(evaluate({'root': 2.5, 'value': -8}).isNaN, isTrue);
-      expect(evaluate({'root': 3, 'value': 8}), closeTo(2, 1e-12));
-    });
+        expect(evaluate({'root': 3, 'value': -8}), closeTo(-2, 1e-12));
+        expect(evaluate({'root': -3, 'value': -8}), closeTo(-0.5, 1e-12));
+        expect(evaluate({'root': 2, 'value': -8}).isNaN, isTrue);
+        expect(evaluate({'root': 2.5, 'value': -8}).isNaN, isTrue);
+        expect(evaluate({'root': 3, 'value': 8}), closeTo(2, 1e-12));
+      },
+    );
 
     test('factorial stops after overflow for very large inputs', () {
       final evaluate = MathExpressionParser.parse('fact(x)', variables: ['x']);
