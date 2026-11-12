@@ -829,6 +829,12 @@ class MathExpression {
           if (v01 == 0) tangentPoints.add({'x': x, 'y': y + stepY});
           if (v11 == 0) tangentPoints.add({'x': x + stepX, 'y': y + stepY});
         }
+        // One bounded subdivision improves separation when nearby touching
+        // roots occupy the same sampled valley on a coarse grid edge.
+        if (refinements == 3 && tangentPoints.length >= 2) {
+          refineCell();
+          continue;
+        }
         final zeroCorners = [v00, v10, v01, v11].where((v) => v == 0).length;
         if (refinements > 0 &&
             zeroEdges.isEmpty &&
@@ -920,13 +926,21 @@ class MathExpression {
             }
           }
           if (uncertain) {
-            refineCell();
+            if (refinements > 0) {
+              refineCell();
+            } else {
+              result.addAll(zeroEdges);
+            }
             continue;
           }
         }
         if (tangentPoints.length == 2) {
           if (tangentHasSuspectedPole(tangentPoints)) {
-            refineCell();
+            if (refinements > 0) {
+              refineCell();
+            } else {
+              result.addAll(zeroEdges);
+            }
             continue;
           }
           cellSegments.add(tangentPoints);

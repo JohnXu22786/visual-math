@@ -613,6 +613,13 @@ void main() {
         ),
         isTrue,
       );
+      final closeRoots = sample('(x-0.1)^2*(x-0.15)^2=0');
+      for (final root in [0.1, 0.15]) {
+        expect(
+          closeRoots.any((s) => s.every((p) => (p['x']! - root).abs() < 1e-6)),
+          isTrue,
+        );
+      }
       final multiple = sample('(x-0.1)^2*(x-0.4)^2=0');
       for (final root in [0.1, 0.4]) {
         expect(
@@ -676,6 +683,14 @@ void main() {
         branch.any((s) => s.every((p) => (p['x']! - 0.1).abs() < 1e-6)),
         isTrue,
       );
+      final curvedBranch = sample('y*(x-y^2-0.1)^2=0');
+      final zeroLength = curvedBranch
+          .where((s) => s.every((p) => p['y'] == 0))
+          .fold<double>(
+            0,
+            (sum, s) => sum + (s.last['x']! - s.first['x']!).abs(),
+          );
+      expect(zeroLength, closeTo(0.5, 1e-9));
       final angledBranch = sample('(x-y-0.1)^2*y=0');
       expect(
         angledBranch.any(
