@@ -1257,6 +1257,54 @@ void main() {
     },
   );
 
+  testWidgets('parallel snaps to a large representable sphere', (tester) async {
+    final state = await setup(tester);
+    state.setProjectionType(ProjectionType.parallel);
+    final eye = state.camera.position;
+    final construction = ConstructionState(tool: ConstructionTool.sphere);
+    construction.addPoint(eye);
+    expect(
+      construction.addPoint(eye + Vector3D(1e154, 0, 0)),
+      ConstructionAction.complete,
+    );
+    state.setObjects([construction.result!]);
+    state.setTool(ConstructionTool.segment);
+    await tester.pump();
+    await tester.tapAt(const Offset(430, 300));
+    await tester.pump();
+    final snapped = state.constructionState!.points.single;
+    expect(
+      snapped.x.isFinite && snapped.y.isFinite && snapped.z.isFinite,
+      isTrue,
+    );
+    expect((snapped - eye).magnitude / 1e154, closeTo(1, 1e-12));
+
+    state.setTool(ConstructionTool.move);
+    state.setObjects([Object3D.sphere(center: eye, radius: 1e155)]);
+    state.setTool(ConstructionTool.segment);
+    await tester.pump();
+    await tester.tapAt(const Offset(430, 300));
+    await tester.pump();
+    final largeHit = state.constructionState!.points.single - eye;
+    expect(
+      largeHit.x.isFinite && largeHit.y.isFinite && largeHit.z.isFinite,
+      isTrue,
+    );
+    expect((largeHit * 1e-155).magnitude, closeTo(1, 1e-12));
+
+    state.setTool(ConstructionTool.move);
+    final view = state.camera.viewMatrix();
+    final right = Vector3D(view[0], view[4], view[8]);
+    final offAxisCenter = eye + right * 1e155;
+    state.setObjects([Object3D.sphere(center: offAxisCenter, radius: 2e155)]);
+    state.setTool(ConstructionTool.segment);
+    await tester.pump();
+    await tester.tapAt(const Offset(430, 300));
+    await tester.pump();
+    final offAxisHit = state.constructionState!.points.single - offAxisCenter;
+    expect((offAxisHit * 5e-156).magnitude, closeTo(1, 1e-12));
+  });
+
   testWidgets('perspective snaps to the visible exit of a clipped sphere', (
     tester,
   ) async {
