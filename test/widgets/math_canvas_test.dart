@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -6,6 +7,81 @@ import 'package:visual_math/visual_math.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('offscreen axes keep fallback tick labels inside the canvas', () {
+    const size = Size(200, 200);
+    final narrow = TestRecordingCanvas();
+    const GraphPainter(
+      xMin: 1000000000,
+      xMax: 1000000020,
+      yMin: 1000000000,
+      yMax: 1000000020,
+    ).paint(narrow, const Size(50, 50));
+    for (final record in narrow.invocations) {
+      final call = record.invocation;
+      if (call.memberName != #drawParagraph) continue;
+      final paragraph = call.positionalArguments[0] as ui.Paragraph;
+      final offset = call.positionalArguments[1] as Offset;
+      expect(offset.dx + paragraph.longestLine, lessThanOrEqualTo(50));
+      expect(offset.dy + paragraph.height, lessThanOrEqualTo(50));
+    }
+    final mixed = TestRecordingCanvas();
+    const GraphPainter(
+      xMin: -10,
+      xMax: 10,
+      yMin: 1000001,
+      yMax: 1000021,
+    ).paint(mixed, size);
+    final mixedBounds = <Rect>[];
+    for (final record in mixed.invocations) {
+      final call = record.invocation;
+      if (call.memberName != #drawParagraph) continue;
+      final paragraph = call.positionalArguments[0] as ui.Paragraph;
+      final offset = call.positionalArguments[1] as Offset;
+      final bounds = offset & Size(paragraph.longestLine, paragraph.height);
+      expect(mixedBounds.any(bounds.overlaps), isFalse);
+      mixedBounds.add(bounds);
+    }
+    for (final xMin in [-30.0, 10.0]) {
+      for (final yMin in [-30.0, 10.0]) {
+        final painter = GraphPainter(
+          xMin: xMin,
+          xMax: xMin + 20,
+          yMin: yMin,
+          yMax: yMin + 20,
+          showGrid: false,
+        );
+        final canvas = TestRecordingCanvas();
+        painter.paint(canvas, size);
+        expect(
+          canvas.invocations.where(
+            (record) => record.invocation.memberName == #drawLine,
+          ),
+          isEmpty,
+        );
+        final labels = canvas.invocations
+            .map((record) => record.invocation)
+            .where((call) => call.memberName == #drawParagraph)
+            .toList();
+        expect(labels, isNotEmpty);
+        final bounds = <Rect>[];
+        for (final label in labels) {
+          final paragraph = label.positionalArguments[0] as ui.Paragraph;
+          final offset = label.positionalArguments[1] as Offset;
+          expect(offset.dx, greaterThanOrEqualTo(0));
+          expect(offset.dy, greaterThanOrEqualTo(0));
+          expect(
+            offset.dx + paragraph.longestLine,
+            lessThanOrEqualTo(size.width),
+          );
+          expect(offset.dy + paragraph.height, lessThanOrEqualTo(size.height));
+          final rect = offset & Size(paragraph.longestLine, paragraph.height);
+          expect(bounds.any(rect.overlaps), isFalse);
+          bounds.add(rect);
+        }
+      }
+    }
+  });
 
   group('GraphPainter - shouldRepaint', () {
     test('returns false when nothing changes', () {

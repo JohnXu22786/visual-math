@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart' hide Viewport;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:visual_math/visual_math.dart';
@@ -26,6 +28,17 @@ class _MemoryDrawingStorage extends MathDrawingStorage {
       throw DuplicateDrawingException(document.name);
     }
     documents[document.name] = document;
+  }
+}
+
+class _DelayedLoadStorage extends _MemoryDrawingStorage {
+  final loadResult = Completer<MathDrawingDocument?>();
+  bool loadStarted = false;
+
+  @override
+  Future<MathDrawingDocument?> load(String name) {
+    loadStarted = true;
+    return loadResult.future;
   }
 }
 
@@ -106,6 +119,54 @@ void main() {
     final ids = updated.drawing.formulas.map((formula) => formula.id).toSet();
     expect(ids.length, updated.drawing.formulas.length);
   });
+
+  for (final failLoad in [false, true]) {
+    testWidgets(
+      'ignores a ${failLoad ? 'failed' : 'successful'} drawing load after disposal',
+      (tester) async {
+        final storage = _DelayedLoadStorage();
+        final errors = <String>[];
+        final controller = MathDrawingController()..onError = errors.add;
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MathDrawingPage(
+              initialMathematicalMode: false,
+              initialShowWebView: false,
+              documentStorage: storage,
+              controller: controller,
+              options: const MathWorkspaceOptions(
+                show3D: false,
+                showFormulaEditor: false,
+                showKeyboard: false,
+              ),
+            ),
+          ),
+        );
+        await _pumpWorkspace(tester);
+        await tester.tap(find.byTooltip('保存绘图'));
+        await _pumpWorkspace(tester);
+        await tester.enterText(find.byType(TextField), 'Delayed');
+        await tester.tap(find.text('继续'));
+        await _pumpWorkspace(tester);
+        final document = storage.documents['Delayed']!;
+
+        await tester.tap(find.byTooltip('打开绘图'));
+        await _pumpWorkspace(tester);
+        await tester.tap(find.text('Delayed'));
+        await _pumpWorkspace(tester);
+        expect(storage.loadStarted, isTrue);
+        await tester.pumpWidget(const SizedBox());
+        if (failLoad) {
+          storage.loadResult.completeError(Exception('load failed'));
+        } else {
+          storage.loadResult.complete(document);
+        }
+        await tester.pump();
+        expect(errors, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets('saving preserves the unavailable view of an opened document', (
     tester,

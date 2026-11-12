@@ -915,6 +915,9 @@ class MathExpression {
   /// spacing commands. Unknown commands are rejected by the graph evaluator.
   ///
   /// This runs BEFORE `{}` → `()` conversion, so braces are still intact.
+  /// Convert editor LaTeX to the numeric parser's notation.
+  static String convertLatexForParser(String expr) => _convertLatex(expr);
+
   static String _convertLatex(String expr) {
     if (RegExp(r'\\(?:pm|mp)\b|!!|!=').hasMatch(expr)) {
       throw const FormatException('此符号未定义单条曲线，请分别输入完整表达式');
