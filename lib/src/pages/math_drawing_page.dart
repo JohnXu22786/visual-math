@@ -1163,13 +1163,14 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       if (text.isEmpty) continue;
       if (!f.visible) continue;
 
+      final previous = current.where((item) => item.formulaRowId == f.id);
+      final old = previous.isEmpty ? null : previous.first;
       final object = _sampleFormula3D(
         text,
-        f.color.toARGB32(),
+        old?.color ?? f.color.toARGB32(),
         allowEmpty: true,
       );
       if (object != null) {
-        final previous = current.where((item) => item.formulaRowId == f.id);
         var id = previous.isEmpty
             ? 'formula-plot-3d:${f.id}'
             : previous.first.documentId;
@@ -1179,7 +1180,17 @@ class _MathDrawingPageState extends State<MathDrawingPage>
           }
         }
         usedIds.add(id);
-        objects.add(object.copyWith(documentId: id, formulaRowId: f.id));
+        objects.add(
+          object.copyWith(
+            documentId: id,
+            formulaRowId: f.id,
+            opacity: old?.opacity,
+            edgeWidth: old?.edgeWidth,
+            showEdges: old?.showEdges,
+            visible: old?.visible,
+            transformOrigin: old?.transformOrigin,
+          ),
+        );
         continue;
       }
 
@@ -1420,6 +1431,11 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                               _formulas[formulaIndex].color = color;
                               _formulas[formulaIndex].autoColor = false;
                             });
+                            _canvas3DKey.currentState?.setFormulaColor(
+                              _formulas[formulaIndex].id,
+                              color.toARGB32(),
+                              notify: _currentView == ViewMode.mode2D,
+                            );
                             Navigator.pop(ctx);
                             _plotAll();
                           },

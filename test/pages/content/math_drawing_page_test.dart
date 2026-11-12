@@ -711,6 +711,101 @@ void main() {
     }
   });
 
+  testWidgets('3D replot retains object style through document round trip', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    await tester.pumpWidget(_buildTestApp(controller: controller));
+    await tester.pump();
+    await tester.tap(find.text('3D'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'x+y');
+    await tester.pump();
+    await tester.tap(find.byTooltip('绘制').first);
+    await tester.pumpAndSettle();
+    final canvas = tester.state<MathCanvas3DState>(find.byType(MathCanvas3D));
+    final original = canvas.objects.singleWhere((o) => o.formulaRowId != null);
+    canvas.setObjects([
+      original.copyWith(
+        color: 0xff123456,
+        edgeWidth: 4.5,
+        showEdges: false,
+        opacity: 0.4,
+        visible: false,
+        transformOrigin: true,
+      ),
+    ]);
+    await tester.enterText(find.byType(TextField), 'x-y');
+    await tester.pump();
+    await tester.tap(find.byTooltip('绘制').first);
+    await tester.pumpAndSettle();
+
+    void check(Object3D plot) {
+      expect(plot.documentId, original.documentId);
+      expect(plot.formulaRowId, original.formulaRowId);
+      expect(plot.label, 'x-y');
+      expect(
+        plot.vertices.first.z,
+        closeTo(plot.vertices.first.x - plot.vertices.first.y, 1e-8),
+      );
+      expect(plot.color, 0xff123456);
+      expect(plot.edgeWidth, 4.5);
+      expect(plot.showEdges, isFalse);
+      expect(plot.opacity, 0.4);
+      expect(plot.visible, isFalse);
+      expect(plot.transformOrigin, isTrue);
+    }
+
+    check(canvas.objects.singleWhere((o) => o.formulaRowId != null));
+    final reopened = MathDrawingDocument.decode(
+      MathDrawingDocument(name: 'plot', drawing: controller.snapshot!).encode(),
+    );
+    check(reopened.drawing.scene3D.singleWhere((o) => o.formulaRowId != null));
+  });
+
+  testWidgets(
+    'formula color picker updates existing 3D plot from either view',
+    (tester) async {
+      final controller = MathDrawingController();
+      await tester.pumpWidget(_buildTestApp(controller: controller));
+      await tester.pump();
+      await tester.tap(find.text('3D'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'x+y');
+      await tester.pump();
+      await tester.tap(find.byTooltip('绘制').first);
+      await tester.pumpAndSettle();
+      final canvas = tester.state<MathCanvas3DState>(find.byType(MathCanvas3D));
+      var sceneChanges = 0;
+      controller.onSceneChanged = (_) => sceneChanges++;
+      for (final view in ['3D', '2D']) {
+        if (view == '2D') {
+          await tester.tap(find.text('2D'));
+          await tester.pumpAndSettle();
+        }
+        final row = find
+            .ancestor(
+              of: find.byType(TextField).first,
+              matching: find.byType(Row),
+            )
+            .first;
+        final colorButton = find
+            .descendant(of: row, matching: find.byType(GestureDetector))
+            .first;
+        final previousChanges = sceneChanges;
+        await tester.tap(colorButton);
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.bySemanticsLabel(view == '3D' ? '公式颜色 2' : '公式颜色 3'),
+        );
+        await tester.pumpAndSettle();
+        final plot = canvas.objects.singleWhere((o) => o.formulaRowId != null);
+        expect(plot.color, controller.formulas.first.color.toARGB32());
+        expect(sceneChanges, previousChanges + 1);
+      }
+    },
+  );
+
   testWidgets('3D replots preserve constructed objects and relationships', (
     tester,
   ) async {
