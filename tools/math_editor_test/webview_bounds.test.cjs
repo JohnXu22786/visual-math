@@ -66,3 +66,38 @@ test('clearing an invalid expression hides its error', () => {
   context.window.setExpression('', null);
   assert.equal(error.style.display, 'none');
 });
+
+test('coordinate sampling terminates for narrow and normal bounds', () => {
+  const source = fs.readFileSync(process.env.WEBVIEW_SOURCE || path.join(__dirname,
+    '../../lib/src/widgets/math_canvas_webview.dart'), 'utf8');
+  const script = source.match(/<script>\s*([\s\S]*?)<\/script>/)[1]
+    .replaceAll('$boardId', 'board')
+    .replaceAll('$escapedExpr', 'x')
+    .replaceAll('$encodedInitialParameters', '{}');
+  const messages = [];
+  let bounds;
+  let timer;
+  const board = {getBoundingBox: () => bounds, on: () => {}, create: () => ({})};
+  const context = {
+    JXG: {JSXGraph: {initBoard: () => board}},
+    window: {flutter_inappwebview: {callHandler: (_, message) => messages.push(JSON.parse(message))}},
+    document: {getElementById: () => null},
+    setInterval: callback => { timer = callback; return 1; },
+    clearInterval: () => {}, console,
+  };
+  vm.createContext(context);
+  vm.runInContext(script, context, {timeout: 1000});
+  for (bounds of [[-10, 100, 10, -100], [1e16, 1e17, 1e16 + 2, -1e17]]) {
+    context.tick = timer;
+    vm.runInContext('tick()', context, {timeout: 1000});
+  }
+  assert.equal(messages.length, 2);
+  for (const message of messages) {
+    assert.equal(message.type, 'coordinateUpdate');
+    assert.equal(message.points.length, 51);
+  }
+  assert.equal(messages[0].points[0].x, -10);
+  assert.equal(messages[0].points[50].x, 10);
+  assert.equal(messages[1].points[0].x, 1e16);
+  assert.equal(messages[1].points[50].x, 1e16 + 2);
+});
