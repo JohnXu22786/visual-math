@@ -1300,72 +1300,11 @@ class MathExpression {
     expr = _stripPrefix(expr);
     if (expr.isEmpty) return '';
 
-    // Remove all whitespace
-    expr = expr.replaceAll(RegExp(r'\s+'), '');
-    if (expr.isEmpty) return '';
-
-    // Handle implicit multiplication
-    expr = _addImplicitMultiplication(expr);
-
-    // Convert known functions to Math.* equivalents
-    expr = expr.replaceAllMapped(
-      RegExp(
-        r'\b(sin|cos|tan|sqrt|abs|ln|log|exp|asin|acos|atan|sinh|cosh|tanh)\(',
-      ),
-      (m) => 'Math.${m[1]}(',
+    expr = _normalizeExpression(expr);
+    return MathExpressionParser.toJavaScript(
+      expr,
+      variables: {'x', ..._extractParameters(expr)},
     );
-
-    // Handle ^ operator
-    expr = _convertPowersForJS(expr);
-
-    // Handle e^x
-    expr = expr.replaceAllMapped(
-      RegExp(r'e\^\(([^()]+)\)'),
-      (m) => 'Math.exp(${m[1]!})',
-    );
-    expr = expr.replaceAllMapped(
-      RegExp(r'e\^([a-zA-Z0-9]+)'),
-      (m) => 'Math.exp(${m[1]!})',
-    );
-
-    // Handle standalone Euler's constant after exponent conversion.
-    expr = expr.replaceAllMapped(RegExp(r'\be\b'), (_) => 'Math.E');
-
-    // Handle pi
-    expr = expr.replaceAllMapped(RegExp(r'\bpi\b'), (_) => 'Math.PI');
-
-    return expr;
-  }
-
-  /// Convert `^` to `Math.pow()` for JavaScript evaluation.
-  static String _convertPowersForJS(String expr) {
-    var result = expr;
-    // Parenthesized base: (expr)^power
-    bool changed;
-    do {
-      changed = false;
-      result = result.replaceAllMapped(
-        RegExp(r'\(([^()]+)\)\^([a-zA-Z0-9]+)'),
-        (m) {
-          changed = true;
-          return 'Math.pow((${m[1]!}),${m[2]!})';
-        },
-      );
-    } while (changed);
-
-    // Simple base: identifier^power
-    do {
-      changed = false;
-      result = result.replaceAllMapped(
-        RegExp(r'([a-zA-Z0-9]+)\^([a-zA-Z0-9]+)'),
-        (m) {
-          changed = true;
-          return 'Math.pow(${m[1]!},${m[2]!})';
-        },
-      );
-    } while (changed);
-
-    return result;
   }
 
   /// Generate a JavaScript function body from a JS expression.
