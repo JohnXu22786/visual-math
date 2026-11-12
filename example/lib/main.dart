@@ -284,21 +284,6 @@ class _CustomizedWorkspaceExampleState
         density: MathWorkspaceDensity.compact,
         responsiveBreakpoint: 720,
       ),
-      appBarBuilder: (context, defaultAppBar) => AppBar(
-        title: const Text('Acme • Studio Math'),
-        actions: [
-          IconButton(
-            tooltip: 'Zoom in',
-            onPressed: _controller.zoomIn,
-            icon: const Icon(Icons.zoom_in),
-          ),
-          IconButton(
-            tooltip: 'Reset view',
-            onPressed: _controller.resetView,
-            icon: const Icon(Icons.restart_alt),
-          ),
-        ],
-      ),
       canvas2DOverlayBuilder: (context, defaultOverlay, actions) => Stack(
         children: [
           defaultOverlay,

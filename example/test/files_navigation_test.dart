@@ -24,6 +24,54 @@ class MemoryStorage extends MathDrawingStorage {
 }
 
 void main() {
+  testWidgets('customized workspace can save a drawing for Files', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final storage = MemoryStorage(
+      MathDrawingDocument(
+        name: 'Existing',
+        drawing: MathDrawingSnapshot(
+          formulas: const [FormulaEntry(rawExpression: 'x')],
+          parameters: const {},
+          activeView: ViewMode.mode2D,
+          activeTool: ConstructionTool.move,
+          viewport2D: const Viewport(xMin: -4, yMin: -3, xMax: 4, yMax: 3),
+          camera3D: const Camera3D(),
+          projection3D: ProjectionType.parallel,
+          scene3D: const [],
+        ),
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(home: ExampleMenu(documentStorage: storage)),
+    );
+    await tester.tap(find.text('Customized workspace'));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await tester.tap(find.byTooltip('保存绘图'));
+    await tester.pump();
+    await tester.enterText(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      ),
+      'New graph',
+    );
+    await tester.tap(find.text('继续'));
+    await tester.pump();
+    expect(storage.document.name, 'New graph');
+    expect(storage.document.drawing.formulas.single.rawExpression, 'x^2');
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Files'));
+    await tester.pumpAndSettle();
+    expect(find.text('New graph'), findsOneWidget);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
   testWidgets('Files navigation opens the saved drawing with its state', (
     tester,
   ) async {
