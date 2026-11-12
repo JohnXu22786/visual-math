@@ -1130,9 +1130,21 @@ class GraphPainter extends CustomPainter {
     final step = _niceStep((xMax - xMin) / 2 + (eYMax - eYMin) / 2, 8);
 
     // X-axis tick labels
-    final y0 = (eYMin <= 0 && eYMax >= 0)
+    final xAxisVisible = eYMin <= 0 && eYMax >= 0;
+    final y0 = xAxisVisible
         ? _mathToScreenY(0, size.height, eYMin, eYMax)
-        : size.height - 8;
+        : size.height - 3;
+
+    final labelBounds = <Rect>[];
+    final fallbackLabels = <(TextPainter, Offset)>[];
+    void placeLabel(TextPainter painter, Offset offset, bool axisVisible) {
+      if (axisVisible) {
+        painter.paint(canvas, offset);
+        labelBounds.add(offset & painter.size);
+      } else if (painter.width <= size.width && painter.height <= size.height) {
+        fallbackLabels.add((painter, offset));
+      }
+    }
 
     double tx = _firstGridTick(xMin, step);
     while (tx <= xMax) {
@@ -1144,19 +1156,28 @@ class GraphPainter extends CustomPainter {
           textDirection: TextDirection.ltr,
         );
         textPainter.layout();
-        textPainter.paint(
-          canvas,
-          Offset(screenX - textPainter.width / 2, y0 + 4),
+        final offset = Offset(
+          xAxisVisible
+              ? screenX - textPainter.width / 2
+              : (screenX - textPainter.width / 2).clamp(
+                  0.0,
+                  dart_math.max(0.0, size.width - textPainter.width),
+                ),
+          xAxisVisible
+              ? y0 + 4
+              : dart_math.max(0.0, size.height - textPainter.height - 8),
         );
+        placeLabel(textPainter, offset, xAxisVisible);
 
         // Small tick mark
-        canvas.drawLine(
-          Offset(screenX, y0 - 3),
-          Offset(screenX, y0 + 3),
-          Paint()
-            ..color = axisColor
-            ..strokeWidth = 1,
-        );
+        if (xAxisVisible)
+          canvas.drawLine(
+            Offset(screenX, y0 - 3),
+            Offset(screenX, y0 + 3),
+            Paint()
+              ..color = axisColor
+              ..strokeWidth = 1,
+          );
       }
       final next = tx + step;
       if (!next.isFinite || next <= tx) break;
@@ -1164,7 +1185,8 @@ class GraphPainter extends CustomPainter {
     }
 
     // Y-axis tick labels
-    final x0 = (xMin <= 0 && xMax >= 0) ? _mathToScreenX(0, size.width) : 8;
+    final yAxisVisible = xMin <= 0 && xMax >= 0;
+    final x0 = yAxisVisible ? _mathToScreenX(0, size.width) : 3;
 
     double ty = _firstGridTick(eYMin, step);
     while (ty <= eYMax) {
@@ -1176,23 +1198,43 @@ class GraphPainter extends CustomPainter {
           textDirection: TextDirection.ltr,
         );
         textPainter.layout();
-        textPainter.paint(
-          canvas,
-          Offset(x0 - textPainter.width - 6, screenY - textPainter.height / 2),
+        final offset = Offset(
+          yAxisVisible
+              ? x0 - textPainter.width - 6
+              : dart_math.min(
+                  8.0,
+                  dart_math.max(0.0, size.width - textPainter.width),
+                ),
+          yAxisVisible
+              ? screenY - textPainter.height / 2
+              : (screenY - textPainter.height / 2).clamp(
+                  0.0,
+                  dart_math.max(0.0, size.height - textPainter.height),
+                ),
         );
+        placeLabel(textPainter, offset, yAxisVisible);
 
         // Small tick mark
-        canvas.drawLine(
-          Offset(x0 - 3, screenY),
-          Offset(x0 + 3, screenY),
-          Paint()
-            ..color = axisColor
-            ..strokeWidth = 1,
-        );
+        if (yAxisVisible)
+          canvas.drawLine(
+            Offset(x0 - 3, screenY),
+            Offset(x0 + 3, screenY),
+            Paint()
+              ..color = axisColor
+              ..strokeWidth = 1,
+          );
       }
       final next = ty + step;
       if (!next.isFinite || next <= ty) break;
       ty = next;
+    }
+
+    for (final (painter, offset) in fallbackLabels) {
+      final bounds = offset & painter.size;
+      if (!labelBounds.any((rect) => rect.overlaps(bounds))) {
+        painter.paint(canvas, offset);
+        labelBounds.add(bounds);
+      }
     }
 
     // Origin label

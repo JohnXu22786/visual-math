@@ -489,6 +489,39 @@ void main() {
       expect(reopened.objects[9].point, movedAttached);
     },
   );
+  testWidgets('attachment rejects targets constructed from the point', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    const a = Point3D(-2, 0, 0);
+    const b = Point3D(2, 0, 0);
+    state.setObjects([
+      Object3D.point(a).copyWith(documentId: 'a'),
+      Object3D.point(b).copyWith(documentId: 'b'),
+      Object3D.line(a, b).copyWith(documentId: 'line'),
+    ]);
+    state.restoreDocumentRelationships(
+      pointAttachments: const [],
+      constructionDependencies: [
+        ConstructionDependency(
+          objectId: 'line',
+          tool: ConstructionTool.line,
+          inputPoints: [a, b],
+          sourcePointIds: ['a', 'b'],
+          workingPlaneNormal: Vector3D.unitZ,
+          polygonSides: 3,
+        ),
+      ],
+    );
+    state.setTool(ConstructionTool.attachDetachPoint);
+    await tester.pump();
+    await tester.tapAt(screen(state, a));
+    await tester.pump();
+    await tester.tapAt(screen(state, Point3D.origin));
+    await tester.pump();
+    expect(state.documentPointAttachments, isEmpty);
+  });
+
   testWidgets('cyclic construction relationships terminate on drag', (
     tester,
   ) async {
