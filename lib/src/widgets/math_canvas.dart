@@ -652,13 +652,7 @@ class MathCanvasState extends State<MathCanvas> {
     final focalPoint = details.localFocalPoint;
     final scale = details.scale;
 
-    // Calculate focal point in math coordinates before zoom
-    final fx = _screenToMathX(focalPoint.dx);
-    final fy = _screenToMathY(focalPoint.dy);
-
-    // Determine if this is a pan or zoom
-    if (details.pointerCount == 1 ||
-        (scale == 1.0 && focalPoint != _lastFocalPoint)) {
+    if (details.pointerCount == 1) {
       // Pan 1:1 — the graph tracks the finger exactly.
       //
       // GraphPainter renders both axes with the same pixels-per-unit
@@ -680,17 +674,26 @@ class MathCanvasState extends State<MathCanvas> {
         _yMin += dy * perPixel;
         _yMax += dy * perPixel;
       });
-    } else if (scale != 1.0 && _lastScale != null) {
-      // Zoom: scale around focal point
+    } else if (_lastScale != null) {
+      // Keep the math point under the previous focal point under the new one.
+      final previousFocalPoint = _lastFocalPoint ?? focalPoint;
+      final fx = _screenToMathX(previousFocalPoint.dx);
+      final fy = _screenToMathY(previousFocalPoint.dy);
       final scaleChange = scale / _lastScale!;
       final newXRange = (_xMax - _xMin) / scaleChange;
       final (effectiveYMin, effectiveYMax) = _effectiveYBounds();
       final newYRange = (effectiveYMax - effectiveYMin) / scaleChange;
 
       setState(() {
-        _xMin = fx - (fx - _xMin) / scaleChange;
+        _xMin =
+            fx -
+            (fx - _xMin) / scaleChange -
+            (focalPoint.dx - previousFocalPoint.dx) * newXRange / _canvasWidth;
         _xMax = _xMin + newXRange;
-        _yMin = fy - (fy - effectiveYMin) / scaleChange;
+        _yMin =
+            fy -
+            (fy - effectiveYMin) / scaleChange +
+            (focalPoint.dy - previousFocalPoint.dy) * newXRange / _canvasWidth;
         _yMax = _yMin + newYRange;
       });
     }
