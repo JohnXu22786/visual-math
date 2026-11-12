@@ -93,6 +93,14 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   final Map<String, MathParameter> _parameters = {};
   Set<String> _activeParameterNames = {};
   List<FormulaEntry> _plottedFormulas = [];
+  bool _plot2DDirty = false;
+  bool _plot3DDirty = false;
+
+  void _invalidatePlots() {
+    _plot2DDirty = true;
+    _plot3DDirty = true;
+  }
+
   String? _plotError;
   List<Object3D> _lastReportedScene = const [];
   MathDrawingSnapshot? _restoredSnapshot;
@@ -460,6 +468,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       for (final formula in _formulas) {
         formula.controller.dispose();
       }
+      _invalidatePlots();
       _formulas
         ..clear()
         ..addAll([
@@ -513,6 +522,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       for (final formula in _formulas) {
         formula.controller.dispose();
       }
+      _invalidatePlots();
       _formulas
         ..clear()
         ..addAll([
@@ -527,7 +537,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
               domainEndExpression: entry.domainEndExpression ?? '',
               includeDomainStart: entry.includeDomainStart,
               includeDomainEnd: entry.includeDomainEnd,
-            )..committedText = entry.rawExpression.trim(),
+            ),
         ]);
       _activeFormula = null;
       _keyboardVisible = false;
@@ -830,10 +840,11 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   // ==================================================================
 
   bool get _canPlot {
-    return _formulas.any((f) {
-      final text = f.controller.text.trim();
-      return text != f.committedText;
-    });
+    return (_currentView == ViewMode.mode2D ? _plot2DDirty : _plot3DDirty) ||
+        _formulas.any((f) {
+          final text = f.controller.text.trim();
+          return text != f.committedText(_currentView);
+        });
   }
 
   /// Plot all visible formulas that have changes.
@@ -934,8 +945,9 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         _parameters.putIfAbsent(name, MathParameter.new);
       }
       _plottedFormulas = entries;
+      _plot2DDirty = false;
       for (final f in _formulas) {
-        f.committedText = f.controller.text.trim();
+        f.committedText2D = f.controller.text.trim();
       }
     });
 
@@ -1062,8 +1074,9 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     }
 
     setState(() {
+      _plot3DDirty = false;
       for (final f in _formulas) {
-        f.committedText = f.controller.text.trim();
+        f.committedText3D = f.controller.text.trim();
       }
     });
 
@@ -1104,6 +1117,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       }
       _formulas[index].controller.dispose();
       _formulas.removeAt(index);
+      _invalidatePlots();
     });
     // Re-plot after deletion so the canvas reflects the remaining formulas
     _plotAll();
@@ -1161,6 +1175,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     if (!mounted || !_formulas.contains(formula)) return;
     setState(() {
       formula.visible = !formula.visible;
+      _invalidatePlots();
     });
     // Re-plot to update canvas
     _plotAll();
@@ -1221,6 +1236,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     );
     if (saved != true || !mounted) return;
     setState(() {
+      _invalidatePlots();
       formula.domainStartExpression = start;
       formula.domainEndExpression = end;
       formula.includeDomainStart = includeStart;
@@ -1268,6 +1284,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                           customBorder: const CircleBorder(),
                           onTap: () {
                             setState(() {
+                              _invalidatePlots();
                               _formulas[formulaIndex].color = color;
                               _formulas[formulaIndex].autoColor = false;
                             });
@@ -1705,7 +1722,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     final f = _formulas[index];
     final hasChanged =
         f.controller.text.trim().isNotEmpty &&
-        f.controller.text.trim() != f.committedText;
+        f.controller.text.trim() != f.committedText(_currentView);
 
     return Padding(
       key: f.rowKey,
@@ -1765,7 +1782,10 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                 if (mounted && _activeFormula == f) setState(() {});
               },
               onRevert: hasChanged
-                  ? () => _setFormulaExpression(index, f.committedText)
+                  ? () => _setFormulaExpression(
+                      index,
+                      f.committedText(_currentView),
+                    )
                   : null,
             ),
           ),
@@ -2195,7 +2215,11 @@ class _FormulaState {
   final GlobalKey<MathFormulaFieldState> editorKey = GlobalKey();
   Color color;
   bool autoColor;
-  String committedText;
+  String committedText2D = '';
+  String committedText3D = '';
+
+  String committedText(ViewMode view) =>
+      view == ViewMode.mode2D ? committedText2D : committedText3D;
   bool visible;
   String domainStartExpression;
   String domainEndExpression;
@@ -2212,8 +2236,7 @@ class _FormulaState {
     this.domainEndExpression = '',
     this.includeDomainStart = true,
     this.includeDomainEnd = true,
-  }) : id = id ?? _newId(),
-       committedText = '' {
+  }) : id = id ?? _newId() {
     _knownIds.add(this.id);
   }
 

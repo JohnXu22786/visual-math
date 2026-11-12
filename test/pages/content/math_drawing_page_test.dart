@@ -233,6 +233,64 @@ void main() {
       expect(find.byIcon(Icons.visibility_off), findsOneWidget);
     });
 
+    testWidgets('each view tracks its own plotted expression', (tester) async {
+      await tester.pumpWidget(_buildTestApp());
+      await tester.pump();
+      bool canPlot() =>
+          tester
+              .widget<IconButton>(
+                find
+                    .ancestor(
+                      of: find.byIcon(Icons.check_circle_outline),
+                      matching: find.byType(IconButton),
+                    )
+                    .first,
+              )
+              .onPressed !=
+          null;
+
+      await tester.enterText(find.byType(TextField), 'x^2');
+      await tester.pump();
+      await tester.tap(find.byTooltip('绘制').first);
+      await tester.pumpAndSettle();
+      expect(canPlot(), isFalse);
+
+      await tester.tap(find.text('3D'));
+      await tester.pumpAndSettle();
+      expect(canPlot(), isTrue);
+      await tester.tap(find.byTooltip('绘制').first);
+      await tester.pumpAndSettle();
+      expect(canPlot(), isFalse);
+
+      await tester.tap(find.byIcon(Icons.visibility));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('2D'));
+      await tester.pumpAndSettle();
+      expect(canPlot(), isTrue);
+      await tester.tap(find.byTooltip('绘制').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.visibility_off));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('3D'));
+      await tester.pumpAndSettle();
+      expect(canPlot(), isTrue);
+      await tester.tap(find.byTooltip('绘制').first);
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'x+y');
+      await tester.pump();
+      await tester.tap(find.byTooltip('绘制').first);
+      await tester.pumpAndSettle();
+      expect(canPlot(), isFalse);
+      await tester.tap(find.text('2D'));
+      await tester.pumpAndSettle();
+      expect(canPlot(), isTrue);
+      await tester.tap(find.byTooltip('绘制').first);
+      await tester.pumpAndSettle();
+      expect(canPlot(), isFalse);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('plotting across tabs keeps formulas alive', (tester) async {
       await tester.pumpWidget(_buildTestApp());
       await tester.pump();
