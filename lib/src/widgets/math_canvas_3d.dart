@@ -2492,7 +2492,86 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     return (x: x, y: y);
   }
 
+  ({Point3D center, double radius, Vector3D normal})? _circleInfo(
+    Conic3D conic,
+  ) {
+    final quadraticScale = dart_math.max(
+      conic.quadraticX.abs(),
+      conic.quadraticY.abs(),
+    );
+    if (quadraticScale == 0 ||
+        (conic.quadraticX - conic.quadraticY).abs() > quadraticScale * 1e-10 ||
+        conic.quadraticXY.abs() > quadraticScale * 1e-10) {
+      return null;
+    }
+    final axisU = conic.axisU;
+    final axisV = conic.axisV;
+    if ((axisU.magnitude - 1).abs() > 1e-8 ||
+        (axisV.magnitude - 1).abs() > 1e-8 ||
+        axisU.dot(axisV).abs() > 1e-8) {
+      return null;
+    }
+    final quadratic = (conic.quadraticX + conic.quadraticY) / 2;
+    final centerX = -conic.linearX / (2 * quadratic);
+    final centerY = -conic.linearY / (2 * quadratic);
+    final radiusSquared =
+        centerX * centerX + centerY * centerY - conic.constant / quadratic;
+    final normal = axisU.cross(axisV).normalized();
+    if (!radiusSquared.isFinite ||
+        radiusSquared <= 0 ||
+        normal.magnitude < 1e-9) {
+      return null;
+    }
+    return (
+      center: conic.origin + axisU * centerX + axisV * centerY,
+      radius: dart_math.sqrt(radiusSquared),
+      normal: normal,
+    );
+  }
+
   bool _pointOnConicPath(Object3D curve, Point3D point) {
+    final circle = curve.conic == null ? null : _circleInfo(curve.conic!);
+    if (circle != null) {
+      final radial = point - circle.center;
+      final coordinateScale = <double>[
+        point.x.abs(),
+        point.y.abs(),
+        point.z.abs(),
+        circle.center.x.abs(),
+        circle.center.y.abs(),
+        circle.center.z.abs(),
+      ].fold<double>(0, (scale, value) => dart_math.max(scale, value));
+      final angularTolerance = dart_math.max(
+        1e-12,
+        coordinateScale * 2.220446049250313e-16 / circle.radius,
+      );
+      double angle(Vector3D a, Vector3D b) =>
+          dart_math.atan2(a.cross(b).dot(circle.normal), a.dot(b));
+
+      for (var i = 1; i < curve.vertices.length; i++) {
+        if (curve.curveStarts.contains(i)) continue;
+        final start = curve.vertices[i - 1] - circle.center;
+        final end = curve.vertices[i] - circle.center;
+        final span = angle(start, end);
+        final offset = angle(start, radial);
+        if (span != 0 && angle(end, radial).abs() <= angularTolerance) {
+          return true;
+        }
+        if (span == 0 && point.distanceTo(curve.vertices[i - 1]) <= 1e-9) {
+          return true;
+        }
+        if (span > 0 &&
+                offset >= -angularTolerance &&
+                offset <= span + angularTolerance ||
+            span < 0 &&
+                offset <= angularTolerance &&
+                offset >= span - angularTolerance) {
+          return true;
+        }
+      }
+      return false;
+    }
+
     for (var i = 1; i < curve.vertices.length; i++) {
       if (curve.curveStarts.contains(i)) continue;
       final start = curve.vertices[i - 1];
@@ -3232,44 +3311,6 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       return intersections;
     }
 
-    ({Point3D center, double radius, Vector3D normal})? circleInfo(
-      Conic3D conic,
-    ) {
-      final quadraticScale = dart_math.max(
-        conic.quadraticX.abs(),
-        conic.quadraticY.abs(),
-      );
-      if (quadraticScale == 0 ||
-          (conic.quadraticX - conic.quadraticY).abs() >
-              quadraticScale * 1e-10 ||
-          conic.quadraticXY.abs() > quadraticScale * 1e-10) {
-        return null;
-      }
-      final axisU = conic.axisU;
-      final axisV = conic.axisV;
-      if ((axisU.magnitude - 1).abs() > 1e-8 ||
-          (axisV.magnitude - 1).abs() > 1e-8 ||
-          axisU.dot(axisV).abs() > 1e-8) {
-        return null;
-      }
-      final quadratic = (conic.quadraticX + conic.quadraticY) / 2;
-      final centerX = -conic.linearX / (2 * quadratic);
-      final centerY = -conic.linearY / (2 * quadratic);
-      final radiusSquared =
-          centerX * centerX + centerY * centerY - conic.constant / quadratic;
-      final normal = axisU.cross(axisV).normalized();
-      if (!radiusSquared.isFinite ||
-          radiusSquared <= 0 ||
-          normal.magnitude < 1e-9) {
-        return null;
-      }
-      return (
-        center: conic.origin + axisU * centerX + axisV * centerY,
-        radius: dart_math.sqrt(radiusSquared),
-        normal: normal,
-      );
-    }
-
     bool isClosedCircle(Object3D object, double radius) {
       if (object.type != Object3DType.curve ||
           object.conic == null ||
@@ -3544,6 +3585,9 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     }
 
     bool liesOnSampledCurve(Object3D curve, Point3D point) {
+      if (curve.conic != null && _circleInfo(curve.conic!) != null) {
+        return _pointOnConicPath(curve, point);
+      }
       for (var i = 1; i < curve.vertices.length; i++) {
         if (curve.curveStarts.contains(i)) continue;
         final start = curve.vertices[i - 1];
@@ -3608,8 +3652,8 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         second.type == Object3DType.curve &&
         first.conic != null &&
         second.conic != null) {
-      final firstCircle = circleInfo(first.conic!);
-      final secondCircle = circleInfo(second.conic!);
+      final firstCircle = _circleInfo(first.conic!);
+      final secondCircle = _circleInfo(second.conic!);
       if (firstCircle != null &&
           secondCircle != null &&
           isClosedCircle(first, firstCircle.radius) &&
