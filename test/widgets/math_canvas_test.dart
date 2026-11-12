@@ -80,6 +80,48 @@ void main() {
     });
   });
 
+  testWidgets(
+    'zero markers include touching roots but exclude nearby extrema',
+    (tester) async {
+      final key = GlobalKey<MathCanvasState>();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: MathCanvas(key: key)),
+        ),
+      );
+      await tester.pump();
+      key.currentState!.setDisplaySettings(
+        showAxes: true,
+        showGrid: true,
+        showZeros: true,
+        showExtrema: false,
+      );
+      Future<List<(double, double, Color)>> zeros(String expression) async {
+        await key.currentState!.setExpression(expression, null);
+        await tester.pump();
+        return tester
+            .widgetList<CustomPaint>(find.byType(CustomPaint))
+            .map((widget) => widget.painter)
+            .whereType<GraphPainter>()
+            .single
+            .characteristicPoints;
+      }
+
+      for (final expression in ['x^2', '-(x-1.23)^2']) {
+        final points = await zeros(expression);
+        expect(points, hasLength(1), reason: expression);
+        expect(points.single.$1, closeTo(expression == 'x^2' ? 0 : 1.23, 1e-5));
+      }
+      expect(await zeros('(x-1.23)^2+0.0001'), isEmpty);
+      expect(await zeros('(x-1.23)^2+0.000000000000001'), isEmpty);
+      expect(await zeros('(x-1.23)^2+1e-30'), isEmpty);
+      expect(await zeros('(x-1.23)^2+1e-100'), isEmpty);
+      expect(await zeros('abs(x-1.23)+1e-16'), isEmpty);
+      expect(await zeros('-(x-1.23)^2-1e-100'), isEmpty);
+      expect((await zeros('x')).single.$1, closeTo(0, 1e-5));
+    },
+  );
+
   group('MathCanvas - initial state', () {
     testWidgets('canvas is ready callback fires', (tester) async {
       bool ready = false;
@@ -253,9 +295,9 @@ void main() {
       expect(segments, isNotEmpty);
       expect(segments.every((segment) => segment.length >= 2), isTrue);
       expect(
-        segments.expand((segment) => segment).every(
-          (point) => point['x']! > 0 && point['x']! < 1,
-        ),
+        segments
+            .expand((segment) => segment)
+            .every((point) => point['x']! > 0 && point['x']! < 1),
         isTrue,
       );
     });
