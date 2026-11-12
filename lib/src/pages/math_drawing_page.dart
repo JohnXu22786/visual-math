@@ -1965,19 +1965,23 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     final defaultOverlay =
         widget.options.show2DCanvasActions ||
             widget.options.canvas2DActionsBuilder != null
-        ? Positioned(
-            left:
-                widget.options.presentation.controlPlacement ==
-                    MathWorkspaceControlPlacement.bottomStart
-                ? widget.options.presentation.controlInset.left
-                : null,
-            right:
-                widget.options.presentation.controlPlacement ==
-                    MathWorkspaceControlPlacement.bottomEnd
-                ? widget.options.presentation.controlInset.right
-                : null,
-            bottom: widget.options.presentation.controlInset.bottom,
-            child: defaultActions,
+        ? Stack(
+            children: [
+              Positioned(
+                left:
+                    widget.options.presentation.controlPlacement ==
+                        MathWorkspaceControlPlacement.bottomStart
+                    ? widget.options.presentation.controlInset.left
+                    : null,
+                right:
+                    widget.options.presentation.controlPlacement ==
+                        MathWorkspaceControlPlacement.bottomEnd
+                    ? widget.options.presentation.controlInset.right
+                    : null,
+                bottom: widget.options.presentation.controlInset.bottom,
+                child: defaultActions,
+              ),
+            ],
           )
         : const SizedBox.shrink();
     return Padding(
