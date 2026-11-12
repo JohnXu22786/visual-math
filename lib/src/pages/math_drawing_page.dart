@@ -756,7 +756,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   }
 
   void _setPolygonSides(int sides) {
-    setState(() => _polygonSides = sides);
+    setState(() => _polygonSides = sides.clamp(3, 12));
     _syncController();
   }
 
@@ -1071,11 +1071,12 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   }
 
   void _addFormula() {
-    final used = _formulas
-        .where((f) => f.autoColor)
-        .map((f) => f.color)
-        .toSet();
-    final color = nextFormulaColor(used);
+    final autoColored = _formulas.where((f) => f.autoColor).toList();
+    final used = autoColored.map((f) => f.color).toSet();
+    final color = nextFormulaColor(
+      used,
+      lastAutoColor: autoColored.isEmpty ? null : autoColored.last.color,
+    );
 
     setState(() {
       _formulas.add(
@@ -1966,19 +1967,23 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     final defaultOverlay =
         widget.options.show2DCanvasActions ||
             widget.options.canvas2DActionsBuilder != null
-        ? Positioned(
-            left:
-                widget.options.presentation.controlPlacement ==
-                    MathWorkspaceControlPlacement.bottomStart
-                ? widget.options.presentation.controlInset.left
-                : null,
-            right:
-                widget.options.presentation.controlPlacement ==
-                    MathWorkspaceControlPlacement.bottomEnd
-                ? widget.options.presentation.controlInset.right
-                : null,
-            bottom: widget.options.presentation.controlInset.bottom,
-            child: defaultActions,
+        ? Stack(
+            children: [
+              Positioned(
+                left:
+                    widget.options.presentation.controlPlacement ==
+                        MathWorkspaceControlPlacement.bottomStart
+                    ? widget.options.presentation.controlInset.left
+                    : null,
+                right:
+                    widget.options.presentation.controlPlacement ==
+                        MathWorkspaceControlPlacement.bottomEnd
+                    ? widget.options.presentation.controlInset.right
+                    : null,
+                bottom: widget.options.presentation.controlInset.bottom,
+                child: defaultActions,
+              ),
+            ],
           )
         : const SizedBox.shrink();
     return Padding(

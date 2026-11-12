@@ -67,6 +67,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // Initial canvas layout can publish its aspect-corrected viewport.
+    viewportChanges.clear();
     controller.setScene3D([const Object3D.point(Point3D(1, 2, 3))]);
     await tester.pumpAndSettle();
 
@@ -143,6 +145,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    final canvasSize = tester.getSize(find.byType(MathCanvas));
+    final expectedYMax = 4 * canvasSize.height / canvasSize.width;
     controller.setFormulas(const [FormulaEntry(rawExpression: 'x^2')]);
     controller.setViewport2D(
       const Viewport(xMin: -4, yMin: -3, xMax: 4, yMax: 3),
@@ -159,7 +163,7 @@ void main() {
 
     expect(controller.formulas.single.rawExpression, 'x^2');
     expect(controller.viewport2D.xMin, -4);
-    expect(controller.viewport2D.yMax, 3);
+    expect(controller.viewport2D.yMax, closeTo(expectedYMax, 1e-9));
     expect(plotted?.formulas.single.rawExpression, 'x^2');
     await tester.pumpAndSettle();
 
@@ -179,7 +183,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(restoredController.formulas.single.rawExpression, 'x^2');
     expect(restoredController.viewport2D.xMin, -4);
-    expect(restoredController.viewport2D.yMax, 3);
+    expect(restoredController.viewport2D.yMax, closeTo(expectedYMax, 1e-9));
     expect(restoredController.snapshot?.polygonSides3D, 9);
     expect(
       tester
@@ -238,6 +242,39 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(controller.formulas, hasLength(2));
+  });
+
+  testWidgets('auto colors continue cycling after the palette is exhausted', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          initialShowWebView: false,
+          initialMathematicalMode: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    controller.setFormulas([
+      for (final color in formulaPalette)
+        FormulaEntry(rawExpression: '', color: color),
+    ]);
+    await tester.pumpAndSettle();
+
+    for (var i = 0; i < 3; i++) {
+      await tester.tap(find.byTooltip('添加公式'));
+      await tester.pumpAndSettle();
+      expect(controller.formulas.last.color, formulaPalette[i]);
+    }
+    final formulas = controller.formulas.toList()..removeAt(10);
+    controller.setFormulas(formulas);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('添加公式'));
+    await tester.pumpAndSettle();
+    expect(controller.formulas.last.color, formulaPalette[3]);
   });
 
   testWidgets('snapshot restore preserves formula visibility', (tester) async {

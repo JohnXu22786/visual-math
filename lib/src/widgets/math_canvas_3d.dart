@@ -605,6 +605,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     setState(() {
       _showAxes = !_showAxes;
     });
+    widget.onViewportChange?.call();
   }
 
   /// Toggle grid visibility.
@@ -612,6 +613,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     setState(() {
       _showGrid = !_showGrid;
     });
+    widget.onViewportChange?.call();
   }
 
   /// Toggle xOy-plane visibility.
@@ -619,6 +621,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     setState(() {
       _showPlane = !_showPlane;
     });
+    widget.onViewportChange?.call();
   }
 
   /// Run a toolbox command that does not need a canvas click.
@@ -3734,16 +3737,27 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   }
 
   bool _wouldCreateAttachmentCycle(int pointIndex, int targetIndex) {
-    var current = targetIndex;
+    final visiting = <int>{};
     final visited = <int>{};
-    while (current >= 0 && current < _objects.length) {
-      if (current == pointIndex) return true;
-      if (!visited.add(current)) return true;
-      final next = _pointAttachments[current];
-      if (next == null) return false;
-      current = next;
+    bool visit(int index) {
+      if (index < 0 || index >= _objects.length) return false;
+      if (index == pointIndex || visiting.contains(index)) return true;
+      if (visited.contains(index)) return false;
+      visiting.add(index);
+      final attachment = _pointAttachments[index];
+      if (attachment != null && visit(attachment)) return true;
+      final dependency = _constructionDependencies[index];
+      if (dependency != null) {
+        for (final source in dependency.sourcePointIndices) {
+          if (source != null && visit(source)) return true;
+        }
+      }
+      visiting.remove(index);
+      visited.add(index);
+      return false;
     }
-    return false;
+
+    return visit(targetIndex);
   }
 
   int? _sourcePointIndexAt(Point3D position) {

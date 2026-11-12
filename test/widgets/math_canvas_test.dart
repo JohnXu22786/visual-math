@@ -83,6 +83,26 @@ void main() {
     }
   });
 
+  test('paints large finite viewport coordinates at the visible center', () {
+    final canvas = TestRecordingCanvas();
+    const GraphPainter(
+      xMin: -5e307,
+      xMax: 5e307,
+      yMin: 1e308,
+      yMax: 1.1e308,
+      showGrid: false,
+      showAxes: false,
+      characteristicPoints: [(0, 1.05e308, Colors.red)],
+    ).paint(canvas, const Size(400, 200));
+    final circles = canvas.invocations
+        .where((record) => record.invocation.memberName == #drawCircle)
+        .toList();
+    expect(circles, isNotEmpty);
+    final center = circles.first.invocation.positionalArguments.first as Offset;
+    expect(center.dx, closeTo(200, 1e-8));
+    expect(center.dy, closeTo(100, 1e-8));
+  });
+
   group('GraphPainter - shouldRepaint', () {
     test('returns false when nothing changes', () {
       final painter1 = const GraphPainter(
@@ -406,6 +426,59 @@ void main() {
   });
 
   group('MathCanvas - viewport', () {
+    testWidgets('reports visible bounds for a non-square canvas', (
+      tester,
+    ) async {
+      final key = GlobalKey<MathCanvasState>();
+      (double, double, double, double)? reported;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Center(
+            child: SizedBox(
+              width: 400,
+              height: 200,
+              child: MathCanvas(
+                key: key,
+                onViewportChange: (xMin, yMin, xMax, yMax) {
+                  reported = (xMin, yMin, xMax, yMax);
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(key.currentState!.viewport, (-10.0, -5.0, 10.0, 5.0));
+      await key.currentState!.setViewport(-4, 10, 4, 30);
+      expect(key.currentState!.viewport, (-4.0, 18.0, 4.0, 22.0));
+      expect(reported, key.currentState!.viewport);
+      await key.currentState!.resetView();
+      expect(reported, (-10.0, -5.0, 10.0, 5.0));
+    });
+
+    testWidgets('publishes the visible bounds after resizing', (tester) async {
+      final key = GlobalKey<MathCanvasState>();
+      (double, double, double, double)? reported;
+      Widget canvas(double height) => MaterialApp(
+        home: Center(
+          child: SizedBox(
+            width: 400,
+            height: height,
+            child: MathCanvas(
+              key: key,
+              onViewportChange: (a, b, c, d) {
+                reported = (a, b, c, d);
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpWidget(canvas(200));
+      await key.currentState!.resetView();
+      await tester.pumpWidget(canvas(400));
+      expect(key.currentState!.viewport, (-10.0, -10.0, 10.0, 10.0));
+      expect(reported, key.currentState!.viewport);
+    });
+
     testWidgets('setViewport ignores invalid bounds', (tester) async {
       final key = GlobalKey<MathCanvasState>();
 
