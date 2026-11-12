@@ -14,6 +14,7 @@ Future<Directory> _documentsDirectory() async {
     '${app.path}${Platform.pathSeparator}visual_math',
   );
   await directory.create(recursive: true);
+  await _recoverOverwriteBackups(directory);
   await _migrateFileNames(directory);
   await _recoverMalformedConflicts(directory);
   return directory;
@@ -49,6 +50,21 @@ String? _legacyName(String base) {
     // Ignore files that do not use the legacy filename format.
   }
   return null;
+}
+
+Future<void> _recoverOverwriteBackups(Directory directory) async {
+  final backupName = RegExp(r'^hash-[0-9a-f]{64}\.vm\.backup$');
+  await for (final entity in directory.list(followLinks: false)) {
+    if (entity is! File || !backupName.hasMatch(entity.uri.pathSegments.last)) {
+      continue;
+    }
+    final target = File(entity.path.substring(0, entity.path.length - 7));
+    if (await target.exists()) {
+      await entity.delete();
+    } else {
+      await entity.rename(target.path);
+    }
+  }
 }
 
 Future<void> _migrateFileNames(Directory directory) async {
