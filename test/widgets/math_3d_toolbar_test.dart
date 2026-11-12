@@ -3,6 +3,29 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:visual_math/visual_math.dart';
 
 void main() {
+  testWidgets('initially selected tool is visible in a narrow toolbar', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Math3DToolbar(
+            activeTool: ConstructionTool.regularPolygon,
+            onToolSelected: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final tool = find.text('正多边形');
+    final rect = tester.getRect(tool);
+    expect(rect.left, greaterThanOrEqualTo(0));
+    expect(rect.right, lessThanOrEqualTo(390));
+  });
+
   testWidgets('command feedback follows the current label resolver', (
     tester,
   ) async {
