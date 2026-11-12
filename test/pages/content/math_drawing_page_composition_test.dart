@@ -643,6 +643,22 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('2D overlay default content can be wrapped', (tester) async {
+    await tester.pumpWidget(
+      _app(
+        MathWorkspaceOptions(
+          show3D: false,
+          canvas2DOverlayBuilder: (context, defaultOverlay, actions) =>
+              Padding(padding: const EdgeInsets.all(8), child: defaultOverlay),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byTooltip('放大'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('custom regions compose in a host-owned body', (tester) async {
     await tester.pumpWidget(
       _app(
