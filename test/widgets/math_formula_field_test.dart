@@ -181,6 +181,71 @@ void main() {
     });
   });
 
+  testWidgets('queued native cut does not delete from an inactive formula', (
+    tester,
+  ) async {
+    await _withTargetPlatformOverride(TargetPlatform.android, () async {
+      final originalPlatform = InAppWebViewPlatform.instance;
+      final platform = _EditorPlatform();
+      InAppWebViewPlatform.instance = platform;
+      addTearDown(
+        () => InAppWebViewPlatform.instance =
+            originalPlatform ?? _EditorPlatform(),
+      );
+      final source = TextEditingController(text: 'x');
+      final key = GlobalKey<MathFormulaFieldState>();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MathFormulaField(
+              key: key,
+              controller: source,
+              mathematical: true,
+              onModeChanged: (_) {},
+              onActivate: () {},
+              onChanged: () {},
+              onSubmitted: () {},
+              label: '公式 1',
+            ),
+          ),
+        ),
+      );
+      final native = platform.editor!;
+      final controller = native.controllerFromPlatform<InAppWebViewController>(
+        native.controller,
+      );
+      native.controller.cutSelectionResponse =
+          '{"latex":"x","selection":"selection-1"}';
+      native.params.onWebViewCreated!(controller);
+      native.params.onLoadStop!(controller, null);
+      await tester.pumpAndSettle();
+
+      final block = Completer<void>();
+      var active = true;
+      late Future<void> flush;
+      final cut = key.currentState!.clipboard(
+        'cut',
+        isTargetActive: () => active,
+        clipboardWriter: (_) async {
+          native.controller.snapshotBlock = block.future;
+          flush = key.currentState!.flush();
+        },
+      );
+      await tester.pump();
+      expect(native.controller.scripts.last, contains('snapshot()'));
+      active = false;
+      block.complete();
+      await flush;
+      await cut;
+      expect(
+        native.controller.scripts.where((s) => s.contains('deleteSelection')),
+        isEmpty,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      source.dispose();
+    });
+  });
+
   testWidgets(
     'unsupported WebView platforms keep the built-in formula editor usable',
     (tester) async {
@@ -775,6 +840,7 @@ class _NativeEditor extends PlatformInAppWebViewWidget {
 class _EditorController extends PlatformInAppWebViewController {
   final scripts = <String>[];
   String? cutSelectionResponse;
+  Future<void>? snapshotBlock;
   _EditorController()
     : super.implementation(
         const PlatformInAppWebViewControllerCreationParams(id: 0),
@@ -787,6 +853,7 @@ class _EditorController extends PlatformInAppWebViewController {
   }) async {
     scripts.add(source);
     if (source.contains('cutSelection')) return cutSelectionResponse;
+    if (source.contains('snapshot()')) await snapshotBlock;
     return null;
   }
 

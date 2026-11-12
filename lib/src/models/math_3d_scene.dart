@@ -137,8 +137,13 @@ class Camera3D {
 
   /// Pan the camera: move target parallel to the view plane.
   ///
-  /// [deltaX] and [deltaY] are in screen-space units.
-  Camera3D pan({required double deltaX, required double deltaY}) {
+  /// [deltaX] and [deltaY] are in screen-space units. When a projection is
+  /// supplied, the target plane follows the drag in pixels.
+  Camera3D pan({
+    required double deltaX,
+    required double deltaY,
+    Projection3D? projection,
+  }) {
     // Build right and up vectors from current view direction
     final pos = position;
     final forward = (target - pos).normalized();
@@ -155,9 +160,14 @@ class Camera3D {
     // Up vector: cross(right, forward)
     final up = right.cross(forward).normalized();
 
-    // Match the orthographic viewport: at the default distance a 100 px drag
-    // moves the scene by roughly two grid units on a 600 px tall canvas.
-    final scale = distance * 0.002;
+    final scale = projection == null || projection.height <= 0
+        ? distance * 0.002
+        : projection.type == ProjectionType.parallel
+        ? 2 * projection.scale / projection.height
+        : 2 *
+              distance *
+              dart_math.tan(projection.fov * dart_math.pi / 360) /
+              projection.height;
 
     final newTarget = Point3D(
       target.x + (-deltaX * right.x + deltaY * up.x) * scale,

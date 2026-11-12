@@ -4452,8 +4452,19 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     });
   }
 
+  Camera3D _panCamera(Camera3D cam, Offset delta) {
+    final projection = _projectionType == ProjectionType.parallel
+        ? Projection3D.parallel(
+            width: _canvasWidth,
+            height: _canvasHeight,
+            scale: cam.distance * _orthographicDistanceScale,
+          )
+        : _currentProjection();
+    return cam.pan(deltaX: delta.dx, deltaY: delta.dy, projection: projection);
+  }
+
   void _panBy(Offset delta) {
-    final panned = camera.pan(deltaX: delta.dx, deltaY: delta.dy);
+    final panned = _panCamera(camera, delta);
     setState(() => _cameraTarget = panned.target);
   }
 
@@ -4581,12 +4592,15 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       final newDistance = (startDistance / scale)
           .clamp(0.25, double.maxFinite)
           .toDouble();
-      final panned = Camera3D(
-        target: _cameraTarget,
-        distance: newDistance,
-        theta: _cameraTheta,
-        phi: _cameraPhi,
-      ).pan(deltaX: delta.dx, deltaY: delta.dy);
+      final panned = _panCamera(
+        Camera3D(
+          target: _cameraTarget,
+          distance: newDistance,
+          theta: _cameraTheta,
+          phi: _cameraPhi,
+        ),
+        delta,
+      );
       setState(() {
         _cameraDistance = newDistance;
         _cameraTarget = panned.target;
@@ -4690,12 +4704,15 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     final newDistance = (initialDistance / event.scale)
         .clamp(0.25, double.maxFinite)
         .toDouble();
-    final panned = Camera3D(
-      target: _cameraTarget,
-      distance: newDistance,
-      theta: _cameraTheta,
-      phi: _cameraPhi,
-    ).pan(deltaX: event.panDelta.dx, deltaY: event.panDelta.dy);
+    final panned = _panCamera(
+      Camera3D(
+        target: _cameraTarget,
+        distance: newDistance,
+        theta: _cameraTheta,
+        phi: _cameraPhi,
+      ),
+      event.panDelta,
+    );
     setState(() {
       _cameraDistance = newDistance;
       _cameraTarget = panned.target;

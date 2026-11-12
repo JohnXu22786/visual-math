@@ -37,6 +37,38 @@ void main() {
       },
     );
 
+    test('hyperbolic ratios stay stable at large and small inputs', () {
+      for (final name in ['tanh', 'coth']) {
+        final evaluate = MathExpressionParser.parse(
+          '$name(x)',
+          variables: ['x'],
+        );
+        for (final x in [-1000.0, -0.5, 0.5, 1000.0]) {
+          final expected = switch ((name, x)) {
+            ('tanh', -1000.0) || ('coth', -1000.0) => -1.0,
+            ('tanh', 1000.0) || ('coth', 1000.0) => 1.0,
+            ('tanh', -0.5) => -0.46211715726000974,
+            ('tanh', 0.5) => 0.46211715726000974,
+            ('coth', -0.5) => -2.163953413738653,
+            _ => 2.163953413738653,
+          };
+          expect(evaluate({'x': x}), closeTo(expected, 1e-12));
+        }
+        expect(evaluate({'x': 0}), name == 'tanh' ? 0 : double.infinity);
+        final negativeZero = evaluate({'x': -0.0});
+        expect(
+          name == 'tanh'
+              ? negativeZero.isNegative
+              : negativeZero == double.negativeInfinity,
+          isTrue,
+        );
+        expect(
+          evaluate({'x': 1e-20}),
+          closeTo(name == 'tanh' ? 1e-20 : 1e20, name == 'tanh' ? 1e-35 : 1e5),
+        );
+      }
+    });
+
     test('factorial stops after overflow for very large inputs', () {
       final evaluate = MathExpressionParser.parse('fact(x)', variables: ['x']);
 
