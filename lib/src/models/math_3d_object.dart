@@ -27,8 +27,16 @@ class Point3D {
   }
 
   /// Midpoint between this and another point.
-  Point3D midpoint(Point3D other) =>
-      Point3D((x + other.x) / 2, (y + other.y) / 2, (z + other.z) / 2);
+  Point3D midpoint(Point3D other) {
+    double middle(double a, double b) {
+      final sum = a + b;
+      return sum.isInfinite && a.isFinite && b.isFinite
+          ? a / 2 + b / 2
+          : sum / 2;
+    }
+
+    return Point3D(middle(x, other.x), middle(y, other.y), middle(z, other.z));
+  }
 
   /// Convert to a position vector (from origin).
   Vector3D toVector() => Vector3D(x, y, z);

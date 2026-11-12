@@ -42,6 +42,20 @@ void main() {
       expect(m.z, closeTo(3, 1e-10));
     });
 
+    test('midpoint preserves finite extremes and subnormal coordinates', () {
+      const tiny = 5e-324;
+      const a = Point3D(1e308, -1e308, tiny);
+      const b = Point3D(1.1e308, -1.1e308, tiny);
+      final midpoint = a.midpoint(b);
+      expect(midpoint.x, closeTo(1.05e308, 1e293));
+      expect(midpoint.y, closeTo(-1.05e308, 1e293));
+      expect(midpoint.z, tiny);
+      expect(
+        const Point3D(1e308, 0, 0).midpoint(const Point3D(-1e308, 0, 0)).x,
+        0,
+      );
+    });
+
     test('equality works by value', () {
       expect(Point3D(1, 2, 3), equals(Point3D(1, 2, 3)));
       expect(Point3D(1, 2, 3), isNot(equals(Point3D(1, 2, 4))));
