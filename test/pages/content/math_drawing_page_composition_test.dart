@@ -681,6 +681,43 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('reverting an empty formula draft restores its committed text', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          initialExpression: 'x',
+          initialMathematicalMode: false,
+          initialShowWebView: false,
+          options: const MathWorkspaceOptions(show3D: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('绘制'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '');
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.undo), findsOneWidget);
+    expect(controller.formulas.single.rawExpression, isEmpty);
+
+    await tester.tap(find.byIcon(Icons.undo));
+    await tester.pumpAndSettle();
+
+    expect(controller.formulas.single.rawExpression, 'x');
+    expect(find.byType(TextField), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      'x',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('2D overlay default content can be wrapped', (tester) async {
     await tester.pumpWidget(
       _app(
