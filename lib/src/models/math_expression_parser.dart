@@ -46,6 +46,26 @@ class MathExpressionParser {
     }
   }
 
+  /// Whether [source] is structurally zero after substituting fixed variables.
+  static bool isIdenticallyZeroAfterSubstitution(
+    String source, {
+    required Iterable<String> variables,
+    required Map<String, double> substitutions,
+    required Map<String, (double, double)> intervals,
+  }) {
+    try {
+      final node = _RootEvidenceParser(
+        _tokenize(source),
+        variables.toSet(),
+        substitutions: substitutions,
+        intervals: intervals,
+      ).parse();
+      return node.zero;
+    } on FormatException {
+      return false;
+    }
+  }
+
   /// Compile the same expression grammar to a JavaScript expression.
   static String toJavaScript(
     String source, {
@@ -518,13 +538,17 @@ class _RootEvidenceNode {
     this.right,
     this.continuous = false,
     this.zero = false,
+    this.nonzero = false,
     this.integer,
+    this.lowerBound,
+    this.upperBound,
   });
   final String kind;
   final String code;
   final _RootEvidenceNode? left, right;
-  final bool continuous, zero;
+  final bool continuous, zero, nonzero;
   final int? integer;
+  final double? lowerBound, upperBound;
 
   List<_RootEvidenceNode> get rootFactors {
     switch (kind) {
@@ -553,9 +577,16 @@ class _RootEvidenceNode {
 }
 
 class _RootEvidenceParser {
-  _RootEvidenceParser(this.tokens, this.variables);
+  _RootEvidenceParser(
+    this.tokens,
+    this.variables, {
+    this.substitutions = const {},
+    this.intervals = const {},
+  });
   final List<_Token> tokens;
   final Set<String> variables;
+  final Map<String, double> substitutions;
+  final Map<String, (double, double)> intervals;
   int position = 0;
   _Token get current => tokens[position];
   bool take(String text) {
@@ -581,12 +612,44 @@ class _RootEvidenceParser {
       final op = current.text;
       position++;
       final rhs = product();
+      if (op == '+' && node.zero) {
+        node = rhs;
+        continue;
+      }
+      if ((op == '+' || op == '-') && rhs.zero) continue;
+      if (op == '-' &&
+          node.code == rhs.code &&
+          node.continuous &&
+          rhs.continuous) {
+        node = _RootEvidenceNode(
+          'number',
+          '0',
+          continuous: true,
+          zero: true,
+          lowerBound: 0,
+          upperBound: 0,
+        );
+        continue;
+      }
+      final interval = _intervalFor(op, node, rhs);
       node = _RootEvidenceNode(
         op,
         '(${node.code}$op${rhs.code})',
         left: node,
         right: rhs,
         continuous: node.continuous && rhs.continuous,
+        zero:
+            node.zero && rhs.zero ||
+            op == '-' &&
+                node.code == rhs.code &&
+                node.continuous &&
+                rhs.continuous,
+        nonzero:
+            interval != null && (interval.$1 > 0 || interval.$2 < 0) ||
+            node.zero && rhs.nonzero ||
+            rhs.zero && node.nonzero,
+        lowerBound: interval?.$1,
+        upperBound: interval?.$2,
       );
     }
     return node;
@@ -598,12 +661,22 @@ class _RootEvidenceParser {
       final op = current.text;
       position++;
       final rhs = unary();
+      final interval = _intervalFor(op, node, rhs);
       node = _RootEvidenceNode(
         op,
         '(${node.code}$op${rhs.code})',
         left: node,
         right: rhs,
-        continuous: op == '*' && node.continuous && rhs.continuous,
+        continuous:
+            op == '*' && node.continuous && rhs.continuous ||
+            op == '/' && node.continuous && rhs.continuous && rhs.nonzero,
+        zero:
+            op == '*' &&
+                (node.zero && rhs.continuous || rhs.zero && node.continuous) ||
+            op == '/' && node.zero && rhs.nonzero,
+        nonzero: interval != null && (interval.$1 > 0 || interval.$2 < 0),
+        lowerBound: interval?.$1,
+        upperBound: interval?.$2,
       );
     }
     return node;
@@ -619,6 +692,10 @@ class _RootEvidenceParser {
         left: node,
         continuous: node.continuous,
         zero: node.zero,
+        nonzero: node.nonzero,
+        integer: node.integer == null ? null : -node.integer!,
+        lowerBound: node.upperBound == null ? null : -node.upperBound!,
+        upperBound: node.lowerBound == null ? null : -node.lowerBound!,
       );
     }
     return power();
@@ -629,12 +706,20 @@ class _RootEvidenceParser {
     if (!take('^')) return node;
     final exponent = unary();
     final n = exponent.integer;
+    final interval = _intervalFor('^', node, exponent);
     return _RootEvidenceNode(
       '^',
       '(${node.code}^${exponent.code})',
       left: node,
       right: exponent,
       continuous: node.continuous && n != null && n >= 0,
+      zero: node.zero && n != null && n > 0,
+      nonzero:
+          node.continuous &&
+          interval != null &&
+          (interval.$1 > 0 || interval.$2 < 0),
+      lowerBound: interval?.$1,
+      upperBound: interval?.$2,
     );
   }
 
@@ -653,7 +738,10 @@ class _RootEvidenceParser {
         token.text,
         continuous: value != null && value.isFinite,
         zero: zero,
+        nonzero: value != null && value != 0,
         integer: integer,
+        lowerBound: value,
+        upperBound: value,
       );
     }
     if (take('(')) {
@@ -671,23 +759,577 @@ class _RootEvidenceParser {
           } while (take(','));
           require(')');
         }
-        final supported =
-            {'sin', 'cos', 'abs'}.contains(token.text) && args.length == 1;
+        final hasSingleArgument = args.length == 1;
+        final argument = hasSingleArgument ? args.single : null;
+        final supported = const {
+          'sin',
+          'cos',
+          'tan',
+          'abs',
+          'sqrt',
+          'exp',
+          'ln',
+          'log',
+          'sinh',
+          'cosh',
+          'tanh',
+          'atan',
+          'asin',
+          'acos',
+          'sec',
+          'csc',
+          'cot',
+          'sech',
+          'csch',
+          'coth',
+        }.contains(token.text);
+        final absBounds =
+            token.text == 'abs' &&
+                argument?.lowerBound != null &&
+                argument?.upperBound != null
+            ? _absoluteInterval(argument!.lowerBound!, argument.upperBound!)
+            : null;
+        final expBounds =
+            token.text == 'exp' &&
+                argument?.lowerBound != null &&
+                argument?.upperBound != null
+            ? (math.exp(argument!.lowerBound!), math.exp(argument.upperBound!))
+            : null;
+        final trigBounds =
+            hasSingleArgument && const {'sin', 'cos'}.contains(token.text)
+            ? _trigInterval(token.text, argument!)
+            : null;
+        final tanBounds = hasSingleArgument && token.text == 'tan'
+            ? _tanInterval(argument!)
+            : null;
+        final continuousFunctionBounds = hasSingleArgument
+            ? _continuousUnaryInterval(token.text, argument!)
+            : null;
+        final singularFunctionBounds = hasSingleArgument
+            ? _singularUnaryInterval(
+                token.text,
+                argument!,
+                trigBounds: _trigInterval('sin', argument),
+                cosineBounds: _trigInterval('cos', argument),
+                sinhBounds: _continuousUnaryInterval('sinh', argument),
+                coshBounds: _continuousUnaryInterval('cosh', argument),
+                sechBounds: _continuousUnaryInterval('sech', argument),
+              )
+            : null;
+        final continuousFunctionIsDefined =
+            !const {'asin', 'acos'}.contains(token.text) ||
+            argument != null &&
+                argument.lowerBound != null &&
+                argument.upperBound != null &&
+                argument.lowerBound! >= -1 &&
+                argument.upperBound! <= 1;
+        final sqrtIsDefined =
+            token.text != 'sqrt' ||
+            argument != null &&
+                argument.lowerBound != null &&
+                argument.lowerBound! >= 0;
+        final isUnaryLog =
+            token.text == 'ln' || token.text == 'log' && hasSingleArgument;
+        final logIsDefined =
+            !isUnaryLog ||
+            argument != null &&
+                argument.lowerBound != null &&
+                argument.lowerBound! > 0;
+        final logBounds =
+            isUnaryLog &&
+                argument?.lowerBound != null &&
+                argument?.upperBound != null &&
+                argument!.lowerBound! > 0
+            ? (math.log(argument.lowerBound!), math.log(argument.upperBound!))
+            : null;
+        final sqrtBounds =
+            token.text == 'sqrt' &&
+                argument?.lowerBound != null &&
+                argument?.upperBound != null &&
+                argument!.lowerBound! >= 0
+            ? (math.sqrt(argument.lowerBound!), math.sqrt(argument.upperBound!))
+            : null;
+        final binaryNrtBounds =
+            token.text == 'nrt' &&
+                args.length == 2 &&
+                args[0].integer != null &&
+                args[0].integer! != 0 &&
+                args.every((arg) => arg.continuous) &&
+                args[1].lowerBound != null &&
+                args[1].upperBound != null &&
+                (args[0].integer!.isOdd || args[1].lowerBound! >= 0) &&
+                (args[0].integer! > 0 ||
+                    args[1].lowerBound! > 0 ||
+                    args[1].upperBound! < 0)
+            ? _binaryNrtInterval(args[0].integer!, args[1])
+            : null;
+        final binaryPowBounds =
+            token.text == 'pow' &&
+                args.length == 2 &&
+                args.every((arg) => arg.continuous) &&
+                args[0].lowerBound != null &&
+                args[0].upperBound != null &&
+                args[1].lowerBound != null &&
+                args[1].upperBound != null &&
+                args[0].lowerBound! > 0
+            ? _binaryPowInterval(args[0], args[1])
+            : null;
+        final binaryLogBounds =
+            token.text == 'log' &&
+                args.length == 2 &&
+                args[0].lowerBound != null &&
+                args[0].upperBound != null &&
+                args[1].lowerBound != null &&
+                args[1].upperBound != null &&
+                args[0].lowerBound! > 0 &&
+                (args[0].upperBound! < 1 || args[0].lowerBound! > 1) &&
+                args[1].lowerBound! > 0
+            ? _binaryLogInterval(args[0], args[1])
+            : null;
+        final binaryLogIsDefined =
+            token.text != 'log' ||
+            hasSingleArgument ||
+            args.length == 2 &&
+                args.every((arg) => arg.continuous) &&
+                binaryLogBounds != null;
+        final isContinuous =
+            hasSingleArgument &&
+                supported &&
+                argument!.continuous &&
+                (token.text != 'tan' || tanBounds != null) &&
+                (!const {
+                      'sec',
+                      'csc',
+                      'cot',
+                      'csch',
+                      'coth',
+                    }.contains(token.text) ||
+                    singularFunctionBounds != null) &&
+                continuousFunctionIsDefined &&
+                sqrtIsDefined &&
+                logIsDefined &&
+                binaryLogIsDefined &&
+                (token.text != 'exp' ||
+                    expBounds != null &&
+                        expBounds.$1.isFinite &&
+                        expBounds.$2.isFinite) ||
+            token.text == 'log' &&
+                args.length == 2 &&
+                args.every((arg) => arg.continuous) &&
+                binaryLogIsDefined ||
+            token.text == 'pow' &&
+                args.length == 2 &&
+                args.every((arg) => arg.continuous) &&
+                binaryPowBounds != null ||
+            token.text == 'nrt' &&
+                args.length == 2 &&
+                args.every((arg) => arg.continuous) &&
+                binaryNrtBounds != null;
+        final functionLowerBound =
+            expBounds?.$1 ??
+            absBounds?.$1 ??
+            sqrtBounds?.$1 ??
+            logBounds?.$1 ??
+            trigBounds?.$1 ??
+            tanBounds?.$1 ??
+            continuousFunctionBounds?.$1 ??
+            singularFunctionBounds?.$1 ??
+            binaryLogBounds?.$1 ??
+            binaryPowBounds?.$1 ??
+            binaryNrtBounds?.$1;
+        final functionUpperBound =
+            expBounds?.$2 ??
+            absBounds?.$2 ??
+            sqrtBounds?.$2 ??
+            logBounds?.$2 ??
+            trigBounds?.$2 ??
+            tanBounds?.$2 ??
+            continuousFunctionBounds?.$2 ??
+            singularFunctionBounds?.$2 ??
+            binaryLogBounds?.$2 ??
+            binaryPowBounds?.$2 ??
+            binaryNrtBounds?.$2;
+        final functionIsZero =
+            hasSingleArgument &&
+                argument!.zero &&
+                const {
+                  'abs',
+                  'sin',
+                  'sqrt',
+                  'tan',
+                  'sinh',
+                  'tanh',
+                  'atan',
+                  'asin',
+                }.contains(token.text) ||
+            logBounds != null && logBounds.$1 == 0 && logBounds.$2 == 0 ||
+            binaryLogBounds != null &&
+                binaryLogBounds.$1 == 0 &&
+                binaryLogBounds.$2 == 0 ||
+            binaryNrtBounds != null &&
+                binaryNrtBounds.$1 == 0 &&
+                binaryNrtBounds.$2 == 0;
+        final functionIsNonzero =
+            hasSingleArgument &&
+                (argument!.zero && token.text == 'cos' ||
+                    token.text == 'sqrt' &&
+                        argument.lowerBound != null &&
+                        argument.lowerBound! > 0) ||
+            expBounds != null && expBounds.$1 > 0 ||
+            logBounds != null && (logBounds.$1 > 0 || logBounds.$2 < 0) ||
+            trigBounds != null && (trigBounds.$1 > 0 || trigBounds.$2 < 0) ||
+            tanBounds != null && (tanBounds.$1 > 0 || tanBounds.$2 < 0) ||
+            continuousFunctionBounds != null &&
+                (continuousFunctionBounds.$1 > 0 ||
+                    continuousFunctionBounds.$2 < 0) ||
+            singularFunctionBounds != null &&
+                (singularFunctionBounds.$1 > 0 ||
+                    singularFunctionBounds.$2 < 0) ||
+            binaryLogBounds != null &&
+                (binaryLogBounds.$1 > 0 || binaryLogBounds.$2 < 0) ||
+            binaryPowBounds != null &&
+                (binaryPowBounds.$1 > 0 || binaryPowBounds.$2 < 0) ||
+            binaryNrtBounds != null &&
+                (binaryNrtBounds.$1 > 0 || binaryNrtBounds.$2 < 0);
         return _RootEvidenceNode(
           token.text,
           '${token.text}(${args.map((arg) => arg.code).join(',')})',
-          left: args.length == 1 ? args.single : null,
-          continuous: supported && args.single.continuous,
+          left: argument,
+          continuous: isContinuous,
+          zero: functionIsZero,
+          nonzero: functionIsNonzero,
+          lowerBound: functionLowerBound,
+          upperBound: functionUpperBound,
         );
       }
+      final substitution = substitutions[token.text];
+      if (substitution != null) {
+        final integer =
+            substitution.isFinite &&
+                substitution.truncateToDouble() == substitution
+            ? substitution.toInt()
+            : null;
+        return _RootEvidenceNode(
+          'number',
+          substitution.toString(),
+          continuous: substitution.isFinite,
+          zero: substitution == 0,
+          nonzero: substitution != 0 && substitution.isFinite,
+          integer: integer,
+          lowerBound: substitution,
+          upperBound: substitution,
+        );
+      }
+      final constant = MathExpressionParser._constants[token.text];
+      if (constant != null) {
+        return _RootEvidenceNode(
+          'number',
+          token.text,
+          continuous: constant.isFinite,
+          zero: constant == 0,
+          nonzero: constant != 0 && constant.isFinite,
+          lowerBound: constant,
+          upperBound: constant,
+        );
+      }
+      final interval = intervals[token.text];
       return _RootEvidenceNode(
         'identifier',
         token.text,
-        continuous:
-            variables.contains(token.text) ||
-            MathExpressionParser._constants.containsKey(token.text),
+        continuous: variables.contains(token.text),
+        nonzero: interval != null && (interval.$1 > 0 || interval.$2 < 0),
+        lowerBound: interval?.$1,
+        upperBound: interval?.$2,
       );
     }
     throw const FormatException('Expected expression');
+  }
+
+  (double, double)? _singularUnaryInterval(
+    String name,
+    _RootEvidenceNode argument, {
+    required (double, double)? trigBounds,
+    required (double, double)? cosineBounds,
+    required (double, double)? sinhBounds,
+    required (double, double)? coshBounds,
+    required (double, double)? sechBounds,
+  }) {
+    switch (name) {
+      case 'sec':
+        return cosineBounds == null
+            ? null
+            : _divideIntervals((1, 1), cosineBounds);
+      case 'csc':
+        return trigBounds == null ? null : _divideIntervals((1, 1), trigBounds);
+      case 'cot':
+        if (cosineBounds == null || trigBounds == null) return null;
+        return _divideIntervals(cosineBounds, trigBounds);
+      case 'sech':
+        return sechBounds;
+      case 'csch':
+        final bounds = sinhBounds;
+        return bounds == null ? null : _divideIntervals((1, 1), bounds);
+      case 'coth':
+        if (coshBounds == null || sinhBounds == null) return null;
+        return _divideIntervals(coshBounds, sinhBounds);
+      default:
+        return null;
+    }
+  }
+
+  (double, double)? _divideIntervals(
+    (double, double) numerator,
+    (double, double) denominator,
+  ) {
+    if (denominator.$1 <= 0 && denominator.$2 >= 0) return null;
+    final values = [
+      numerator.$1 / denominator.$1,
+      numerator.$1 / denominator.$2,
+      numerator.$2 / denominator.$1,
+      numerator.$2 / denominator.$2,
+    ];
+    final lower = values.reduce(math.min);
+    final upper = values.reduce(math.max);
+    if (!lower.isFinite || !upper.isFinite) return null;
+    return (lower, upper);
+  }
+
+  (double, double)? _continuousUnaryInterval(
+    String name,
+    _RootEvidenceNode argument,
+  ) {
+    final lower = argument.lowerBound;
+    final upper = argument.upperBound;
+    if (lower == null || upper == null || !lower.isFinite || !upper.isFinite) {
+      return null;
+    }
+    late final double minimum;
+    late final double maximum;
+    switch (name) {
+      case 'sinh':
+        minimum = MathExpressionParser._sinh(lower);
+        maximum = MathExpressionParser._sinh(upper);
+      case 'cosh':
+        final left = (math.exp(lower) + math.exp(-lower)) / 2;
+        final right = (math.exp(upper) + math.exp(-upper)) / 2;
+        minimum = lower <= 0 && upper >= 0 ? 1 : math.min(left, right);
+        maximum = math.max(left, right);
+      case 'sech':
+        double sech(double value) => 2 / (math.exp(value) + math.exp(-value));
+        final left = sech(lower);
+        final right = sech(upper);
+        minimum = math.min(left, right);
+        maximum = lower <= 0 && upper >= 0 ? 1 : math.max(left, right);
+      case 'tanh':
+        minimum = MathExpressionParser._tanh(lower);
+        maximum = MathExpressionParser._tanh(upper);
+      case 'atan':
+        minimum = math.atan(lower);
+        maximum = math.atan(upper);
+      case 'asin':
+        if (lower < -1 || upper > 1) return null;
+        minimum = math.asin(lower);
+        maximum = math.asin(upper);
+      case 'acos':
+        if (lower < -1 || upper > 1) return null;
+        minimum = math.acos(upper);
+        maximum = math.acos(lower);
+      default:
+        return null;
+    }
+    if (!minimum.isFinite || !maximum.isFinite) return null;
+    return (minimum, maximum);
+  }
+
+  (double, double) _absoluteInterval(double lower, double upper) {
+    final maximum = math.max(lower.abs(), upper.abs());
+    final minimum = lower <= 0 && upper >= 0
+        ? 0.0
+        : math.min(lower.abs(), upper.abs());
+    return (minimum, maximum);
+  }
+
+  (double, double)? _tanInterval(_RootEvidenceNode argument) {
+    final lower = argument.lowerBound;
+    final upper = argument.upperBound;
+    if (lower == null ||
+        upper == null ||
+        !lower.isFinite ||
+        !upper.isFinite ||
+        lower > upper) {
+      return null;
+    }
+    final firstPole = ((lower - math.pi / 2) / math.pi).ceil();
+    final lastPole = ((upper - math.pi / 2) / math.pi).floor();
+    if (firstPole <= lastPole) return null;
+    final low = math.tan(lower);
+    final high = math.tan(upper);
+    if (!low.isFinite || !high.isFinite) return null;
+    return (low, high);
+  }
+
+  (double, double)? _binaryNrtInterval(int degree, _RootEvidenceNode value) {
+    final lower = value.lowerBound;
+    final upper = value.upperBound;
+    if (lower == null || upper == null || !lower.isFinite || !upper.isFinite) {
+      return null;
+    }
+    double root(double input) => input < 0
+        ? -math.pow(-input, 1 / degree).toDouble()
+        : math.pow(input, 1 / degree).toDouble();
+    final first = root(lower);
+    final last = root(upper);
+    final minimum = math.min(first, last);
+    final maximum = math.max(first, last);
+    if (!minimum.isFinite || !maximum.isFinite) return null;
+    return (minimum, maximum);
+  }
+
+  (double, double)? _binaryPowInterval(
+    _RootEvidenceNode base,
+    _RootEvidenceNode exponent,
+  ) {
+    final baseLower = base.lowerBound;
+    final baseUpper = base.upperBound;
+    final exponentLower = exponent.lowerBound;
+    final exponentUpper = exponent.upperBound;
+    if (baseLower == null ||
+        baseUpper == null ||
+        exponentLower == null ||
+        exponentUpper == null ||
+        baseLower <= 0 ||
+        !baseUpper.isFinite ||
+        !exponentLower.isFinite ||
+        !exponentUpper.isFinite) {
+      return null;
+    }
+    final logLower = math.log(baseLower);
+    final logUpper = math.log(baseUpper);
+    final products = [
+      logLower * exponentLower,
+      logLower * exponentUpper,
+      logUpper * exponentLower,
+      logUpper * exponentUpper,
+    ];
+    final lower = math.exp(products.reduce(math.min));
+    final upper = math.exp(products.reduce(math.max));
+    if (!lower.isFinite || !upper.isFinite) return null;
+    return (lower, upper);
+  }
+
+  (double, double)? _binaryLogInterval(
+    _RootEvidenceNode base,
+    _RootEvidenceNode value,
+  ) {
+    final baseLower = base.lowerBound;
+    final baseUpper = base.upperBound;
+    final valueLower = value.lowerBound;
+    final valueUpper = value.upperBound;
+    if (baseLower == null ||
+        baseUpper == null ||
+        valueLower == null ||
+        valueUpper == null ||
+        baseLower <= 0 ||
+        baseLower <= 1 && baseUpper >= 1 ||
+        valueLower <= 0) {
+      return null;
+    }
+    final logBase = [math.log(baseLower), math.log(baseUpper)];
+    final logValue = [math.log(valueLower), math.log(valueUpper)];
+    final denominatorLower = logBase.reduce(math.min);
+    final denominatorUpper = logBase.reduce(math.max);
+    final numeratorLower = logValue.reduce(math.min);
+    final numeratorUpper = logValue.reduce(math.max);
+    if (denominatorLower <= 0 && denominatorUpper >= 0) return null;
+    final quotients = [
+      numeratorLower / denominatorLower,
+      numeratorLower / denominatorUpper,
+      numeratorUpper / denominatorLower,
+      numeratorUpper / denominatorUpper,
+    ];
+    final lower = quotients.reduce(math.min);
+    final upper = quotients.reduce(math.max);
+    if (!lower.isFinite || !upper.isFinite) return null;
+    return (lower, upper);
+  }
+
+  (double, double)? _trigInterval(String name, _RootEvidenceNode argument) {
+    final lower = argument.lowerBound;
+    final upper = argument.upperBound;
+    if (lower == null ||
+        upper == null ||
+        !lower.isFinite ||
+        !upper.isFinite ||
+        lower > upper ||
+        lower.abs() > 1e12 ||
+        upper.abs() > 1e12) {
+      return null;
+    }
+    final values = name == 'sin'
+        ? [math.sin(lower), math.sin(upper)]
+        : [math.cos(lower), math.cos(upper)];
+    var minimum = values.reduce(math.min);
+    var maximum = values.reduce(math.max);
+    final period = 2 * math.pi;
+    bool contains(double phase) =>
+        ((lower - phase) / period).ceil() <= ((upper - phase) / period).floor();
+    if (name == 'sin') {
+      if (contains(math.pi / 2)) maximum = 1;
+      if (contains(-math.pi / 2)) minimum = -1;
+    } else {
+      if (contains(0)) maximum = 1;
+      if (contains(math.pi)) minimum = -1;
+    }
+    return (minimum, maximum);
+  }
+
+  (double, double)? _intervalFor(
+    String operation,
+    _RootEvidenceNode left,
+    _RootEvidenceNode right,
+  ) {
+    final a = left.lowerBound;
+    final b = left.upperBound;
+    final c = right.lowerBound;
+    final d = right.upperBound;
+    if (a == null || b == null || c == null || d == null) return null;
+    late final double lower;
+    late final double upper;
+    switch (operation) {
+      case '+':
+        lower = a + c;
+        upper = b + d;
+      case '-':
+        lower = a - d;
+        upper = b - c;
+      case '*':
+        final products = [a * c, a * d, b * c, b * d];
+        lower = products.reduce((x, y) => x < y ? x : y);
+        upper = products.reduce((x, y) => x > y ? x : y);
+      case '/':
+        if (c <= 0 && d >= 0) return null;
+        final quotients = [a / c, a / d, b / c, b / d];
+        lower = quotients.reduce((x, y) => x < y ? x : y);
+        upper = quotients.reduce((x, y) => x > y ? x : y);
+      case '^':
+        final exponent = right.integer;
+        if (exponent == null || exponent < 0) return null;
+        final first = math.pow(a, exponent).toDouble();
+        final last = math.pow(b, exponent).toDouble();
+        if (exponent == 0) {
+          lower = 1;
+          upper = 1;
+        } else if (exponent.isEven && a <= 0 && b >= 0) {
+          lower = 0;
+          upper = first.abs() > last.abs() ? first.abs() : last.abs();
+        } else {
+          lower = first < last ? first : last;
+          upper = first > last ? first : last;
+        }
+      default:
+        return null;
+    }
+    if (!lower.isFinite || !upper.isFinite) return null;
+    return (lower, upper);
   }
 }

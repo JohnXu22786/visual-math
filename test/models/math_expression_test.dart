@@ -1,5 +1,6 @@
 import 'dart:math' as dart_math;
 
+import 'package:visual_math/src/models/math_expression_parser.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:visual_math/visual_math.dart';
 
@@ -489,6 +490,391 @@ void main() {
     // v00 * v10 < 0 misses crossings when the product is zero. We fix this by
     // treating exact-zero corner values as a tiny positive (1e-15) so that the
     // sign comparison correctly detects zero-value crossings.
+
+    test('does not treat two zero edge endpoints as a zero contour edge', () {
+      List<List<Map<String, double>>> sample(String equation) =>
+          MathExpression.fromInput(equation).sampleContourSegments(
+            xMin: 0,
+            xMax: 1,
+            yMin: 0,
+            yMax: 1,
+            gridX: 1,
+            gridY: 1,
+          );
+
+      // The contour is y=x*(1-x), which meets the bottom edge only at its
+      // endpoints. The edge itself is not part of the zero set.
+      final curved = sample('x*(x-1)+y=0');
+      expect(curved, isNotEmpty);
+      expect(
+        curved
+            .expand((segment) => segment)
+            .every(
+              (point) =>
+                  (point['x']! * (point['x']! - 1) + point['y']!).abs() < 1e-8,
+            ),
+        isTrue,
+      );
+      expect(
+        curved.any((segment) => segment.every((point) => point['y'] == 0)),
+        isFalse,
+      );
+
+      // Roots at each eighth do not make the whole edge zero. The contour
+      // still leaves that edge between them.
+      final repeatedRoots = sample(
+        'x*(x-1)*(x-1/8)*(x-2/8)*(x-3/8)*(x-4/8)*(x-5/8)*(x-6/8)*(x-7/8)+y=0',
+      );
+      expect(
+        repeatedRoots.any(
+          (segment) =>
+              segment.every((point) => point['y'] == 0) &&
+              (segment.first['x']! - segment.last['x']!).abs() > 0.1,
+        ),
+        isFalse,
+      );
+
+      final everyProbeRoot = List.generate(
+        33,
+        (index) => '(x-$index/32)',
+      ).join('*');
+      final adversarialCurve = sample('$everyProbeRoot+y=0');
+      expect(
+        adversarialCurve.any(
+          (segment) =>
+              segment.every((point) => point['y'] == 0) &&
+              (segment.first['x']! - segment.last['x']!).abs() > 0.1,
+        ),
+        isFalse,
+      );
+
+      final narrowCurve = sample('x*(x-1/64)+y=0');
+      expect(
+        narrowCurve.any((segment) => segment.every((point) => point['y'] == 0)),
+        isFalse,
+      );
+      final steepNarrowCurve = sample('x*(x-1/64)+1e10*y=0');
+      expect(
+        steepNarrowCurve.any(
+          (segment) => segment.every((point) => point['y'] == 0),
+        ),
+        isFalse,
+      );
+      final singularEdge = sample('y/(x-1/3)=0');
+      expect(singularEdge, isNotEmpty);
+      expect(
+        singularEdge
+            .where((segment) => segment.every((point) => point['y'] == 0))
+            .every(
+              (segment) =>
+                  (segment.first['x']! - 1 / 3) * (segment.last['x']! - 1 / 3) >
+                  0,
+            ),
+        isTrue,
+      );
+      final maskedPole = sample('y+0*(1/(x-1/3))=0');
+      expect(maskedPole, isNotEmpty);
+      expect(
+        maskedPole
+            .where((segment) => segment.every((point) => point['y'] == 0))
+            .every(
+              (segment) =>
+                  (segment.first['x']! - 1 / 3) * (segment.last['x']! - 1 / 3) >
+                  0,
+            ),
+        isTrue,
+      );
+      final identicalPole = sample('y/(x-1/3)=y/(x-1/3)');
+      expect(
+        identicalPole.every(
+          (segment) =>
+              (segment.first['x']! - 1 / 3) * (segment.last['x']! - 1 / 3) > 0,
+        ),
+        isTrue,
+      );
+      expect(
+        MathExpressionParser.isIdenticallyZeroAfterSubstitution(
+          '(y/(x-1/3))-(y/(x-1/3))',
+          variables: ['x', 'y'],
+          substitutions: {'y': 0},
+          intervals: {'x': (0, 1)},
+        ),
+        isFalse,
+      );
+      expect(
+        MathExpressionParser.isIdenticallyZeroAfterSubstitution(
+          'y+0*(1/(x-1/3))',
+          variables: ['x', 'y'],
+          substitutions: {'y': 0},
+          intervals: {'x': (0, 1)},
+        ),
+        isFalse,
+      );
+      final underflowEdge = MathExpression.fromInput('x*x+y=0')
+          .sampleContourSegments(
+            xMin: 1e-200,
+            xMax: 2e-200,
+            yMin: 0,
+            yMax: 1,
+            gridX: 1,
+            gridY: 1,
+          );
+      expect(
+        underflowEdge.any(
+          (segment) => segment.every((point) => point['y'] == 0),
+        ),
+        isFalse,
+      );
+      final scaledCurve = sample('x*(x-1)/1e13+y=0');
+      expect(
+        scaledCurve.any(
+          (segment) =>
+              segment.every((point) => point['y'] == 0) &&
+              (segment.first['x']! - segment.last['x']!).abs() > 0.1,
+        ),
+        isFalse,
+      );
+
+      final tinyScaledCurve = sample('1e-16*(x*(x-1)+y)=0');
+      expect(
+        tinyScaledCurve.any(
+          (segment) =>
+              segment.every((point) => point['y'] == 0) &&
+              (segment.first['x']! - segment.last['x']!).abs() > 0.1,
+        ),
+        isFalse,
+      );
+
+      // A genuinely zero grid edge must continue to be represented.
+      final edge = sample('(x-0.1)^2*y=0');
+      expect(
+        edge.any((segment) => segment.every((point) => point['y'] == 0)),
+        isTrue,
+      );
+      final cancelledEdge = sample('x+y=x');
+      expect(
+        cancelledEdge.any(
+          (segment) => segment.every((point) => point['y'] == 0),
+        ),
+        isTrue,
+      );
+      final squareRootEdge = sample('0*sqrt(x)+y=0');
+      expect(
+        squareRootEdge.any(
+          (segment) => segment.every((point) => point['y'] == 0),
+        ),
+        isTrue,
+      );
+      final zeroPowerDenominator = MathExpression.fromInput('y/(x^0)=0')
+          .sampleContourSegments(
+            xMin: -1,
+            xMax: 1,
+            yMin: 0,
+            yMax: 1,
+            gridX: 2,
+            gridY: 1,
+          );
+      expect(
+        zeroPowerDenominator.any(
+          (segment) => segment.every((point) => point['y'] == 0),
+        ),
+        isTrue,
+      );
+      final tangentEdge = sample('tan(x)*y=0');
+      expect(
+        tangentEdge.any((segment) => segment.every((point) => point['y'] == 0)),
+        isTrue,
+      );
+      final nrtEdge = sample('nrt(3,x)*y=0');
+      expect(
+        nrtEdge.any((segment) => segment.every((point) => point['y'] == 0)),
+        isTrue,
+      );
+      final negativeOddRootEdge = MathExpression.fromInput('nrt(-3,x)*y=0')
+          .sampleContourSegments(
+            xMin: 1.2,
+            xMax: 1.8,
+            yMin: 0,
+            yMax: 1,
+            gridX: 1,
+            gridY: 1,
+          );
+      expect(
+        negativeOddRootEdge.any(
+          (segment) => segment.every((point) => point['y'] == 0),
+        ),
+        isTrue,
+      );
+      final negativeOddRootOnNegativeDomain =
+          MathExpression.fromInput('nrt(-3,x)*y=0').sampleContourSegments(
+            xMin: -1.8,
+            xMax: -1.2,
+            yMin: 0,
+            yMax: 1,
+            gridX: 1,
+            gridY: 1,
+          );
+      expect(
+        negativeOddRootOnNegativeDomain.any(
+          (segment) => segment.every((point) => point['y'] == 0),
+        ),
+        isTrue,
+      );
+      final negativeRootAcrossPole = MathExpression.fromInput('nrt(-3,x)*y=0')
+          .sampleContourSegments(
+            xMin: -1,
+            xMax: 1,
+            yMin: 0,
+            yMax: 1,
+            gridX: 2,
+            gridY: 1,
+          );
+      expect(
+        negativeRootAcrossPole.any(
+          (segment) => segment.every((point) => point['y'] == 0),
+        ),
+        isFalse,
+      );
+      final negativeEvenRootOnNegativeDomain =
+          MathExpression.fromInput('nrt(-2,x)*y=0').sampleContourSegments(
+            xMin: -2,
+            xMax: -1,
+            yMin: 0,
+            yMax: 1,
+            gridX: 1,
+            gridY: 1,
+          );
+      expect(negativeEvenRootOnNegativeDomain, isEmpty);
+      // Odd roots stay real and continuous across a narrow negative interval.
+      // The parser's evaluator explicitly handles this case instead of relying
+      // on math.pow with a negative base and fractional exponent.
+      final narrowNegativeRoot = MathExpression.fromInput(
+        'nrt(3,(x-1/64)^2-1e-8)',
+      );
+      final narrowNegativeRootValue = narrowNegativeRoot.evaluator(1 / 64);
+      expect(narrowNegativeRootValue.isFinite, isTrue);
+      expect(narrowNegativeRootValue, lessThan(0));
+      final narrowNegativeRootEdge = sample('0*nrt(3,(x-1/64)^2-1e-8)+y=0');
+      expect(
+        narrowNegativeRootEdge.any(
+          (segment) => segment.every((point) => point['y'] == 0),
+        ),
+        isTrue,
+      );
+      final binaryPowerEdge = sample('pow(2,x)*y=0');
+      expect(
+        binaryPowerEdge.any(
+          (segment) => segment.every((point) => point['y'] == 0),
+        ),
+        isTrue,
+      );
+      final secantEdge = sample('sec(x)*y=0');
+      expect(
+        secantEdge.any((segment) => segment.every((point) => point['y'] == 0)),
+        isTrue,
+      );
+      final hyperbolicSineEdge = sample('sinh(x)*y=0');
+      expect(
+        hyperbolicSineEdge.any(
+          (segment) => segment.every((point) => point['y'] == 0),
+        ),
+        isTrue,
+      );
+      final exponentialEdge = sample('exp(x)*y=0');
+      expect(
+        exponentialEdge.any(
+          (segment) => segment.every((point) => point['y'] == 0),
+        ),
+        isTrue,
+      );
+      final logarithmicEdge = sample('ln(x+1)*y=0');
+      expect(
+        logarithmicEdge.any(
+          (segment) => segment.every((point) => point['y'] == 0),
+        ),
+        isTrue,
+      );
+      final absoluteDenominator = sample('y/(abs(x)+1)=0');
+      expect(
+        absoluteDenominator.any(
+          (segment) => segment.every((point) => point['y'] == 0),
+        ),
+        isTrue,
+      );
+      final cosineDenominator = sample('y/cos(x)=0');
+      expect(
+        cosineDenominator.any(
+          (segment) => segment.every((point) => point['y'] == 0),
+        ),
+        isTrue,
+      );
+      final implicitDefaultParameter = sample('y/a=0');
+      expect(
+        implicitDefaultParameter.any(
+          (segment) => segment.every((point) => point['y'] == 0),
+        ),
+        isTrue,
+      );
+      final binaryLogZeroEdge = MathExpression.fromInput('log(2,x)*y=0')
+          .sampleContourSegments(
+            xMin: 1,
+            xMax: 2,
+            yMin: 0,
+            yMax: 1,
+            gridX: 1,
+            gridY: 1,
+          );
+      expect(
+        binaryLogZeroEdge.any(
+          (segment) => segment.every((point) => point['y'] == 0),
+        ),
+        isTrue,
+      );
+      final binaryLogCurve =
+          MathExpression.fromInput('((x-1)*(x-2)*log(2,x))+y=0')
+              .sampleContourSegments(
+                xMin: 1,
+                xMax: 2,
+                yMin: 0,
+                yMax: 1,
+                gridX: 1,
+                gridY: 1,
+              );
+      expect(binaryLogCurve, isNotEmpty);
+      expect(
+        binaryLogCurve.any(
+          (segment) =>
+              segment.every((point) => point['y'] == 0) &&
+              (segment.first['x']! - segment.last['x']!).abs() > 0.1,
+        ),
+        isFalse,
+      );
+      final parameterizedEdge =
+          MathExpression.fromInput(
+            '0*x+y=a',
+            parameterValues: {'a': 0},
+          ).sampleContourSegments(
+            xMin: -1,
+            xMax: 1,
+            yMin: -1,
+            yMax: 1,
+            gridX: 2,
+            gridY: 2,
+          );
+      expect(
+        parameterizedEdge.any(
+          (segment) => segment.every((point) => point['y'] == 0),
+        ),
+        isTrue,
+      );
+      expect(
+        MathExpression.fromInput(
+          '0*x+y=a',
+          parameterValues: {'a': 0},
+        ).immutableCopy().parameterValues['a'],
+        0,
+      );
+    });
 
     test('detects contour crossing when f=0 at a corner (origin-crossing curve)', () {
       // y^2 = 4x  =>  f(x,y) = y^2 - 4x
