@@ -690,6 +690,22 @@ void main() {
         nrtEdge.any((segment) => segment.every((point) => point['y'] == 0)),
         isTrue,
       );
+      // Odd roots stay real and continuous across a narrow negative interval.
+      // The parser's evaluator explicitly handles this case instead of relying
+      // on math.pow with a negative base and fractional exponent.
+      final narrowNegativeRoot = MathExpression.fromInput(
+        'nrt(3,(x-1/64)^2-1e-8)',
+      );
+      final narrowNegativeRootValue = narrowNegativeRoot.evaluator(1 / 64);
+      expect(narrowNegativeRootValue.isFinite, isTrue);
+      expect(narrowNegativeRootValue, lessThan(0));
+      final narrowNegativeRootEdge = sample('0*nrt(3,(x-1/64)^2-1e-8)+y=0');
+      expect(
+        narrowNegativeRootEdge.any(
+          (segment) => segment.every((point) => point['y'] == 0),
+        ),
+        isTrue,
+      );
       final binaryPowerEdge = sample('pow(2,x)*y=0');
       expect(
         binaryPowerEdge.any(
