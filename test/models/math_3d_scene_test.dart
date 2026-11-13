@@ -167,6 +167,28 @@ void main() {
       expect(scene.camera.target, equals(const Point3D(12, 22, 32)));
       expect(scene.camera.distance, closeTo(5.4, 1e-10));
     });
+
+    test(
+      'zooming out preserves fitted camera distances above the zoom cap',
+      () {
+        final scene = Scene3D();
+        scene.add(Object3D.point(const Point3D(-1000, 0, 0)));
+        scene.add(Object3D.point(const Point3D(1000, 0, 0)));
+
+        scene.fitToView();
+        final fittedDistance = scene.camera.distance;
+        final zoomedOut = scene.camera.zoom(factor: 0.5);
+
+        expect(fittedDistance, greaterThan(1000));
+        expect(zoomedOut.distance, closeTo(fittedDistance * 2, 1e-10));
+        expect(Camera3D(distance: 10).zoom(factor: 0.001).distance, 1000);
+        expect(Camera3D(distance: 2000).zoom(factor: -1).distance, 0.1);
+        expect(
+          Camera3D(distance: 3000).zoom(factor: 1.1).distance,
+          closeTo(3000 / 1.1, 1e-10),
+        );
+      },
+    );
   });
 
   group('3D to 2D pipeline', () {

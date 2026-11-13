@@ -126,7 +126,14 @@ class Camera3D {
   ///
   /// factor > 1 moves camera closer, factor < 1 moves farther.
   Camera3D zoom({required double factor}) {
-    final newDistance = (distance / factor).clamp(0.1, 1000).toDouble();
+    final requestedDistance = distance / factor;
+    final maxDistance =
+        distance > 1000 &&
+            requestedDistance > 1000 &&
+            requestedDistance.isFinite
+        ? requestedDistance
+        : 1000.0;
+    final newDistance = requestedDistance.clamp(0.1, maxDistance).toDouble();
     return Camera3D(
       target: target,
       distance: newDistance,
