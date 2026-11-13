@@ -95,6 +95,8 @@ Map<String, dynamic> _snapshotToJson(MathDrawingSnapshot s) => {
         'color': s.formulas[i].color.toARGB32(),
         'colorMode': s.formulas[i].autoColor ? 'auto' : 'custom',
         'visible': s.formulas[i].visible,
+        if (s.formulas[i].hiddenPlot3D case final plot?)
+          'hiddenPlot3D': _objectToJson(plot, plot.documentId),
         'domainStart': s.formulas[i].domainStartExpression ?? '',
         'domainEnd': s.formulas[i].domainEndExpression ?? '',
         'includeDomainStart': s.formulas[i].includeDomainStart,
@@ -188,6 +190,9 @@ MathDrawingSnapshot _snapshotFromJson(Map<String, dynamic> j) {
           _ => throw const FormatException('Unknown formula color mode.'),
         },
         visible: _required<bool>(f, 'visible'),
+        hiddenPlot3D: f['hiddenPlot3D'] == null
+            ? null
+            : _objectFromJson(obj(f['hiddenPlot3D'], 'hiddenPlot3D'), ''),
         domainStartExpression: _optional<String>(f, 'domainStart', ''),
         domainEndExpression: _optional<String>(f, 'domainEnd', ''),
         includeDomainStart: _optional<bool>(f, 'includeDomainStart', true),

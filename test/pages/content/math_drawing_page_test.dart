@@ -806,6 +806,93 @@ void main() {
     },
   );
 
+  testWidgets('3D plot style survives hiding and showing a formula', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    await tester.pumpWidget(_buildTestApp(controller: controller));
+    await tester.pump();
+    await tester.tap(find.text('3D'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'x+y');
+    await tester.pump();
+    await tester.tap(find.byTooltip('绘制').first);
+    await tester.pumpAndSettle();
+    final canvas = tester.state<MathCanvas3DState>(find.byType(MathCanvas3D));
+    final old = canvas.objects.singleWhere((o) => o.formulaRowId != null);
+    canvas.setObjects([
+      old.copyWith(
+        color: 0xff123456,
+        opacity: 0.4,
+        edgeWidth: 4.5,
+        showEdges: false,
+        visible: false,
+        transformOrigin: true,
+      ),
+    ]);
+    await tester.tap(find.byIcon(Icons.visibility));
+    await tester.pumpAndSettle();
+    expect(canvas.objects.where((o) => o.formulaRowId != null), isEmpty);
+    final hiddenDocument = MathDrawingDocument.decode(
+      MathDrawingDocument(
+        name: 'hidden',
+        drawing: controller.snapshot!,
+      ).encode(),
+    );
+    controller.restore(hiddenDocument.drawing);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.visibility_off));
+    await tester.pumpAndSettle();
+    final plot = canvas.objects.singleWhere((o) => o.formulaRowId != null);
+    expect(plot.documentId, old.documentId);
+    expect(plot.color, 0xff123456);
+    expect(plot.opacity, 0.4);
+    expect(plot.edgeWidth, 4.5);
+    expect(plot.showEdges, isFalse);
+    expect(plot.visible, isFalse);
+    expect(plot.transformOrigin, isTrue);
+    final restored = MathDrawingDocument.decode(
+      MathDrawingDocument(name: 'plot', drawing: controller.snapshot!).encode(),
+    );
+    final saved = restored.drawing.scene3D.singleWhere(
+      (o) => o.formulaRowId != null,
+    );
+    expect(saved.color, plot.color);
+    expect(saved.opacity, plot.opacity);
+    expect(saved.edgeWidth, plot.edgeWidth);
+    expect(saved.showEdges, plot.showEdges);
+    expect(saved.visible, plot.visible);
+    expect(saved.transformOrigin, plot.transformOrigin);
+
+    await tester.tap(find.byIcon(Icons.visibility));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '');
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.visibility_off));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'x-y');
+    await tester.pump();
+    await tester.tap(find.byTooltip('绘制').first);
+    await tester.pumpAndSettle();
+    final replotted = canvas.objects.singleWhere((o) => o.formulaRowId != null);
+    expect(replotted.color, plot.color);
+    expect(replotted.edgeWidth, plot.edgeWidth);
+    expect(replotted.showEdges, plot.showEdges);
+
+    await tester.enterText(find.byType(TextField), '');
+    await tester.pump();
+    await tester.tap(find.byTooltip('绘制').first);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'x+y');
+    await tester.pump();
+    await tester.tap(find.byTooltip('绘制').first);
+    await tester.pumpAndSettle();
+    final recreated = canvas.objects.singleWhere((o) => o.formulaRowId != null);
+    expect(recreated.color, plot.color);
+    expect(recreated.edgeWidth, plot.edgeWidth);
+    expect(recreated.showEdges, plot.showEdges);
+  });
+
   testWidgets('3D replots preserve constructed objects and relationships', (
     tester,
   ) async {

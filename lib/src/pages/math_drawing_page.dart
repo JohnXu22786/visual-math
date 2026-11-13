@@ -386,6 +386,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       color: formula.color,
       autoColor: formula.autoColor,
       visible: formula.visible,
+      hiddenPlot3D: formula.hiddenPlot3D,
       domainStartExpression: formula.domainStartExpression,
       domainEndExpression: formula.domainEndExpression,
       includeDomainStart: formula.includeDomainStart,
@@ -479,6 +480,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
               color: entry.color,
               autoColor: entry.autoColor,
               visible: entry.visible,
+              hiddenPlot3D: entry.hiddenPlot3D,
               domainStartExpression: entry.domainStartExpression ?? '',
               domainEndExpression: entry.domainEndExpression ?? '',
               includeDomainStart: entry.includeDomainStart,
@@ -549,6 +551,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
               color: entry.color,
               autoColor: entry.autoColor,
               visible: entry.visible,
+              hiddenPlot3D: entry.hiddenPlot3D,
               domainStartExpression: entry.domainStartExpression ?? '',
               domainEndExpression: entry.domainEndExpression ?? '',
               includeDomainStart: entry.includeDomainStart,
@@ -1164,16 +1167,14 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       if (!f.visible) continue;
 
       final previous = current.where((item) => item.formulaRowId == f.id);
-      final old = previous.isEmpty ? null : previous.first;
+      final old = previous.isEmpty ? f.hiddenPlot3D : previous.first;
       final object = _sampleFormula3D(
         text,
         old?.color ?? f.color.toARGB32(),
         allowEmpty: true,
       );
       if (object != null) {
-        var id = previous.isEmpty
-            ? 'formula-plot-3d:${f.id}'
-            : previous.first.documentId;
+        var id = old?.documentId ?? 'formula-plot-3d:${f.id}';
         if (previous.isEmpty) {
           while (usedIds.contains(id)) {
             id = '$id:';
@@ -1217,6 +1218,14 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       }
       _plot3DDirty = false;
       for (final f in _formulas) {
+        if (objects.any((object) => object.formulaRowId == f.id)) {
+          f.hiddenPlot3D = null;
+        } else {
+          final previous = current.where(
+            (object) => object.formulaRowId == f.id,
+          );
+          if (previous.isNotEmpty) f.hiddenPlot3D = previous.first;
+        }
         f.committedText3D = f.controller.text.trim();
       }
     });
@@ -1319,7 +1328,13 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       formula.visible = !formula.visible;
       _invalidatePlots();
     });
-    if (!formula.visible) _removeCommittedPlots(formula.id);
+    if (!formula.visible) {
+      final plots = _canvas3DKey.currentState?.objects.where(
+        (object) => object.formulaRowId == formula.id,
+      );
+      if (plots != null && plots.isNotEmpty) formula.hiddenPlot3D = plots.first;
+      _removeCommittedPlots(formula.id);
+    }
     // Re-plot to update canvas
     _plotAll();
   }
@@ -1430,6 +1445,12 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                               _invalidatePlots();
                               _formulas[formulaIndex].color = color;
                               _formulas[formulaIndex].autoColor = false;
+                              final hidden =
+                                  _formulas[formulaIndex].hiddenPlot3D;
+                              if (hidden != null) {
+                                _formulas[formulaIndex].hiddenPlot3D = hidden
+                                    .copyWith(color: color.toARGB32());
+                              }
                             });
                             _canvas3DKey.currentState?.setFormulaColor(
                               _formulas[formulaIndex].id,
@@ -2363,6 +2384,7 @@ class _FormulaState {
   bool autoColor;
   String committedText2D = '';
   String committedText3D = '';
+  Object3D? hiddenPlot3D;
 
   String committedText(ViewMode view) =>
       view == ViewMode.mode2D ? committedText2D : committedText3D;
@@ -2378,6 +2400,7 @@ class _FormulaState {
     String? id,
     this.autoColor = true,
     this.visible = true,
+    this.hiddenPlot3D,
     this.domainStartExpression = '',
     this.domainEndExpression = '',
     this.includeDomainStart = true,
