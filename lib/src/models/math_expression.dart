@@ -172,8 +172,12 @@ class MathExpression {
         RegExp(r'\b[xy]\b').hasMatch(expression.normalizedExpression)) {
       return null;
     }
-    final value = expression.evaluator(0);
-    return value.isFinite ? value : null;
+    try {
+      final value = expression.evaluator(0);
+      return value.isFinite ? value : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Create an updated evaluator with new parameter values.
