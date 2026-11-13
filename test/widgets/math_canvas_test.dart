@@ -655,6 +655,16 @@ void main() {
       final deep = key.currentState!.viewport;
       expect(deep.$3, greaterThan(deep.$1));
       expect(deep.$4, greaterThan(deep.$2));
+      final fineDrag = await tester.startGesture(
+        tester.getCenter(find.byType(MathCanvas)),
+      );
+      await fineDrag.moveBy(const Offset(30, 0));
+      final fineStart = key.currentState!.viewport;
+      for (var i = 0; i < 30; i++) {
+        await fineDrag.moveBy(const Offset(1, 0));
+      }
+      await fineDrag.up();
+      expect(key.currentState!.viewport.$1, lessThan(fineStart.$1));
       key.currentState!.zoomOut();
       final recovered = key.currentState!.viewport;
       expect(recovered.$3 - recovered.$1, greaterThan(deep.$3 - deep.$1));
@@ -694,6 +704,16 @@ void main() {
         greaterThan(oneUlp.$3 - oneUlp.$1),
       );
 
+      await key.currentState!.setViewport(100, -1, 100.00000000000001, 1);
+      final diagonalStart = key.currentState!.viewport;
+      final diagonalDrag = await tester.startGesture(
+        tester.getCenter(find.byType(MathCanvas)),
+      );
+      await diagonalDrag.moveBy(const Offset(30, 0));
+      await diagonalDrag.moveBy(const Offset(150, 150));
+      await diagonalDrag.up();
+      expect(key.currentState!.viewport.$2, greaterThan(diagonalStart.$2));
+
       await key.currentState!.setViewport(-10, 100, 10, 100.00000000000001);
       final panStart = key.currentState!.viewport;
       final verticalDrag = await tester.startGesture(
@@ -703,6 +723,23 @@ void main() {
       await verticalDrag.moveBy(const Offset(0, 420));
       await verticalDrag.up();
       expect(key.currentState!.viewport.$2 - panStart.$2, greaterThan(20));
+
+      await key.currentState!.setViewport(
+        100,
+        100,
+        100.00000000000004,
+        100.00000000000003,
+      );
+      final horizontalBoundary = await tester.startGesture(
+        tester.getCenter(find.byType(MathCanvas)),
+      );
+      await horizontalBoundary.moveBy(const Offset(30, 0));
+      await horizontalBoundary.moveBy(const Offset(150, 0));
+      await horizontalBoundary.up();
+      expect(
+        key.currentState!.viewport.$4,
+        greaterThan(key.currentState!.viewport.$2),
+      );
 
       await key.currentState!.setViewport(
         -2,
@@ -791,6 +828,7 @@ void main() {
         greaterThan(large.$3 - large.$1),
       );
 
+      await key.currentState!.setViewport(-1e-13, 100, 1e-13, 110);
       await tester.pumpWidget(
         MaterialApp(
           home: Center(
@@ -798,6 +836,16 @@ void main() {
           ),
         ),
       );
+      final resized = key.currentState!.viewport;
+      expect(resized.$4, greaterThan(resized.$2));
+      final resizeDrag = await tester.startGesture(
+        tester.getCenter(find.byType(MathCanvas)),
+      );
+      await resizeDrag.moveBy(const Offset(30, 0));
+      await resizeDrag.moveBy(const Offset(100, 0));
+      await resizeDrag.up();
+      expect(key.currentState!.viewport.$1, lessThan(resized.$1));
+
       await key.currentState!.setViewport(
         -double.minPositive,
         -double.minPositive,

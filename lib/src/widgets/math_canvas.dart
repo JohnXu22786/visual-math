@@ -789,6 +789,7 @@ class MathCanvasState extends State<MathCanvas> {
   void _onScaleUpdate(ScaleUpdateDetails details) {
     final focalPoint = details.localFocalPoint;
     final scale = details.scale;
+    var nextFocalPoint = focalPoint;
 
     if (details.pointerCount == 1) {
       // Pan 1:1 — the graph tracks the finger exactly.
@@ -806,11 +807,30 @@ class MathCanvasState extends State<MathCanvas> {
           : focalPoint.dy - _lastFocalPoint!.dy;
       final perPixel = (_xMax - _xMin) / _canvasWidth;
 
-      final xMin = _xMin - dx * perPixel;
-      final xMax = _xMax - dx * perPixel;
+      var xMin = _xMin - dx * perPixel;
+      var xMax = _xMax - dx * perPixel;
       final (effectiveYMin, effectiveYMax) = _effectiveYBounds();
-      final yMin = effectiveYMin + dy * perPixel;
-      final yMax = effectiveYMax + dy * perPixel;
+      var yMin = effectiveYMin + dy * perPixel;
+      var yMax = effectiveYMax + dy * perPixel;
+      if (!xMin.isFinite ||
+          !xMax.isFinite ||
+          xMax <= xMin ||
+          !(xMax - xMin).isFinite) {
+        xMin = _xMin;
+        xMax = _xMax;
+      }
+      final (unchangedYMin, unchangedYMax) = _visibleYBounds(
+        xMin,
+        effectiveYMin,
+        xMax,
+        effectiveYMax,
+        _canvasWidth,
+        _canvasHeight,
+      );
+      if (unchangedYMax <= unchangedYMin) {
+        xMin = _xMin;
+        xMax = _xMax;
+      }
       final (visibleMin, visibleMax) = _visibleYBounds(
         xMin,
         yMin,
@@ -819,22 +839,30 @@ class MathCanvasState extends State<MathCanvas> {
         _canvasWidth,
         _canvasHeight,
       );
-      if (visibleMax > visibleMin &&
-          xMin.isFinite &&
-          xMax.isFinite &&
-          yMin.isFinite &&
-          yMax.isFinite &&
-          xMax > xMin &&
-          yMax > yMin &&
-          (xMax - xMin).isFinite &&
-          (yMax - yMin).isFinite) {
-        setState(() {
-          _xMin = xMin;
-          _xMax = xMax;
-          _yMin = yMin;
-          _yMax = yMax;
-        });
+      if (!yMin.isFinite ||
+          !yMax.isFinite ||
+          yMax <= yMin ||
+          !(yMax - yMin).isFinite ||
+          visibleMax <= visibleMin) {
+        yMin = effectiveYMin;
+        yMax = effectiveYMax;
       }
+      // Keep sub-ULP or rejected movement until each axis can move.
+      final previous = _lastFocalPoint;
+      if (previous != null) {
+        nextFocalPoint = Offset(
+          xMin == _xMin && xMax == _xMax ? previous.dx : focalPoint.dx,
+          yMin == effectiveYMin && yMax == effectiveYMax
+              ? previous.dy
+              : focalPoint.dy,
+        );
+      }
+      setState(() {
+        _xMin = xMin;
+        _xMax = xMax;
+        _yMin = yMin;
+        _yMax = yMax;
+      });
     } else if (_lastScale != null) {
       // Keep the math point under the previous focal point under the new one.
       final previousFocalPoint = _lastFocalPoint ?? focalPoint;
@@ -844,7 +872,7 @@ class MathCanvasState extends State<MathCanvas> {
       });
     }
 
-    _lastFocalPoint = focalPoint;
+    _lastFocalPoint = nextFocalPoint;
     _lastScale = scale;
   }
 
@@ -929,6 +957,29 @@ class MathCanvasState extends State<MathCanvas> {
         _canvasWidth = width;
         _canvasHeight = height;
         _hasCanvasDimensions = true;
+        if (dimensionsChanged && width > 0 && height > 0) {
+          final aspect = width / height;
+          final yCenter = _yMin + (_yMax - _yMin) / 2;
+          final yRange = (_xMax - _xMin) / aspect;
+          if (yCenter - yRange / 2 >= yCenter + yRange / 2) {
+            final minimumRange = dart_math.max(
+              double.minPositive * 32 * dart_math.max(1, aspect),
+              dart_math.max(_yMin.abs(), _yMax.abs()) *
+                  7.105427357601002e-15 *
+                  aspect,
+            );
+            final xCenter = _xMin + (_xMax - _xMin) / 2;
+            final xMin = xCenter - minimumRange / 2;
+            final xMax = xCenter + minimumRange / 2;
+            if (xMin.isFinite &&
+                xMax.isFinite &&
+                xMax > xMin &&
+                (xMax - xMin).isFinite) {
+              _xMin = xMin;
+              _xMax = xMax;
+            }
+          }
+        }
         if (dimensionsChanged && viewport != previousViewport) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) _notifyViewportChange();
