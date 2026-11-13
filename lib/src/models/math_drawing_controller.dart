@@ -62,6 +62,7 @@ class MathDrawingSnapshot {
          for (final formula in formulas)
            formula.copyWith(
              parsed: formula.parsed?.immutableCopy(),
+             hiddenPlot3D: formula.hiddenPlot3D?.immutableCopy(),
              parameterValues: Map.unmodifiable(formula.parameterValues),
            ),
        ]),

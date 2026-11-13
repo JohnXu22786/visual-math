@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'math_expression.dart';
+import 'math_3d_object.dart';
 
 /// A palette of distinct colors for auto-assigning to formulas.
 const List<Color> formulaPalette = [
@@ -36,6 +37,9 @@ class FormulaEntry {
   /// Whether this formula row is currently included when plotting.
   final bool visible;
 
+  /// The previous 3D plot retained while this row is hidden.
+  final Object3D? hiddenPlot3D;
+
   /// Optional lower/upper x-domain expressions, stored exactly as entered.
   final String? domainStartExpression;
   final String? domainEndExpression;
@@ -52,6 +56,7 @@ class FormulaEntry {
     this.color = Colors.blue,
     this.autoColor = true,
     this.visible = true,
+    this.hiddenPlot3D,
     this.domainStartExpression,
     this.domainEndExpression,
     this.includeDomainStart = true,
@@ -72,6 +77,7 @@ class FormulaEntry {
     Color? color,
     bool? autoColor,
     bool? visible,
+    Object3D? hiddenPlot3D,
     String? domainStartExpression,
     String? domainEndExpression,
     bool? includeDomainStart,
@@ -90,6 +96,7 @@ class FormulaEntry {
       color: color ?? this.color,
       autoColor: autoColor ?? this.autoColor,
       visible: visible ?? this.visible,
+      hiddenPlot3D: hiddenPlot3D ?? this.hiddenPlot3D,
       domainStartExpression:
           domainStartExpression ?? this.domainStartExpression,
       domainEndExpression: domainEndExpression ?? this.domainEndExpression,

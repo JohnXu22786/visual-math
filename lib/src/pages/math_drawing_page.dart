@@ -386,6 +386,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       color: formula.color,
       autoColor: formula.autoColor,
       visible: formula.visible,
+      hiddenPlot3D: formula.hiddenPlot3D,
       domainStartExpression: formula.domainStartExpression,
       domainEndExpression: formula.domainEndExpression,
       includeDomainStart: formula.includeDomainStart,
@@ -479,6 +480,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
               color: entry.color,
               autoColor: entry.autoColor,
               visible: entry.visible,
+              hiddenPlot3D: entry.hiddenPlot3D,
               domainStartExpression: entry.domainStartExpression ?? '',
               domainEndExpression: entry.domainEndExpression ?? '',
               includeDomainStart: entry.includeDomainStart,
@@ -549,6 +551,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
               color: entry.color,
               autoColor: entry.autoColor,
               visible: entry.visible,
+              hiddenPlot3D: entry.hiddenPlot3D,
               domainStartExpression: entry.domainStartExpression ?? '',
               domainEndExpression: entry.domainEndExpression ?? '',
               includeDomainStart: entry.includeDomainStart,
@@ -848,6 +851,34 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       return;
     setState(() => _currentView = target);
     _syncController();
+    if (target == ViewMode.mode3D) {
+      final canvas = _canvas3DKey.currentState;
+      final currentFormulaObjects =
+          canvas?.objects
+              .where((object) => object.formulaRowId != null)
+              .toList() ??
+          const <Object3D>[];
+      final currentFormulaIds = currentFormulaObjects
+          .map((object) => object.formulaRowId)
+          .toSet();
+      final restored = [
+        for (final formula in _formulas)
+          if (formula.visible &&
+              formula.hiddenPlot3D != null &&
+              !currentFormulaIds.contains(formula.id))
+            _refreshFormulaPlot3D(formula.hiddenPlot3D!),
+      ];
+      if (restored.isNotEmpty) {
+        canvas?.replaceFormulaObjects([...currentFormulaObjects, ...restored]);
+        for (final formula in _formulas) {
+          if (restored.any((object) => object.formulaRowId == formula.id)) {
+            formula.hiddenPlot3D = null;
+          }
+        }
+        _publish3DChange();
+        widget.controller?.onPlotted?.call(_makeSnapshot());
+      }
+    }
     widget.controller?.onViewChanged?.call(target);
   }
 
@@ -1121,6 +1152,20 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         ..._parametersFor3D(object.label!),
   };
 
+  Object3D _refreshFormulaPlot3D(Object3D old) {
+    if (old.label == null) return old;
+    return (_sampleFormula3D(old.label!, old.color, allowEmpty: true) ?? old)
+        .copyWith(
+          documentId: old.documentId,
+          formulaRowId: old.formulaRowId,
+          opacity: old.opacity,
+          edgeWidth: old.edgeWidth,
+          showEdges: old.showEdges,
+          visible: old.visible,
+          transformOrigin: old.transformOrigin,
+        );
+  }
+
   Set<String> _parametersFor3D(String text) {
     final curve = Expression3D.parametricCurve(text);
     return curve.isValid
@@ -1138,19 +1183,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     if (plots.isEmpty) return;
     canvas.replaceFormulaObjects([
       for (final old in plots)
-        if (old.label == null)
-          old
-        else
-          (_sampleFormula3D(old.label!, old.color, allowEmpty: true)?.copyWith(
-                documentId: old.documentId,
-                formulaRowId: old.formulaRowId,
-                opacity: old.opacity,
-                edgeWidth: old.edgeWidth,
-                showEdges: old.showEdges,
-                visible: old.visible,
-                transformOrigin: old.transformOrigin,
-              ) ??
-              old),
+        if (old.label == null) old else _refreshFormulaPlot3D(old),
     ]);
   }
 
@@ -1163,23 +1196,32 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       if (text.isEmpty) continue;
       if (!f.visible) continue;
 
+      final previous = current.where((item) => item.formulaRowId == f.id);
+      final old = previous.isEmpty ? f.hiddenPlot3D : previous.first;
       final object = _sampleFormula3D(
         text,
-        f.color.toARGB32(),
+        old?.color ?? f.color.toARGB32(),
         allowEmpty: true,
       );
       if (object != null) {
-        final previous = current.where((item) => item.formulaRowId == f.id);
-        var id = previous.isEmpty
-            ? 'formula-plot-3d:${f.id}'
-            : previous.first.documentId;
+        var id = old?.documentId ?? 'formula-plot-3d:${f.id}';
         if (previous.isEmpty) {
           while (usedIds.contains(id)) {
             id = '$id:';
           }
         }
         usedIds.add(id);
-        objects.add(object.copyWith(documentId: id, formulaRowId: f.id));
+        objects.add(
+          object.copyWith(
+            documentId: id,
+            formulaRowId: f.id,
+            opacity: old?.opacity,
+            edgeWidth: old?.edgeWidth,
+            showEdges: old?.showEdges,
+            visible: old?.visible,
+            transformOrigin: old?.transformOrigin,
+          ),
+        );
         continue;
       }
 
@@ -1206,6 +1248,14 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       }
       _plot3DDirty = false;
       for (final f in _formulas) {
+        if (objects.any((object) => object.formulaRowId == f.id)) {
+          f.hiddenPlot3D = null;
+        } else {
+          final previous = current.where(
+            (object) => object.formulaRowId == f.id,
+          );
+          if (previous.isNotEmpty) f.hiddenPlot3D = previous.first;
+        }
         f.committedText3D = f.controller.text.trim();
       }
     });
@@ -1308,7 +1358,13 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       formula.visible = !formula.visible;
       _invalidatePlots();
     });
-    if (!formula.visible) _removeCommittedPlots(formula.id);
+    if (!formula.visible) {
+      final plots = _canvas3DKey.currentState?.objects.where(
+        (object) => object.formulaRowId == formula.id,
+      );
+      if (plots != null && plots.isNotEmpty) formula.hiddenPlot3D = plots.first;
+      _removeCommittedPlots(formula.id);
+    }
     // Re-plot to update canvas
     _plotAll();
   }
@@ -1419,7 +1475,18 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                               _invalidatePlots();
                               _formulas[formulaIndex].color = color;
                               _formulas[formulaIndex].autoColor = false;
+                              final hidden =
+                                  _formulas[formulaIndex].hiddenPlot3D;
+                              if (hidden != null) {
+                                _formulas[formulaIndex].hiddenPlot3D = hidden
+                                    .copyWith(color: color.toARGB32());
+                              }
                             });
+                            _canvas3DKey.currentState?.setFormulaColor(
+                              _formulas[formulaIndex].id,
+                              color.toARGB32(),
+                              notify: _currentView == ViewMode.mode2D,
+                            );
                             Navigator.pop(ctx);
                             _plotAll();
                           },
@@ -2347,6 +2414,7 @@ class _FormulaState {
   bool autoColor;
   String committedText2D = '';
   String committedText3D = '';
+  Object3D? hiddenPlot3D;
 
   String committedText(ViewMode view) =>
       view == ViewMode.mode2D ? committedText2D : committedText3D;
@@ -2362,6 +2430,7 @@ class _FormulaState {
     String? id,
     this.autoColor = true,
     this.visible = true,
+    this.hiddenPlot3D,
     this.domainStartExpression = '',
     this.domainEndExpression = '',
     this.includeDomainStart = true,

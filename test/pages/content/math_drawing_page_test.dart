@@ -711,6 +711,261 @@ void main() {
     }
   });
 
+  testWidgets('3D replot retains object style through document round trip', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    await tester.pumpWidget(_buildTestApp(controller: controller));
+    await tester.pump();
+    await tester.tap(find.text('3D'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'x+y');
+    await tester.pump();
+    await tester.tap(find.byTooltip('绘制').first);
+    await tester.pumpAndSettle();
+    final canvas = tester.state<MathCanvas3DState>(find.byType(MathCanvas3D));
+    final original = canvas.objects.singleWhere((o) => o.formulaRowId != null);
+    canvas.setObjects([
+      original.copyWith(
+        color: 0xff123456,
+        edgeWidth: 4.5,
+        showEdges: false,
+        opacity: 0.4,
+        visible: false,
+        transformOrigin: true,
+      ),
+    ]);
+    await tester.enterText(find.byType(TextField), 'x-y');
+    await tester.pump();
+    await tester.tap(find.byTooltip('绘制').first);
+    await tester.pumpAndSettle();
+
+    void check(Object3D plot) {
+      expect(plot.documentId, original.documentId);
+      expect(plot.formulaRowId, original.formulaRowId);
+      expect(plot.label, 'x-y');
+      expect(
+        plot.vertices.first.z,
+        closeTo(plot.vertices.first.x - plot.vertices.first.y, 1e-8),
+      );
+      expect(plot.color, 0xff123456);
+      expect(plot.edgeWidth, 4.5);
+      expect(plot.showEdges, isFalse);
+      expect(plot.opacity, 0.4);
+      expect(plot.visible, isFalse);
+      expect(plot.transformOrigin, isTrue);
+    }
+
+    check(canvas.objects.singleWhere((o) => o.formulaRowId != null));
+    final reopened = MathDrawingDocument.decode(
+      MathDrawingDocument(name: 'plot', drawing: controller.snapshot!).encode(),
+    );
+    check(reopened.drawing.scene3D.singleWhere((o) => o.formulaRowId != null));
+  });
+
+  testWidgets(
+    'formula color picker updates existing 3D plot from either view',
+    (tester) async {
+      final controller = MathDrawingController();
+      await tester.pumpWidget(_buildTestApp(controller: controller));
+      await tester.pump();
+      await tester.tap(find.text('3D'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'x+y');
+      await tester.pump();
+      await tester.tap(find.byTooltip('绘制').first);
+      await tester.pumpAndSettle();
+      final canvas = tester.state<MathCanvas3DState>(find.byType(MathCanvas3D));
+      var sceneChanges = 0;
+      controller.onSceneChanged = (_) => sceneChanges++;
+      for (final view in ['3D', '2D']) {
+        if (view == '2D') {
+          await tester.tap(find.text('2D'));
+          await tester.pumpAndSettle();
+        }
+        final row = find
+            .ancestor(
+              of: find.byType(TextField).first,
+              matching: find.byType(Row),
+            )
+            .first;
+        final colorButton = find
+            .descendant(of: row, matching: find.byType(GestureDetector))
+            .first;
+        final previousChanges = sceneChanges;
+        await tester.tap(colorButton);
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.bySemanticsLabel(view == '3D' ? '公式颜色 2' : '公式颜色 3'),
+        );
+        await tester.pumpAndSettle();
+        final plot = canvas.objects.singleWhere((o) => o.formulaRowId != null);
+        expect(plot.color, controller.formulas.first.color.toARGB32());
+        expect(sceneChanges, previousChanges + 1);
+      }
+    },
+  );
+
+  testWidgets('3D plot style survives hiding and showing a formula', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    await tester.pumpWidget(_buildTestApp(controller: controller));
+    await tester.pump();
+    await tester.tap(find.text('3D'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'x+y');
+    await tester.pump();
+    await tester.tap(find.byTooltip('绘制').first);
+    await tester.pumpAndSettle();
+    final canvas = tester.state<MathCanvas3DState>(find.byType(MathCanvas3D));
+    final old = canvas.objects.singleWhere((o) => o.formulaRowId != null);
+    canvas.setObjects([
+      old.copyWith(
+        color: 0xff123456,
+        opacity: 0.4,
+        edgeWidth: 4.5,
+        showEdges: false,
+        visible: false,
+        transformOrigin: true,
+      ),
+    ]);
+    await tester.tap(find.byIcon(Icons.visibility));
+    await tester.pumpAndSettle();
+    expect(canvas.objects.where((o) => o.formulaRowId != null), isEmpty);
+    final hiddenDocument = MathDrawingDocument.decode(
+      MathDrawingDocument(
+        name: 'hidden',
+        drawing: controller.snapshot!,
+      ).encode(),
+    );
+    controller.restore(hiddenDocument.drawing);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.visibility_off));
+    await tester.pumpAndSettle();
+    final plot = canvas.objects.singleWhere((o) => o.formulaRowId != null);
+    expect(plot.documentId, old.documentId);
+    expect(plot.color, 0xff123456);
+    expect(plot.opacity, 0.4);
+    expect(plot.edgeWidth, 4.5);
+    expect(plot.showEdges, isFalse);
+    expect(plot.visible, isFalse);
+    expect(plot.transformOrigin, isTrue);
+    final restored = MathDrawingDocument.decode(
+      MathDrawingDocument(name: 'plot', drawing: controller.snapshot!).encode(),
+    );
+    final saved = restored.drawing.scene3D.singleWhere(
+      (o) => o.formulaRowId != null,
+    );
+    expect(saved.color, plot.color);
+    expect(saved.opacity, plot.opacity);
+    expect(saved.edgeWidth, plot.edgeWidth);
+    expect(saved.showEdges, plot.showEdges);
+    expect(saved.visible, plot.visible);
+    expect(saved.transformOrigin, plot.transformOrigin);
+
+    await tester.tap(find.byIcon(Icons.visibility));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '');
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.visibility_off));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'x-y');
+    await tester.pump();
+    await tester.tap(find.byTooltip('绘制').first);
+    await tester.pumpAndSettle();
+    final replotted = canvas.objects.singleWhere((o) => o.formulaRowId != null);
+    expect(replotted.color, plot.color);
+    expect(replotted.edgeWidth, plot.edgeWidth);
+    expect(replotted.showEdges, plot.showEdges);
+
+    await tester.enterText(find.byType(TextField), '');
+    await tester.pump();
+    await tester.tap(find.byTooltip('绘制').first);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'x+y');
+    await tester.pump();
+    await tester.tap(find.byTooltip('绘制').first);
+    await tester.pumpAndSettle();
+    final recreated = canvas.objects.singleWhere((o) => o.formulaRowId != null);
+    expect(recreated.color, plot.color);
+    expect(recreated.edgeWidth, plot.edgeWidth);
+    expect(recreated.showEdges, plot.showEdges);
+  });
+
+  testWidgets('showing a 3D formula in 2D restores it when returning to 3D', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    await tester.pumpWidget(_buildTestApp(controller: controller));
+    await tester.pump();
+    await tester.tap(find.text('3D'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'x+y');
+    await tester.pump();
+    await tester.tap(find.byTooltip('绘制').first);
+    await tester.pumpAndSettle();
+
+    final canvas = tester.state<MathCanvas3DState>(find.byType(MathCanvas3D));
+    final original = canvas.objects.singleWhere((o) => o.formulaRowId != null);
+    canvas.setObjects([original.copyWith(color: 0xff123456, opacity: 0.4)]);
+
+    await tester.tap(find.text('2D'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.visibility));
+    await tester.pumpAndSettle();
+    expect(canvas.objects.where((o) => o.formulaRowId != null), isEmpty);
+
+    await tester.tap(find.byIcon(Icons.visibility_off));
+    await tester.pumpAndSettle();
+    expect(canvas.objects.where((o) => o.formulaRowId != null), isEmpty);
+
+    await tester.tap(find.text('3D'));
+    await tester.pumpAndSettle();
+    final restored = canvas.objects.singleWhere((o) => o.formulaRowId != null);
+    expect(restored.documentId, original.documentId);
+    expect(restored.color, 0xff123456);
+    expect(restored.opacity, 0.4);
+  });
+
+  testWidgets('restored 3D formulas use current shared parameters', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_buildTestApp(initialExpression: 'A*x'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('3D'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('绘制').first);
+    await tester.pumpAndSettle();
+
+    final canvas = tester.state<MathCanvas3DState>(find.byType(MathCanvas3D));
+    final original = canvas.objects.singleWhere((o) => o.formulaRowId != null);
+    canvas.setObjects([original.copyWith(color: 0xff123456, opacity: 0.4)]);
+
+    await tester.tap(find.text('2D'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.visibility));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.visibility_off));
+    await tester.pumpAndSettle();
+
+    final controls = tester.widget<MathParameterControls>(
+      find.byType(MathParameterControls),
+    );
+    controls.onChanged('A', controls.parameters['A']!.withValue(2));
+    await tester.pump();
+    expect(canvas.objects.where((o) => o.formulaRowId != null), isEmpty);
+
+    await tester.tap(find.text('3D'));
+    await tester.pumpAndSettle();
+    final restored = canvas.objects.singleWhere((o) => o.formulaRowId != null);
+    final nonzeroVertex = restored.vertices.firstWhere((p) => p.x.abs() > 1e-6);
+    expect(nonzeroVertex.z, closeTo(2 * nonzeroVertex.x, 1e-8));
+    expect(restored.documentId, original.documentId);
+    expect(restored.color, 0xff123456);
+    expect(restored.opacity, 0.4);
+  });
+
   testWidgets('3D replots preserve constructed objects and relationships', (
     tester,
   ) async {

@@ -943,6 +943,17 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     }
   }
 
+  /// Apply a formula row color to its existing 3D plot, if any.
+  void setFormulaColor(String formulaRowId, int color, {bool notify = true}) {
+    final index = _objects.indexWhere((o) => o.formulaRowId == formulaRowId);
+    if (index < 0) return;
+    setState(() {
+      _objects[index] = _objects[index].copyWith(color: color);
+      _objectsVersion++;
+    });
+    if (notify) widget.onSceneChanged?.call();
+  }
+
   /// Replace plotted objects while retaining constructed objects and their
   /// relationships. Remove from the end so construction indices stay valid.
   void replaceFormulaObjects(List<Object3D> objects) {

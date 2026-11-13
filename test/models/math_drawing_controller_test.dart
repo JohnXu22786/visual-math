@@ -11,7 +11,16 @@ void main() {
       const Point3D(0, 1, 0),
     ];
     final snapshot = MathDrawingSnapshot(
-      formulas: [FormulaEntry(rawExpression: 'a * x', parsed: parsed)],
+      formulas: [
+        FormulaEntry(
+          rawExpression: 'a * x',
+          parsed: parsed,
+          hiddenPlot3D: Object3D.surface(
+            vertices: vertices,
+            indices: [0, 1, 2],
+          ),
+        ),
+      ],
       parameters: const {},
       activeView: ViewMode.mode2D,
       activeTool: ConstructionTool.move,
@@ -35,6 +44,11 @@ void main() {
     expect(() => snapshot.scene3D.clear(), throwsUnsupportedError);
     vertices.add(const Point3D(1, 1, 0));
     expect(snapshot.scene3D.single.vertices, hasLength(3));
+    expect(snapshot.formulas.single.hiddenPlot3D!.vertices, hasLength(3));
+    expect(
+      () => snapshot.formulas.single.hiddenPlot3D!.vertices.clear(),
+      throwsUnsupportedError,
+    );
     expect(
       () => snapshot.scene3D.single.vertices.clear(),
       throwsUnsupportedError,
