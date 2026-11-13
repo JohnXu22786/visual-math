@@ -1773,7 +1773,7 @@ class MathExpression {
     for (final m in varMatches) {
       final name = m[1]!;
       if (name != 'x' &&
-          !_knownFunctions.contains(name.toLowerCase()) &&
+          !_knownFunctions.contains(name) &&
           !_builtinConstants.contains(name)) {
         if (!variableNames.contains(name)) {
           variableNames.add(name);

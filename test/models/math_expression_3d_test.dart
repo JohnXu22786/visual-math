@@ -19,6 +19,19 @@ void main() {
       expect(expr.evaluateSurface(-1, 2), closeTo(5, 1e-10));
     });
 
+    test('treats mixed-case function names as parameters', () {
+      final surface = Expression3D.surface(
+        'Sin + x + sin(x) + PI',
+        parameterValues: {'Sin': 2},
+      );
+      expect(surface.isValid, isTrue, reason: surface.parseError);
+      expect(surface.parameters, {'Sin'});
+      expect(
+        surface.evaluateSurface(1, 0),
+        closeTo(2 + 1 + dart_math.sin(1) + dart_math.pi, 1e-10),
+      );
+    });
+
     test('uppercase constants evaluate in every 3D expression type', () {
       final surface = Expression3D.surface('PI + E + LN2 + SQRT2');
       expect(surface.parameters, isEmpty);

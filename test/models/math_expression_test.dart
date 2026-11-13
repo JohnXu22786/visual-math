@@ -316,6 +316,19 @@ void main() {
       expect(expr.parameters, isNot(contains('sin')));
     });
 
+    test('treats mixed-case function names as parameters', () {
+      final expr = MathExpression.fromInput(
+        'Sin + x + sin(x) + PI',
+        parameterValues: {'Sin': 2},
+      );
+      expect(expr.isValid, isTrue, reason: expr.parseError);
+      expect(expr.parameters, equals({'Sin'}));
+      expect(
+        expr.evaluator(1),
+        closeTo(2 + 1 + dart_math.sin(1) + dart_math.pi, 1e-10),
+      );
+    });
+
     test('returns empty set for empty input', () {
       expect(MathExpression.fromInput('').parameters, isEmpty);
     });
