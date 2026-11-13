@@ -184,6 +184,10 @@ void main() {
         expect(Camera3D(distance: 10).zoom(factor: 0.001).distance, 1000);
         expect(Camera3D(distance: 2000).zoom(factor: -1).distance, 0.1);
         expect(
+          Camera3D(distance: 3000).zoom(factor: 0.5).distance,
+          closeTo(6000, 1e-10),
+        );
+        expect(
           Camera3D(distance: 3000).zoom(factor: 1.1).distance,
           closeTo(3000 / 1.1, 1e-10),
         );
