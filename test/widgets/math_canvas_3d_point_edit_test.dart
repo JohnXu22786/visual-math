@@ -1585,6 +1585,41 @@ void main() {
     expect([segment.pointA, segment.pointB], contains(vertex));
   });
 
+  testWidgets('polyhedron snapping skips hidden triangulation diagonals', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    const a = Point3D(-2, -2, 2);
+    const b = Point3D(2, -2, 2);
+    const c = Point3D(2, 2, 2);
+    const d = Point3D(-2, 2, 2);
+    state.setObjects([
+      Object3D.polyhedron(
+        vertices: const [a, b, c, d],
+        indices: const [0, 1, 2, 0, 2, 3],
+      ),
+    ]);
+    state.setTool(ConstructionTool.segment);
+    await tester.pump();
+
+    final hiddenDiagonalMidpoint = Point3D.origin + Vector3D(0, 0, 2);
+    await tester.tapAt(screen(state, hiddenDiagonalMidpoint));
+    await tester.pump();
+    expect(state.constructionState!.points.single.z, closeTo(0, 1e-8));
+
+    state.setTool(ConstructionTool.segment);
+    await tester.pump();
+    const visibleBoundaryMidpoint = Point3D(0, -2, 2);
+    await tester.tapAt(screen(state, visibleBoundaryMidpoint));
+    await tester.pump();
+    expect(
+      state.constructionState!.points.single.distanceTo(
+        visibleBoundaryMidpoint,
+      ),
+      lessThan(1e-8),
+    );
+  });
+
   testWidgets('clipped perspective points cannot intercept selection', (
     tester,
   ) async {
