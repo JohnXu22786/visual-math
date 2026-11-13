@@ -866,7 +866,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
           if (formula.visible &&
               formula.hiddenPlot3D != null &&
               !currentFormulaIds.contains(formula.id))
-            formula.hiddenPlot3D!,
+            _refreshFormulaPlot3D(formula.hiddenPlot3D!),
       ];
       if (restored.isNotEmpty) {
         canvas?.replaceFormulaObjects([...currentFormulaObjects, ...restored]);
@@ -1152,6 +1152,20 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         ..._parametersFor3D(object.label!),
   };
 
+  Object3D _refreshFormulaPlot3D(Object3D old) {
+    if (old.label == null) return old;
+    return (_sampleFormula3D(old.label!, old.color, allowEmpty: true) ?? old)
+        .copyWith(
+          documentId: old.documentId,
+          formulaRowId: old.formulaRowId,
+          opacity: old.opacity,
+          edgeWidth: old.edgeWidth,
+          showEdges: old.showEdges,
+          visible: old.visible,
+          transformOrigin: old.transformOrigin,
+        );
+  }
+
   Set<String> _parametersFor3D(String text) {
     final curve = Expression3D.parametricCurve(text);
     return curve.isValid
@@ -1169,19 +1183,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     if (plots.isEmpty) return;
     canvas.replaceFormulaObjects([
       for (final old in plots)
-        if (old.label == null)
-          old
-        else
-          (_sampleFormula3D(old.label!, old.color, allowEmpty: true)?.copyWith(
-                documentId: old.documentId,
-                formulaRowId: old.formulaRowId,
-                opacity: old.opacity,
-                edgeWidth: old.edgeWidth,
-                showEdges: old.showEdges,
-                visible: old.visible,
-                transformOrigin: old.transformOrigin,
-              ) ??
-              old),
+        if (old.label == null) old else _refreshFormulaPlot3D(old),
     ]);
   }
 

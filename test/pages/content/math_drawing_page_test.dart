@@ -928,6 +928,44 @@ void main() {
     expect(restored.opacity, 0.4);
   });
 
+  testWidgets('restored 3D formulas use current shared parameters', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_buildTestApp(initialExpression: 'A*x'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('3D'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('绘制').first);
+    await tester.pumpAndSettle();
+
+    final canvas = tester.state<MathCanvas3DState>(find.byType(MathCanvas3D));
+    final original = canvas.objects.singleWhere((o) => o.formulaRowId != null);
+    canvas.setObjects([original.copyWith(color: 0xff123456, opacity: 0.4)]);
+
+    await tester.tap(find.text('2D'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.visibility));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.visibility_off));
+    await tester.pumpAndSettle();
+
+    final controls = tester.widget<MathParameterControls>(
+      find.byType(MathParameterControls),
+    );
+    controls.onChanged('A', controls.parameters['A']!.withValue(2));
+    await tester.pump();
+    expect(canvas.objects.where((o) => o.formulaRowId != null), isEmpty);
+
+    await tester.tap(find.text('3D'));
+    await tester.pumpAndSettle();
+    final restored = canvas.objects.singleWhere((o) => o.formulaRowId != null);
+    final nonzeroVertex = restored.vertices.firstWhere((p) => p.x.abs() > 1e-6);
+    expect(nonzeroVertex.z, closeTo(2 * nonzeroVertex.x, 1e-8));
+    expect(restored.documentId, original.documentId);
+    expect(restored.color, 0xff123456);
+    expect(restored.opacity, 0.4);
+  });
+
   testWidgets('3D replots preserve constructed objects and relationships', (
     tester,
   ) async {
