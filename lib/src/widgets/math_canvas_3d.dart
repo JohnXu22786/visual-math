@@ -817,11 +817,8 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       dart_math.max(maxX - minX, maxY - minY),
       maxZ - minZ,
     );
-    var target = Point3D(
-      (minX + maxX) / 2,
-      (minY + maxY) / 2,
-      (minZ + maxZ) / 2,
-    );
+    if (!maxExtent.isFinite) return;
+    var target = Point3D(minX, minY, minZ).midpoint(Point3D(maxX, maxY, maxZ));
     var cameraDistance = dart_math.max(4.0, maxExtent * 1.35).toDouble();
     if (_canvasWidth > 0 && _canvasHeight > 0) {
       final viewMatrix = camera.viewMatrix();
@@ -889,6 +886,26 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           cameraDistance = requiredDistance;
         }
       }
+    }
+    if (!target.x.isFinite ||
+        !target.y.isFinite ||
+        !target.z.isFinite ||
+        !cameraDistance.isFinite ||
+        cameraDistance <= 0) {
+      return;
+    }
+    final fittedPosition = Camera3D(
+      target: target,
+      distance: cameraDistance,
+      theta: _cameraTheta,
+      phi: _cameraPhi,
+    ).position;
+    // The view direction collapses if coordinate precision rounds to target.
+    if (!fittedPosition.x.isFinite ||
+        !fittedPosition.y.isFinite ||
+        !fittedPosition.z.isFinite ||
+        fittedPosition == target) {
+      return;
     }
     setState(() {
       _cameraTarget = target;

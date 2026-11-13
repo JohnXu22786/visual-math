@@ -112,6 +112,69 @@ void main() {
       // Camera should be back to initial
       expect(state.camera.distance, closeTo(initialCamera.distance, 1e-10));
     });
+
+    testWidgets('fitToView keeps camera finite for extreme finite points', (
+      tester,
+    ) async {
+      final key = GlobalKey<MathCanvas3DState>();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 400,
+              height: 400,
+              child: MathCanvas3D(key: key),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final state = key.currentState!;
+      state.setObjects([
+        Object3D.point(const Point3D(1e308, 0, 0)),
+        Object3D.point(const Point3D(1.1e308, 0, 0)),
+      ]);
+      state.fitToView();
+
+      expect(state.camera.target.x, closeTo(1.05e308, 1e293));
+      expect(state.camera.target.x.isFinite, isTrue);
+      expect(state.camera.target.y.isFinite, isTrue);
+      expect(state.camera.target.z.isFinite, isTrue);
+      expect(state.camera.distance.isFinite, isTrue);
+      expect(state.camera.position.x.isFinite, isTrue);
+      expect(state.camera.position.y.isFinite, isTrue);
+      expect(state.camera.position.z.isFinite, isTrue);
+
+      final fittedCamera = state.camera;
+      state.setObjects([
+        Object3D.point(const Point3D(1e308, 1e308, 1e308)),
+        Object3D.point(const Point3D(1.0000000000000002e308, 1e308, 1e308)),
+      ]);
+      state.fitToView();
+
+      expect(state.camera.target, fittedCamera.target);
+      expect(state.camera.distance, fittedCamera.distance);
+
+      state.setProjectionType(ProjectionType.perspective);
+      state.setObjects([
+        Object3D.point(const Point3D(1.6e308, 0, 0)),
+        Object3D.point(const Point3D(1.79e308, 0, 0)),
+      ]);
+      state.fitToView();
+
+      expect(state.camera.target, fittedCamera.target);
+      expect(state.camera.distance, fittedCamera.distance);
+
+      state.setObjects([
+        Object3D.point(const Point3D(-double.maxFinite, 0, 0)),
+        Object3D.point(const Point3D(double.maxFinite, 0, 0)),
+      ]);
+      state.fitToView();
+
+      expect(state.camera.target, fittedCamera.target);
+      expect(state.camera.distance, fittedCamera.distance);
+    });
   });
 
   group('MathCanvas3D - objects', () {
