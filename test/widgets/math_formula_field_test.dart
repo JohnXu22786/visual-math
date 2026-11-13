@@ -22,6 +22,60 @@ Future<void> _withTargetPlatformOverride(
 }
 
 void main() {
+  testWidgets('fallback preview follows edits and controller replacement', (
+    tester,
+  ) async {
+    final original = TextEditingController(text: 'x');
+    final replacement = TextEditingController(text: 'y');
+    Widget app(TextEditingController controller, {bool mathematical = true}) =>
+        MaterialApp(
+          home: Scaffold(
+            body: MathFormulaField(
+              controller: controller,
+              showWebView: false,
+              mathematical: mathematical,
+              onModeChanged: (_) {},
+              onActivate: () {},
+              onChanged: () {},
+              onSubmitted: () {},
+              label: 'invalid formula',
+            ),
+          ),
+        );
+
+    await tester.pumpWidget(app(original));
+    expect(tester.widget<Math>(find.byType(Math)).parseError, isNull);
+    original.text = r'\invalidcommand';
+    await tester.pump();
+    expect(tester.widget<Math>(find.byType(Math)).parseError, isNotNull);
+    expect(find.text('invalid formula'), findsOneWidget);
+
+    await tester.pumpWidget(app(replacement, mathematical: false));
+    expect(
+      tester.widget<Math>(find.byType(Math, skipOffstage: false)).parseError,
+      isNull,
+    );
+    original.text = 'old';
+    await tester.enterText(find.byType(TextField), r'\invalidcommand');
+    await tester.pump();
+    expect(
+      tester.widget<Math>(find.byType(Math, skipOffstage: false)).parseError,
+      isNotNull,
+    );
+    replacement.text = '';
+    await tester.pump();
+    expect(
+      tester.widget<Math>(find.byType(Math, skipOffstage: false)).parseError,
+      isNull,
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    replacement.text = 'after disposal';
+    original.dispose();
+    replacement.dispose();
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'math input row keeps the regular source height for a tall rendered formula',
     (tester) async {
