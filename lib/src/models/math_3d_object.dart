@@ -28,10 +28,7 @@ class Point3D {
       return double.infinity;
     }
 
-    final scale = dart_math.max(
-      dx.abs(),
-      dart_math.max(dy.abs(), dz.abs()),
-    );
+    final scale = dart_math.max(dx.abs(), dart_math.max(dy.abs(), dz.abs()));
     if (scale == 0) return 0;
 
     final sx = dx / scale;

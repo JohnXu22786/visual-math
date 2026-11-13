@@ -34,10 +34,7 @@ void main() {
     });
 
     test('distanceTo handles extreme and subnormal distances', () {
-      expect(
-        Point3D.origin.distanceTo(const Point3D(1e155, 0, 0)),
-        1e155,
-      );
+      expect(Point3D.origin.distanceTo(const Point3D(1e155, 0, 0)), 1e155);
       expect(
         Point3D.origin.distanceTo(const Point3D(double.minPositive, 0, 0)),
         double.minPositive,
