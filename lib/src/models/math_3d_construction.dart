@@ -245,6 +245,25 @@ class ConstructionState {
         !_isNonCollinear(_points[0], _points[1], point)) {
       return _reject('参考平面的三个点不能共线，请重新选择第三个点');
     }
+    if (tool == ConstructionTool.reflectionInPlane && _points.length == 3) {
+      final normal = _reflectionPlaneNormal(_points[1], _points[2], point);
+      if (normal == null) {
+        return _reject('参考平面的三个点不能共线，请重新选择第三个点');
+      }
+      final reflected = _reflectPointAcrossPlane(
+        _points[0],
+        _points[1],
+        normal,
+      );
+      if (reflected == null) {
+        return _reject('对称点或平面坐标过大，无法表示结果，请重新选择');
+      }
+    }
+    if (tool == ConstructionTool.reflectionInPlane &&
+        _points.length == 2 &&
+        _points[1].distanceTo(point) < 1e-9) {
+      return _reject('参考平面的两点不能重合，请重新选择');
+    }
     if (const {
           ConstructionTool.circleThreePoints,
           ConstructionTool.circumcircleArc,
@@ -385,16 +404,6 @@ class ConstructionState {
         (_points.length == 1 || _points.length == 2) &&
         _points[_points.length == 1 ? 0 : 1].distanceTo(point) < 1e-9) {
       return _reject('角的两边长度必须大于 0，请重新选择');
-    }
-    if (tool == ConstructionTool.reflectionInPlane &&
-        _points.length == 2 &&
-        _points[1].distanceTo(point) < 1e-9) {
-      return _reject('反射平面的两个点不能重合，请重新选择');
-    }
-    if (tool == ConstructionTool.reflectionInPlane &&
-        _points.length == 3 &&
-        !_isNonCollinear(_points[1], _points[2], point)) {
-      return _reject('反射平面的三个点不能共线，请重新选择第三个点');
     }
     if (tool == ConstructionTool.hyperbola &&
         _points.length == 1 &&
@@ -994,14 +1003,28 @@ class ConstructionState {
       case ConstructionTool.area:
         return finishOpenCurve(filled: true);
       case ConstructionTool.reflectionInPlane:
-        return finishWhenReady(4, () {
-          final normal = (_points[2] - _points[1]).cross(
-            _points[3] - _points[1],
-          );
-          final n2 = normal.dot(normal);
-          final offset = (_points[0] - _points[1]).dot(normal) / n2;
-          return Object3D.point(_points[0] + normal * (-2 * offset));
-        });
+        if (count < 4) {
+          _updatePreview();
+          return ConstructionAction.advanceStep;
+        }
+        final normal = _reflectionPlaneNormal(
+          _points[1],
+          _points[2],
+          _points[3],
+        );
+        final reflected = normal == null
+            ? null
+            : _reflectPointAcrossPlane(_points[0], _points[1], normal);
+        if (reflected == null) {
+          _points.removeLast();
+          _stepIndex = _points.length;
+          _validationMessage = '对称点或平面坐标过大，无法表示结果，请重新选择';
+          _updatePreview();
+          return ConstructionAction.awaitInput;
+        }
+        _result = Object3D.point(reflected);
+        _updatePreview();
+        return ConstructionAction.complete;
       case ConstructionTool.centralSymmetry:
         return finishWhenReady(
           2,
@@ -2132,6 +2155,133 @@ class ConstructionState {
   static Vector3D _triangleUnitNormal(Point3D a, Point3D b, Point3D c) {
     return _stableNormalize(
       _stableNormalize(b - a).cross(_stableNormalize(c - a)),
+    );
+  }
+
+  static Vector3D? _reflectionPlaneNormal(Point3D a, Point3D b, Point3D c) {
+    final cross = _unitDirectionBetweenPoints(
+      a,
+      b,
+    ).cross(_unitDirectionBetweenPoints(a, c));
+    return cross.magnitude < 1e-9 ? null : _stableNormalize(cross);
+  }
+
+  static Point3D? _reflectPointAcrossPlane(
+    Point3D point,
+    Point3D planePoint,
+    Vector3D normal,
+  ) {
+    final deltaX = point.x - planePoint.x;
+    final deltaY = point.y - planePoint.y;
+    final deltaZ = point.z - planePoint.z;
+    final directDeltasAreFinite =
+        (normal.x == 0 || deltaX.isFinite) &&
+        (normal.y == 0 || deltaY.isFinite) &&
+        (normal.z == 0 || deltaZ.isFinite);
+    var offsetX = 0.0;
+    var offsetY = 0.0;
+    var offsetZ = 0.0;
+    if (directDeltasAreFinite) {
+      final signedDistance =
+          (normal.x == 0 ? 0.0 : normal.x * deltaX) +
+          (normal.y == 0 ? 0.0 : normal.y * deltaY) +
+          (normal.z == 0 ? 0.0 : normal.z * deltaZ);
+      if (signedDistance.isFinite) {
+        offsetX = normal.x * signedDistance;
+        offsetY = normal.y * signedDistance;
+        offsetZ = normal.z * signedDistance;
+      } else {
+        final scaled = _scaledReflectionOffsets(point, planePoint, normal);
+        if (scaled == null) return null;
+        offsetX = scaled.x;
+        offsetY = scaled.y;
+        offsetZ = scaled.z;
+      }
+    } else {
+      final scaled = _scaledReflectionOffsets(point, planePoint, normal);
+      if (scaled == null) return null;
+      offsetX = scaled.x;
+      offsetY = scaled.y;
+      offsetZ = scaled.z;
+    }
+    if (!offsetX.isFinite || !offsetY.isFinite || !offsetZ.isFinite) {
+      return null;
+    }
+    final reflected = Point3D(
+      point.x - offsetX - offsetX,
+      point.y - offsetY - offsetY,
+      point.z - offsetZ - offsetZ,
+    );
+    return _isFinitePoint(reflected) ? reflected : null;
+  }
+
+  static Vector3D? _scaledReflectionOffsets(
+    Point3D point,
+    Point3D planePoint,
+    Vector3D normal,
+  ) {
+    var coordinateScale = 0.0;
+    if (normal.x != 0) {
+      coordinateScale = dart_math.max(
+        coordinateScale,
+        dart_math.max(point.x.abs(), planePoint.x.abs()),
+      );
+    }
+    if (normal.y != 0) {
+      coordinateScale = dart_math.max(
+        coordinateScale,
+        dart_math.max(point.y.abs(), planePoint.y.abs()),
+      );
+    }
+    if (normal.z != 0) {
+      coordinateScale = dart_math.max(
+        coordinateScale,
+        dart_math.max(point.z.abs(), planePoint.z.abs()),
+      );
+    }
+    if (coordinateScale == 0) return Vector3D.zero;
+    final scaledDistance =
+        (normal.x == 0
+            ? 0.0
+            : (point.x / coordinateScale - planePoint.x / coordinateScale) *
+                  normal.x) +
+        (normal.y == 0
+            ? 0.0
+            : (point.y / coordinateScale - planePoint.y / coordinateScale) *
+                  normal.y) +
+        (normal.z == 0
+            ? 0.0
+            : (point.z / coordinateScale - planePoint.z / coordinateScale) *
+                  normal.z);
+    return Vector3D(
+      normal.x * coordinateScale * scaledDistance,
+      normal.y * coordinateScale * scaledDistance,
+      normal.z * coordinateScale * scaledDistance,
+    );
+  }
+
+  static bool _isFiniteVector(Vector3D vector) =>
+      vector.x.isFinite && vector.y.isFinite && vector.z.isFinite;
+
+  static Vector3D _unitDirectionBetweenPoints(Point3D start, Point3D end) {
+    final difference = end - start;
+    if (_isFiniteVector(difference)) return _stableNormalize(difference);
+    final coordinateScale = dart_math
+        .max(
+          dart_math.max(start.x.abs(), end.x.abs()),
+          dart_math.max(
+            dart_math.max(start.y.abs(), end.y.abs()),
+            dart_math.max(start.z.abs(), end.z.abs()),
+          ),
+        )
+        .toDouble();
+    if (coordinateScale == 0) return Vector3D.zero;
+    return _stableNormalize(
+      Vector3D(
+        end.x / coordinateScale - start.x / coordinateScale,
+        end.y / coordinateScale - start.y / coordinateScale,
+        end.z / coordinateScale - start.z / coordinateScale,
+      ),
     );
   }
 
