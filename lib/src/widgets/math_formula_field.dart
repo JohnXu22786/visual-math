@@ -166,6 +166,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
     _lastSelection = controller.selection;
     if (textChanged) {
       _lastSource = controller.text;
+      if (_usesFallback) setState(() {});
       _revision++;
       _sequence = -1;
       _preferredVerticalColumn = null;
