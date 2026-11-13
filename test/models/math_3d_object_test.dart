@@ -80,6 +80,24 @@ void main() {
       expect(Vector3D(1, 2, 3).magnitude, closeTo(3.741657, 1e-5));
     });
 
+    test('magnitude avoids overflow for large finite vectors', () {
+      expect(
+        Vector3D(1e200, 1e200, 0).magnitude,
+        closeTo(1.4142135623730951e200, 1e185),
+      );
+    });
+
+    test('magnitude preserves the norm of subnormal finite vectors', () {
+      expect(
+        Vector3D(
+          double.minPositive,
+          double.minPositive,
+          double.minPositive,
+        ).magnitude,
+        double.minPositive * 2,
+      );
+    });
+
     test('normalized returns unit vector', () {
       final v = Vector3D(3, 0, 0);
       final n = v.normalized();
