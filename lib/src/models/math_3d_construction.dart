@@ -290,8 +290,8 @@ class ConstructionState {
         _points[1],
         _points[2],
       );
-      final direction = point - _points[3];
-      if (direction.magnitude < 1e-9) {
+      final direction = _points[3].directionTo(point);
+      if (_points[3].distanceTo(point) < 1e-9) {
         return _reject('方向点不能与平面经过点重合，请重新选择');
       }
       if (referenceNormal.cross(direction.normalized()).magnitude < 1e-9) {
@@ -389,7 +389,7 @@ class ConstructionState {
       return _reject('旋转轴两点不能重合，请重新选择第二点');
     }
     if (tool == ConstructionTool.rotation && _points.length == 3) {
-      final axis = (_points[2] - _points[1]).normalized();
+      final axis = _points[1].directionTo(_points[2]);
       final end = point - _points[1];
       final endPlane = end - axis * end.dot(axis);
       if (endPlane.magnitude < 1e-9) {
@@ -888,7 +888,10 @@ class ConstructionState {
       case ConstructionTool.generalPlane:
         return finishWhenReady(
           2,
-          () => _createPlaneFromNormal(_points[0], _points[1] - _points[0]),
+          () => _createPlaneFromNormal(
+            _points[0],
+            _points[0].directionTo(_points[1]),
+          ),
         );
       case ConstructionTool.parallelPlane:
         return finishWhenReady(4, () {
@@ -906,7 +909,7 @@ class ConstructionState {
             _points[1],
             _points[2],
           );
-          final direction = _points[4] - _points[3];
+          final direction = _points[3].directionTo(_points[4]);
           final normal = _stableNormalize(referenceNormal.cross(direction));
           return _createPlaneFromNormal(_points[3], normal);
         });
@@ -1033,7 +1036,7 @@ class ConstructionState {
         );
       case ConstructionTool.rotation:
         return finishWhenReady(4, () {
-          final axis = (_points[2] - _points[1]).normalized();
+          final axis = _points[1].directionTo(_points[2]);
           final start = _points[0] - _points[1];
           final end = _points[3] - _points[1];
           final startPlane = start - axis * start.dot(axis);
@@ -1053,19 +1056,8 @@ class ConstructionState {
         );
       case ConstructionTool.dilation:
         return finishWhenReady(3, () {
-          final original = _points[0] - _points[1];
-          final originalScale = dart_math
-              .max(
-                original.x.abs(),
-                dart_math.max(original.y.abs(), original.z.abs()),
-              )
-              .toDouble();
-          if (originalScale == 0) return Object3D.point(_points[1]);
-          final direction = Vector3D(
-            original.x / originalScale,
-            original.y / originalScale,
-            original.z / originalScale,
-          ).normalized();
+          final direction = _points[1].directionTo(_points[0]);
+          if (direction.magnitude == 0) return Object3D.point(_points[1]);
           final radiusVector = _points[2] - _points[1];
           final radiusScale = dart_math
               .max(
@@ -1097,22 +1089,9 @@ class ConstructionState {
         });
       case ConstructionTool.angle:
         return finishWhenReady(3, () {
-          final a = _points[0] - _points[1];
-          final b = _points[2] - _points[1];
-          Vector3D unitVector(Vector3D vector) {
-            final scale = dart_math.max(
-              dart_math.max(vector.x.abs(), vector.y.abs()),
-              vector.z.abs(),
-            );
-            final scaled = Vector3D(
-              vector.x / scale,
-              vector.y / scale,
-              vector.z / scale,
-            );
-            return scaled * (1 / scaled.magnitude);
-          }
-
-          final cosine = unitVector(a).dot(unitVector(b)).clamp(-1.0, 1.0);
+          final a = _points[1].directionTo(_points[0]);
+          final b = _points[1].directionTo(_points[2]);
+          final cosine = a.dot(b).clamp(-1.0, 1.0);
           final degrees = dart_math.acos(cosine) * 180 / dart_math.pi;
           return Object3D.point(
             _points[1],
@@ -2147,16 +2126,15 @@ class ConstructionState {
   }
 
   static bool _isNonCollinear(Point3D a, Point3D b, Point3D c) {
-    final u = b - a;
-    final v = c - a;
-    if (u.magnitude < 1e-9 || v.magnitude < 1e-9) return false;
-    return _stableNormalize(u).cross(_stableNormalize(v)).magnitude >= 1e-9;
+    if (a.distanceTo(b) < 1e-9 || a.distanceTo(c) < 1e-9) return false;
+    final u = a.directionTo(b);
+    final v = a.directionTo(c);
+    if (u.magnitude == 0 || v.magnitude == 0) return false;
+    return u.cross(v).magnitude >= 1e-9;
   }
 
   static Vector3D _triangleUnitNormal(Point3D a, Point3D b, Point3D c) {
-    return _stableNormalize(
-      _stableNormalize(b - a).cross(_stableNormalize(c - a)),
-    );
+    return _stableNormalize(a.directionTo(b).cross(a.directionTo(c)));
   }
 
   static Vector3D? _reflectionPlaneNormal(Point3D a, Point3D b, Point3D c) {
