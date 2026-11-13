@@ -343,13 +343,10 @@ class ConstructionState {
     }
     if (tool == ConstructionTool.parabola && _points.length == 2) {
       final directrix = point - _points[1];
-      final lengthSquared = directrix.dot(directrix);
       if (directrix.magnitude < 1e-9) {
         return _reject('准线两点不能重合，请重新选择第二点');
       }
-      final t = (_points[0] - _points[1]).dot(directrix) / lengthSquared;
-      final foot = _points[1] + directrix * t;
-      if (_points[0].distanceTo(foot) < 1e-9) {
+      if (_isCollinear(_points[1], point, _points[0])) {
         return _reject('焦点不能位于准线上，请重新选择准线点');
       }
     }
@@ -977,10 +974,21 @@ class ConstructionState {
         _updatePreview();
         return ConstructionAction.complete;
       case ConstructionTool.parabola:
-        return finishWhenReady(
-          3,
-          () => _createParabola(_points[0], _points[1], _points[2]),
-        );
+        if (count < 3) {
+          _updatePreview();
+          return ConstructionAction.advanceStep;
+        }
+        final parabola = _createParabola(_points[0], _points[1], _points[2]);
+        if (parabola == null) {
+          _points.removeLast();
+          _stepIndex = _points.length;
+          _validationMessage = '抛物线几何无法表示，请重新选择准线终点';
+          _updatePreview();
+          return ConstructionAction.awaitInput;
+        }
+        _result = parabola;
+        _updatePreview();
+        return ConstructionAction.complete;
       case ConstructionTool.hyperbola:
         return finishWhenReady(
           3,
@@ -2204,24 +2212,47 @@ class ConstructionState {
     // cannot erase a small residual that remains after cancellation.
     var exactUnits = BigInt.zero;
     for (final value in values) {
-      final data = ByteData(8)..setFloat64(0, value, Endian.big);
-      final bytes = data.buffer.asUint8List();
-      var bits = BigInt.zero;
-      for (final byte in bytes) {
-        bits = (bits << 8) | BigInt.from(byte);
-      }
-      final negative = (bits >> 63) != BigInt.zero;
-      final exponent = ((bits >> 52) & BigInt.from(0x7ff)).toInt();
-      var significand = bits & ((BigInt.one << 52) - BigInt.one);
-      var shift = 0;
-      if (exponent != 0) {
-        significand |= BigInt.one << 52;
-        shift = exponent - 1;
-      }
-      final units = significand << shift;
-      exactUnits += negative ? -units : units;
+      exactUnits += _doubleSubnormalUnits(value);
     }
     return _doubleFromSubnormalUnits(exactUnits);
+  }
+
+  static BigInt _doubleSubnormalUnits(double value) {
+    final data = ByteData(8)..setFloat64(0, value, Endian.big);
+    final bytes = data.buffer.asUint8List();
+    var bits = BigInt.zero;
+    for (final byte in bytes) {
+      bits = (bits << 8) | BigInt.from(byte);
+    }
+    final negative = (bits >> 63) != BigInt.zero;
+    final exponent = ((bits >> 52) & BigInt.from(0x7ff)).toInt();
+    var significand = bits & ((BigInt.one << 52) - BigInt.one);
+    var shift = 0;
+    if (exponent != 0) {
+      significand |= BigInt.one << 52;
+      shift = exponent - 1;
+    }
+    final units = significand << shift;
+    return negative ? -units : units;
+  }
+
+  static bool _isCollinear(Point3D a, Point3D b, Point3D point) {
+    final ax = _doubleSubnormalUnits(a.x);
+    final ay = _doubleSubnormalUnits(a.y);
+    final az = _doubleSubnormalUnits(a.z);
+    final bx = _doubleSubnormalUnits(b.x);
+    final by = _doubleSubnormalUnits(b.y);
+    final bz = _doubleSubnormalUnits(b.z);
+    final px = _doubleSubnormalUnits(point.x);
+    final py = _doubleSubnormalUnits(point.y);
+    final pz = _doubleSubnormalUnits(point.z);
+    final ux = px - ax;
+    final uy = py - ay;
+    final uz = pz - az;
+    final vx = bx - ax;
+    final vy = by - ay;
+    final vz = bz - az;
+    return uy * vz == uz * vy && uz * vx == ux * vz && ux * vy == uy * vx;
   }
 
   static double _doubleFromSubnormalUnits(BigInt units) {
@@ -2949,30 +2980,62 @@ class ConstructionState {
     return solution.every((value) => value.isFinite) ? solution : null;
   }
 
-  Object3D _createParabola(
+  Object3D? _createParabola(
     Point3D focus,
     Point3D directrixA,
     Point3D directrixB,
   ) {
-    final directrix = directrixB - directrixA;
-    final lengthSquared = directrix.dot(directrix);
-    if (directrix.magnitude < 1e-9)
-      return Object3D.curve(points: [focus, directrixA]);
-    final t = (focus - directrixA).dot(directrix) / lengthSquared;
-    final foot = directrixA + directrix * t;
-    final normal = (focus - foot).normalized();
-    final axis = directrix.normalized();
-    final p = focus.distanceTo(foot) / 2;
-    if (p <= 0 || !p.isFinite) {
-      return Object3D.curve(points: [focus, directrixA]);
+    final directrixLength = directrixA.distanceTo(directrixB);
+    if (directrixLength < 1e-9) return null;
+    final axis = _unitDirectionBetweenPoints(directrixA, directrixB);
+    if (!_isFiniteVector(axis) || axis.magnitude == 0) return null;
+    if (_isCollinear(directrixA, directrixB, focus)) {
+      return null;
+    }
+
+    double projectedCoordinate(double base, double axisComponent) => _exactSum([
+      base,
+      focus.x * (axisComponent * axis.x),
+      focus.y * (axisComponent * axis.y),
+      focus.z * (axisComponent * axis.z),
+      -directrixA.x * (axisComponent * axis.x),
+      -directrixA.y * (axisComponent * axis.y),
+      -directrixA.z * (axisComponent * axis.z),
+    ]);
+
+    final foot = Point3D(
+      projectedCoordinate(directrixA.x, axis.x),
+      projectedCoordinate(directrixA.y, axis.y),
+      projectedCoordinate(directrixA.z, axis.z),
+    );
+    if (!_isFinitePoint(foot)) return null;
+
+    final focusToFoot = focus - foot;
+    final normal = _stableNormalize(focusToFoot);
+    final p = _scaledMagnitude(focusToFoot) / 2;
+    if (!_isFiniteVector(normal) ||
+        normal.magnitude == 0 ||
+        p <= 0 ||
+        !p.isFinite) {
+      return null;
     }
     final vertex = foot + normal * p;
     final range = p * 6;
+    final coefficientDenominator = 4 * p;
+    if (!_isFinitePoint(vertex) ||
+        !range.isFinite ||
+        !coefficientDenominator.isFinite ||
+        coefficientDenominator == 0) {
+      return null;
+    }
     final samples = List.generate(97, (i) {
-      final y = -range + 2 * range * i / 96;
-      final x = y * y / (4 * p);
+      final y = range * (2 * i / 96 - 1);
+      final x = (y / p) * (y / 4);
       return vertex + normal * x + axis * y;
     });
+    if (!samples.every(_isFinitePoint)) return null;
+    final quadraticY = -1 / coefficientDenominator;
+    if (!quadraticY.isFinite) return null;
     return Object3D.curve(
       points: samples,
       conic: Conic3D(
@@ -2981,7 +3044,7 @@ class ConstructionState {
         axisV: axis,
         quadraticX: 0,
         quadraticXY: 0,
-        quadraticY: -1 / (4 * p),
+        quadraticY: quadraticY,
         linearX: 1,
         linearY: 0,
         constant: 0,

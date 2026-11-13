@@ -32,6 +32,160 @@ void main() {
       }
     });
 
+    test('parabola projects a large directrix without overflowing', () {
+      final construction = ConstructionState(tool: ConstructionTool.parabola);
+      expect(
+        construction.addPoint(const Point3D(1e155, 1, 0)),
+        ConstructionAction.advanceStep,
+      );
+      expect(
+        construction.addPoint(Point3D.origin),
+        ConstructionAction.advanceStep,
+      );
+      expect(
+        construction.addPoint(const Point3D(1e155, 0, 0)),
+        ConstructionAction.complete,
+      );
+
+      final parabola = construction.result!;
+      expect(parabola.conic, isNotNull);
+      expect(parabola.vertices, hasLength(97));
+      expect(
+        parabola.vertices.every(
+          (point) => point.x.isFinite && point.y.isFinite && point.z.isFinite,
+        ),
+        isTrue,
+      );
+      expect(parabola.conic!.origin.x, 1e155);
+      expect(parabola.conic!.origin.y, closeTo(0.5, 1e-12));
+
+      final wideParabola = ConstructionState(tool: ConstructionTool.parabola);
+      wideParabola.addPoint(const Point3D(0, 2e307, 0));
+      wideParabola.addPoint(Point3D.origin);
+      expect(
+        wideParabola.addPoint(const Point3D(1e308, 0, 0)),
+        ConstructionAction.complete,
+      );
+      expect(
+        wideParabola.result!.vertices.every(
+          (point) => point.x.isFinite && point.y.isFinite && point.z.isFinite,
+        ),
+        isTrue,
+      );
+
+      final largeProjectedFoot = ConstructionState(
+        tool: ConstructionTool.parabola,
+      );
+      largeProjectedFoot.addPoint(const Point3D(1.1e308, 1.1e308, 1e308));
+      largeProjectedFoot.addPoint(Point3D.origin);
+      expect(
+        largeProjectedFoot.addPoint(const Point3D(1, 1, 1)),
+        ConstructionAction.complete,
+      );
+      expect(
+        largeProjectedFoot.result!.vertices.every(
+          (point) => point.x.isFinite && point.y.isFinite && point.z.isFinite,
+        ),
+        isTrue,
+      );
+
+      final largeOffsetAcrossOrigin = ConstructionState(
+        tool: ConstructionTool.parabola,
+      );
+      largeOffsetAcrossOrigin.addPoint(const Point3D(1.1e308, 1, 0));
+      largeOffsetAcrossOrigin.addPoint(const Point3D(-1.1e308, 0, 0));
+      expect(
+        largeOffsetAcrossOrigin.addPoint(const Point3D(-1e308, 0, 0)),
+        ConstructionAction.complete,
+      );
+      expect(
+        largeOffsetAcrossOrigin.result!.vertices.every(
+          (point) => point.x.isFinite && point.y.isFinite && point.z.isFinite,
+        ),
+        isTrue,
+      );
+
+      final overflowingDirectrixDifference = ConstructionState(
+        tool: ConstructionTool.parabola,
+      );
+      overflowingDirectrixDifference.addPoint(const Point3D(0, 0, 1));
+      overflowingDirectrixDifference.addPoint(const Point3D(-1.1e308, 0, 0));
+      expect(
+        overflowingDirectrixDifference.addPoint(const Point3D(1.1e308, 0, 0)),
+        ConstructionAction.complete,
+      );
+      expect(
+        overflowingDirectrixDifference.result!.vertices.every(
+          (point) => point.x.isFinite && point.y.isFinite && point.z.isFinite,
+        ),
+        isTrue,
+      );
+
+      final focusOnLargeDirectrix = ConstructionState(
+        tool: ConstructionTool.parabola,
+      );
+      focusOnLargeDirectrix.addPoint(const Point3D(1.1e308, 1.1e308, 1.1e308));
+      focusOnLargeDirectrix.addPoint(Point3D.origin);
+      expect(
+        focusOnLargeDirectrix.addPoint(const Point3D(1, 1, 1)),
+        ConstructionAction.awaitInput,
+      );
+      expect(focusOnLargeDirectrix.result, isNull);
+      expect(focusOnLargeDirectrix.points, hasLength(2));
+      expect(
+        focusOnLargeDirectrix.addPoint(const Point3D(1.1e308, 1.1e308, 1e308)),
+        ConstructionAction.complete,
+      );
+      expect(
+        focusOnLargeDirectrix.result!.vertices.every(
+          (point) => point.x.isFinite && point.y.isFinite && point.z.isFinite,
+        ),
+        isTrue,
+      );
+
+      final largeFocusSmallRelativeOffset = ConstructionState(
+        tool: ConstructionTool.parabola,
+      );
+      largeFocusSmallRelativeOffset.addPoint(const Point3D(1e308, 1e108, 0));
+      largeFocusSmallRelativeOffset.addPoint(Point3D.origin);
+      expect(
+        largeFocusSmallRelativeOffset.addPoint(const Point3D(1e308, 0, 0)),
+        ConstructionAction.complete,
+      );
+      expect(largeFocusSmallRelativeOffset.result!.vertices, hasLength(97));
+      expect(
+        largeFocusSmallRelativeOffset.result!.vertices.every(
+          (point) => point.x.isFinite && point.y.isFinite && point.z.isFinite,
+        ),
+        isTrue,
+      );
+
+      final largeFocusTinyOffset = ConstructionState(
+        tool: ConstructionTool.parabola,
+      );
+      largeFocusTinyOffset.addPoint(const Point3D(1e10, 1e-12, 0));
+      largeFocusTinyOffset.addPoint(Point3D.origin);
+      expect(
+        largeFocusTinyOffset.addPoint(const Point3D(1e10, 0, 0)),
+        ConstructionAction.complete,
+      );
+      expect(largeFocusTinyOffset.result!.vertices, hasLength(97));
+
+      final largeFocusSubnormalRelativeOffset = ConstructionState(
+        tool: ConstructionTool.parabola,
+      );
+      largeFocusSubnormalRelativeOffset.addPoint(
+        const Point3D(1e308, 1e-300, 0),
+      );
+      largeFocusSubnormalRelativeOffset.addPoint(Point3D.origin);
+      expect(
+        largeFocusSubnormalRelativeOffset.addPoint(const Point3D(1e308, 0, 0)),
+        ConstructionAction.complete,
+      );
+      expect(largeFocusSubnormalRelativeOffset.result!.vertices, hasLength(97));
+      expect(largeFocusSubnormalRelativeOffset.result!.conic!.origin.y, 5e-301);
+    });
+
     test('intersects a ray with a working plane in front of the camera', () {
       const ray = Ray3D(Point3D(1, 2, 5), Vector3D(0, 0, -1));
 
