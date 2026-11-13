@@ -693,6 +693,7 @@ class _RootEvidenceParser {
         continuous: node.continuous,
         zero: node.zero,
         nonzero: node.nonzero,
+        integer: node.integer == null ? null : -node.integer!,
         lowerBound: node.upperBound == null ? null : -node.upperBound!,
         upperBound: node.lowerBound == null ? null : -node.lowerBound!,
       );
@@ -852,11 +853,14 @@ class _RootEvidenceParser {
             token.text == 'nrt' &&
                 args.length == 2 &&
                 args[0].integer != null &&
-                args[0].integer! > 0 &&
+                args[0].integer! != 0 &&
                 args.every((arg) => arg.continuous) &&
                 args[1].lowerBound != null &&
                 args[1].upperBound != null &&
-                (args[0].integer!.isOdd || args[1].lowerBound! >= 0)
+                (args[0].integer!.isOdd || args[1].lowerBound! >= 0) &&
+                (args[0].integer! > 0 ||
+                    args[1].lowerBound! > 0 ||
+                    args[1].upperBound! < 0)
             ? _binaryNrtInterval(args[0].integer!, args[1])
             : null;
         final binaryPowBounds =

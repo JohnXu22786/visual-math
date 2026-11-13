@@ -690,6 +690,61 @@ void main() {
         nrtEdge.any((segment) => segment.every((point) => point['y'] == 0)),
         isTrue,
       );
+      final negativeOddRootEdge = MathExpression.fromInput('nrt(-3,x)*y=0')
+          .sampleContourSegments(
+            xMin: 1.2,
+            xMax: 1.8,
+            yMin: 0,
+            yMax: 1,
+            gridX: 1,
+            gridY: 1,
+          );
+      expect(
+        negativeOddRootEdge.any(
+          (segment) => segment.every((point) => point['y'] == 0),
+        ),
+        isTrue,
+      );
+      final negativeOddRootOnNegativeDomain =
+          MathExpression.fromInput('nrt(-3,x)*y=0').sampleContourSegments(
+            xMin: -1.8,
+            xMax: -1.2,
+            yMin: 0,
+            yMax: 1,
+            gridX: 1,
+            gridY: 1,
+          );
+      expect(
+        negativeOddRootOnNegativeDomain.any(
+          (segment) => segment.every((point) => point['y'] == 0),
+        ),
+        isTrue,
+      );
+      final negativeRootAcrossPole = MathExpression.fromInput('nrt(-3,x)*y=0')
+          .sampleContourSegments(
+            xMin: -1,
+            xMax: 1,
+            yMin: 0,
+            yMax: 1,
+            gridX: 2,
+            gridY: 1,
+          );
+      expect(
+        negativeRootAcrossPole.any(
+          (segment) => segment.every((point) => point['y'] == 0),
+        ),
+        isFalse,
+      );
+      final negativeEvenRootOnNegativeDomain =
+          MathExpression.fromInput('nrt(-2,x)*y=0').sampleContourSegments(
+            xMin: -2,
+            xMax: -1,
+            yMin: 0,
+            yMax: 1,
+            gridX: 1,
+            gridY: 1,
+          );
+      expect(negativeEvenRootOnNegativeDomain, isEmpty);
       // Odd roots stay real and continuous across a narrow negative interval.
       // The parser's evaluator explicitly handles this case instead of relying
       // on math.pow with a negative base and fractional exponent.
