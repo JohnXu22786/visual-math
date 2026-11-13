@@ -320,6 +320,35 @@ void main() {
       final html2 = MathCanvasWebView.buildMathHtml('x^2');
       expect(html1, isNot(equals(html2)));
     });
+
+    test('reports the latest viewport after throttled changes', () {
+      final html = MathCanvasWebView.buildMathHtml('x');
+      final reporter = RegExp(
+        r'function reportViewport\(\) \{([\s\S]*?)\n    \}',
+      ).firstMatch(html);
+      final trailingReport = RegExp(
+        r'viewportReportTimer = setTimeout\(function\(\) \{([\s\S]*?)\n        \}, 300 - \(now - lastViewportReport\)\);',
+      ).firstMatch(html);
+
+      expect(html, contains('var viewportReportTimer = null;'));
+      expect(reporter, isNotNull);
+      expect(
+        reporter!.group(1),
+        contains('var bbox = board.getBoundingBox();'),
+      );
+      expect(reporter.group(1), contains("type: 'viewportChange'"));
+      expect(reporter.group(1), contains('xMin: bbox[0]'));
+      expect(reporter.group(1), contains('yMin: bbox[3]'));
+      expect(reporter.group(1), contains('xMax: bbox[2]'));
+      expect(reporter.group(1), contains('yMax: bbox[1]'));
+      expect(trailingReport, isNotNull);
+      expect(
+        trailingReport!.group(1),
+        contains('lastViewportReport = Date.now();'),
+      );
+      expect(trailingReport.group(1), contains('reportViewport();'));
+      expect(html, contains('}, 300 - (now - lastViewportReport));'));
+    });
   });
 }
 
