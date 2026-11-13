@@ -126,6 +126,21 @@ void main() {
         closeTo(1 / 3, 1e-12),
       );
 
+      final overflowFallbackResidual = ConstructionState(
+        tool: ConstructionTool.reflectionInPlane,
+      );
+      overflowFallbackResidual.addPoint(const Point3D(1e308, 1e-20, -1e308));
+      overflowFallbackResidual.addPoint(const Point3D(-1e308, 0, 1e308));
+      overflowFallbackResidual.addPoint(const Point3D(0, -1e308, 1e308));
+      expect(
+        overflowFallbackResidual.addPoint(const Point3D(-1e308, 1e308, 0)),
+        ConstructionAction.complete,
+      );
+      expect(
+        overflowFallbackResidual.result!.point.y / 1e-20,
+        closeTo(1 / 3, 1e-12),
+      );
+
       final largeTangentPoint = ConstructionState(
         tool: ConstructionTool.reflectionInPlane,
       );

@@ -2182,11 +2182,11 @@ class ConstructionState {
     var offsetY = 0.0;
     var offsetZ = 0.0;
     if (directDeltasAreFinite) {
-      final signedDistance = _compensatedSum3(
+      final signedDistance = _compensatedSum([
         normal.x == 0 ? 0.0 : normal.x * deltaX,
         normal.y == 0 ? 0.0 : normal.y * deltaY,
         normal.z == 0 ? 0.0 : normal.z * deltaZ,
-      );
+      ]);
       if (signedDistance.isFinite) {
         offsetX = normal.x * signedDistance;
         offsetY = normal.y * signedDistance;
@@ -2216,10 +2216,10 @@ class ConstructionState {
     return _isFinitePoint(reflected) ? reflected : null;
   }
 
-  static double _compensatedSum3(double first, double second, double third) {
+  static double _compensatedSum(Iterable<double> terms) {
     var sum = 0.0;
     var compensation = 0.0;
-    for (final value in [first, second, third]) {
+    for (final value in terms) {
       final next = sum + value;
       if (sum.abs() >= value.abs()) {
         compensation += (sum - next) + value;
@@ -2236,6 +2236,22 @@ class ConstructionState {
     Point3D planePoint,
     Vector3D normal,
   ) {
+    final directSignedDistance = _compensatedSum([
+      point.x * normal.x,
+      -planePoint.x * normal.x,
+      point.y * normal.y,
+      -planePoint.y * normal.y,
+      point.z * normal.z,
+      -planePoint.z * normal.z,
+    ]);
+    if (directSignedDistance.isFinite) {
+      return Vector3D(
+        normal.x * directSignedDistance,
+        normal.y * directSignedDistance,
+        normal.z * directSignedDistance,
+      );
+    }
+
     var coordinateScale = 0.0;
     if (normal.x != 0) {
       coordinateScale = dart_math.max(
@@ -2256,7 +2272,7 @@ class ConstructionState {
       );
     }
     if (coordinateScale == 0) return Vector3D.zero;
-    final scaledDistance = _compensatedSum3(
+    final scaledDistance = _compensatedSum([
       normal.x == 0
           ? 0.0
           : (point.x / coordinateScale - planePoint.x / coordinateScale) *
@@ -2269,7 +2285,7 @@ class ConstructionState {
           ? 0.0
           : (point.z / coordinateScale - planePoint.z / coordinateScale) *
                 normal.z,
-    );
+    ]);
     return Vector3D(
       normal.x * coordinateScale * scaledDistance,
       normal.y * coordinateScale * scaledDistance,
