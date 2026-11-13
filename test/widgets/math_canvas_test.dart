@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:visual_math/visual_math.dart';
@@ -632,6 +633,184 @@ void main() {
       await tester.pumpWidget(canvas(400));
       expect(key.currentState!.viewport, (-10.0, -10.0, 10.0, 10.0));
       expect(reported, key.currentState!.viewport);
+    });
+
+    testWidgets('deep zoom keeps a recoverable viewport', (tester) async {
+      final key = GlobalKey<MathCanvasState>();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Center(
+            child: SizedBox(
+              width: 300,
+              height: 150,
+              child: MathCanvas(key: key),
+            ),
+          ),
+        ),
+      );
+      await key.currentState!.setViewport(90, 90, 110, 110);
+      for (var i = 0; i < 300; i++) {
+        key.currentState!.zoomIn();
+      }
+      final deep = key.currentState!.viewport;
+      expect(deep.$3, greaterThan(deep.$1));
+      expect(deep.$4, greaterThan(deep.$2));
+      key.currentState!.zoomOut();
+      final recovered = key.currentState!.viewport;
+      expect(recovered.$3 - recovered.$1, greaterThan(deep.$3 - deep.$1));
+
+      await key.currentState!.setViewport(100, 100, 100 + 1e-13, 100 + 1e-13);
+      final narrow = key.currentState!.viewport;
+      key.currentState!.zoomIn();
+      final afterZoomIn = key.currentState!.viewport;
+      expect(
+        afterZoomIn.$3 - afterZoomIn.$1,
+        lessThanOrEqualTo(narrow.$3 - narrow.$1),
+      );
+      key.currentState!.zoomOut();
+      expect(
+        key.currentState!.viewport.$3 - key.currentState!.viewport.$1,
+        greaterThan(afterZoomIn.$3 - afterZoomIn.$1),
+      );
+
+      await key.currentState!.setViewport(
+        100,
+        100,
+        100.00000000000001,
+        100.00000000000001,
+      );
+      final oneUlp = key.currentState!.viewport;
+      final drag = await tester.startGesture(
+        tester.getCenter(find.byType(MathCanvas)),
+      );
+      await drag.moveBy(const Offset(30, 0));
+      await drag.moveBy(const Offset(150, 0));
+      await drag.up();
+      final afterDrag = key.currentState!.viewport;
+      expect(afterDrag.$3, greaterThan(afterDrag.$1));
+      key.currentState!.zoomOut();
+      expect(
+        key.currentState!.viewport.$3 - key.currentState!.viewport.$1,
+        greaterThan(oneUlp.$3 - oneUlp.$1),
+      );
+
+      await key.currentState!.setViewport(-10, 100, 10, 100.00000000000001);
+      final panStart = key.currentState!.viewport;
+      final verticalDrag = await tester.startGesture(
+        tester.getCenter(find.byType(MathCanvas)),
+      );
+      await verticalDrag.moveBy(const Offset(0, 30));
+      await verticalDrag.moveBy(const Offset(0, 420));
+      await verticalDrag.up();
+      expect(key.currentState!.viewport.$2 - panStart.$2, greaterThan(20));
+
+      await key.currentState!.setViewport(
+        -2,
+        9999999999999996,
+        2,
+        10000000000000000,
+      );
+      final boundaryDrag = await tester.startGesture(
+        tester.getCenter(find.byType(MathCanvas)),
+      );
+      await boundaryDrag.moveBy(const Offset(0, 30));
+      await boundaryDrag.moveBy(const Offset(0, 150));
+      await boundaryDrag.up();
+      expect(
+        key.currentState!.viewport.$4,
+        greaterThan(key.currentState!.viewport.$2),
+      );
+
+      await key.currentState!.setViewport(-10, -10, 10, 10);
+      final focalPoint =
+          tester.getTopLeft(find.byType(MathCanvas)) + const Offset(225, 75);
+      for (var i = 0; i < 300; i++) {
+        await tester.sendEventToBinding(
+          PointerScrollEvent(
+            position: focalPoint,
+            scrollDelta: const Offset(0, -900),
+          ),
+        );
+      }
+      final wheelDeep = key.currentState!.viewport;
+      expect(wheelDeep.$3, greaterThan(wheelDeep.$1));
+      expect(wheelDeep.$4, greaterThan(wheelDeep.$2));
+      await tester.sendEventToBinding(
+        PointerScrollEvent(
+          position: focalPoint,
+          scrollDelta: const Offset(0, 200),
+        ),
+      );
+      final wheelRecovered = key.currentState!.viewport;
+      expect(
+        wheelRecovered.$3 - wheelRecovered.$1,
+        greaterThan(wheelDeep.$3 - wheelDeep.$1),
+      );
+
+      await key.currentState!.setViewport(
+        -double.minPositive,
+        -double.minPositive,
+        double.minPositive,
+        double.minPositive,
+      );
+      final smallest = key.currentState!.viewport;
+      key.currentState!.zoomOut();
+      expect(
+        key.currentState!.viewport.$3 - key.currentState!.viewport.$1,
+        greaterThan(smallest.$3 - smallest.$1),
+      );
+
+      await key.currentState!.setViewport(-1e-310, -1e-310, 1e-310, 1e-310);
+      final tiny = key.currentState!.viewport;
+      key.currentState!.zoomOut();
+      final tinyZoomed = key.currentState!.viewport;
+      expect(
+        (tinyZoomed.$3 - tinyZoomed.$1) / (tiny.$3 - tiny.$1),
+        closeTo(1.2, 1e-8),
+      );
+
+      await key.currentState!.setViewport(-1, 1e308 - 5e293, 1, 1e308 + 5e293);
+      final offset = key.currentState!.viewport;
+      expect(offset.$4, greaterThan(offset.$2));
+      key.currentState!.zoomOut();
+      expect(
+        key.currentState!.viewport.$3 - key.currentState!.viewport.$1,
+        greaterThan(offset.$3 - offset.$1),
+      );
+
+      await key.currentState!.setViewport(
+        -1e294,
+        1e308 - 5e293,
+        1e294,
+        1e308 + 5e293,
+      );
+      final large = key.currentState!.viewport;
+      key.currentState!.zoomOut();
+      expect(
+        key.currentState!.viewport.$3 - key.currentState!.viewport.$1,
+        greaterThan(large.$3 - large.$1),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Center(
+            child: SizedBox(width: 600, height: 6, child: MathCanvas(key: key)),
+          ),
+        ),
+      );
+      await key.currentState!.setViewport(
+        -double.minPositive,
+        -double.minPositive,
+        double.minPositive,
+        double.minPositive,
+      );
+      final wide = key.currentState!.viewport;
+      expect(wide.$4, greaterThan(wide.$2));
+      key.currentState!.zoomOut();
+      expect(
+        key.currentState!.viewport.$3 - key.currentState!.viewport.$1,
+        greaterThan(wide.$3 - wide.$1),
+      );
     });
 
     testWidgets('setViewport ignores invalid bounds', (tester) async {
