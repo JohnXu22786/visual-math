@@ -1918,7 +1918,6 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   Widget _buildFormulaRow(ColorScheme cs, int index) {
     final f = _formulas[index];
     final hasChanged =
-        f.controller.text.trim().isNotEmpty &&
         f.controller.text.trim() != f.committedText(_currentView);
 
     return Padding(
