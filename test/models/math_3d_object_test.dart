@@ -33,6 +33,18 @@ void main() {
       expect(a.distanceTo(b), closeTo(3.741657, 1e-5));
     });
 
+    test('distanceTo handles extreme and subnormal distances', () {
+      expect(Point3D.origin.distanceTo(const Point3D(1e155, 0, 0)), 1e155);
+      expect(
+        Point3D.origin.distanceTo(const Point3D(double.minPositive, 0, 0)),
+        double.minPositive,
+      );
+      expect(
+        Point3D.origin.distanceTo(const Point3D(1.5e308, 1.5e308, 0)),
+        double.infinity,
+      );
+    });
+
     test('midpoint calculates correct center between two points', () {
       final a = Point3D(0, 0, 0);
       final b = Point3D(2, 4, 6);

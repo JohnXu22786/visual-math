@@ -23,7 +23,18 @@ class Point3D {
     final dx = x - other.x;
     final dy = y - other.y;
     final dz = z - other.z;
-    return dart_math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (dx.isNaN || dy.isNaN || dz.isNaN) return double.nan;
+    if (dx.isInfinite || dy.isInfinite || dz.isInfinite) {
+      return double.infinity;
+    }
+
+    final scale = dart_math.max(dx.abs(), dart_math.max(dy.abs(), dz.abs()));
+    if (scale == 0) return 0;
+
+    final sx = dx / scale;
+    final sy = dy / scale;
+    final sz = dz / scale;
+    return scale * dart_math.sqrt(sx * sx + sy * sy + sz * sz);
   }
 
   /// Midpoint between this and another point.
