@@ -43,6 +43,65 @@ test('JSXGraph bounds drive coordinates and round-trip viewport changes', () => 
   assert.deepEqual(bounds, [-8, 5, 9, -3]);
 });
 
+test('trailing viewport report sends the latest bounds after throttling', () => {
+  const source = fs.readFileSync(process.env.WEBVIEW_SOURCE || path.join(__dirname,
+    '../../lib/src/widgets/math_canvas_webview.dart'), 'utf8');
+  const script = source.match(/<script>\s*([\s\S]*?)<\/script>/)[1]
+    .replaceAll('$boardId', 'board')
+    .replaceAll('$encodedExpression', JSON.stringify('x'))
+    .replaceAll('$encodedInitialParameters', '{}');
+  const messages = [];
+  let onBounds;
+  let bounds = [-4, 7, 6, -2];
+  let now = 1000;
+  let nextTimerId = 0;
+  const timers = new Map();
+  const board = {
+    getBoundingBox: () => bounds,
+    on: (event, callback) => { if (event === 'boundingbox') onBounds = callback; },
+    create: () => ({}),
+  };
+  const context = {
+    JXG: {JSXGraph: {initBoard: () => board}},
+    window: {flutter_inappwebview: {callHandler: (_, message) => messages.push(JSON.parse(message))}},
+    document: {getElementById: () => null},
+    Date: class extends Date { static now() { return now; } },
+    setInterval: () => 1,
+    clearInterval: () => {},
+    setTimeout: (callback, delay) => {
+      const id = ++nextTimerId;
+      timers.set(id, {callback, delay});
+      return id;
+    },
+    clearTimeout: id => timers.delete(id),
+    console,
+  };
+  vm.runInNewContext(script, context);
+
+  onBounds();
+  assert.deepEqual(messages, [{type: 'viewportChange', xMin: -4, yMin: -2, xMax: 6, yMax: 7}]);
+
+  bounds = [-8, 9, 10, -4];
+  now = 1100;
+  onBounds();
+  assert.equal(timers.size, 1);
+  assert.equal([...timers.values()][0].delay, 200);
+
+  bounds = [-11, 13, 15, -7];
+  now = 1250;
+  onBounds();
+  assert.equal(timers.size, 1);
+  assert.equal(messages.length, 1);
+
+  now = 1300;
+  const [{callback}] = [...timers.values()];
+  timers.clear();
+  callback();
+  assert.deepEqual(messages[1], {
+    type: 'viewportChange', xMin: -11, yMin: -7, xMax: 15, yMax: 13,
+  });
+});
+
 test('clearing an invalid expression hides its error', () => {
   const source = fs.readFileSync(path.join(__dirname,
     '../../lib/src/widgets/math_canvas_webview.dart'), 'utf8');
