@@ -2182,10 +2182,11 @@ class ConstructionState {
     var offsetY = 0.0;
     var offsetZ = 0.0;
     if (directDeltasAreFinite) {
-      final signedDistance =
-          (normal.x == 0 ? 0.0 : normal.x * deltaX) +
-          (normal.y == 0 ? 0.0 : normal.y * deltaY) +
-          (normal.z == 0 ? 0.0 : normal.z * deltaZ);
+      final signedDistance = _compensatedSum3(
+        normal.x == 0 ? 0.0 : normal.x * deltaX,
+        normal.y == 0 ? 0.0 : normal.y * deltaY,
+        normal.z == 0 ? 0.0 : normal.z * deltaZ,
+      );
       if (signedDistance.isFinite) {
         offsetX = normal.x * signedDistance;
         offsetY = normal.y * signedDistance;
@@ -2215,6 +2216,21 @@ class ConstructionState {
     return _isFinitePoint(reflected) ? reflected : null;
   }
 
+  static double _compensatedSum3(double first, double second, double third) {
+    var sum = 0.0;
+    var compensation = 0.0;
+    for (final value in [first, second, third]) {
+      final next = sum + value;
+      if (sum.abs() >= value.abs()) {
+        compensation += (sum - next) + value;
+      } else {
+        compensation += (value - next) + sum;
+      }
+      sum = next;
+    }
+    return sum + compensation;
+  }
+
   static Vector3D? _scaledReflectionOffsets(
     Point3D point,
     Point3D planePoint,
@@ -2240,19 +2256,20 @@ class ConstructionState {
       );
     }
     if (coordinateScale == 0) return Vector3D.zero;
-    final scaledDistance =
-        (normal.x == 0
-            ? 0.0
-            : (point.x / coordinateScale - planePoint.x / coordinateScale) *
-                  normal.x) +
-        (normal.y == 0
-            ? 0.0
-            : (point.y / coordinateScale - planePoint.y / coordinateScale) *
-                  normal.y) +
-        (normal.z == 0
-            ? 0.0
-            : (point.z / coordinateScale - planePoint.z / coordinateScale) *
-                  normal.z);
+    final scaledDistance = _compensatedSum3(
+      normal.x == 0
+          ? 0.0
+          : (point.x / coordinateScale - planePoint.x / coordinateScale) *
+                normal.x,
+      normal.y == 0
+          ? 0.0
+          : (point.y / coordinateScale - planePoint.y / coordinateScale) *
+                normal.y,
+      normal.z == 0
+          ? 0.0
+          : (point.z / coordinateScale - planePoint.z / coordinateScale) *
+                normal.z,
+    );
     return Vector3D(
       normal.x * coordinateScale * scaledDistance,
       normal.y * coordinateScale * scaledDistance,

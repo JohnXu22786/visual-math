@@ -109,6 +109,23 @@ void main() {
       expect(reflectedLarge.y / 1.7e308, closeTo(-1, 1e-12));
       expect(reflectedLarge.z / 1.7e308, closeTo(-1, 1e-12));
 
+      final smallResidualAfterLargeCancellation = ConstructionState(
+        tool: ConstructionTool.reflectionInPlane,
+      );
+      smallResidualAfterLargeCancellation.addPoint(
+        const Point3D(1e308, 1e-20, -1e308),
+      );
+      smallResidualAfterLargeCancellation.addPoint(Point3D.origin);
+      smallResidualAfterLargeCancellation.addPoint(const Point3D(1, -1, 0));
+      expect(
+        smallResidualAfterLargeCancellation.addPoint(const Point3D(1, 0, -1)),
+        ConstructionAction.complete,
+      );
+      expect(
+        smallResidualAfterLargeCancellation.result!.point.y / 1e-20,
+        closeTo(1 / 3, 1e-12),
+      );
+
       final largeTangentPoint = ConstructionState(
         tool: ConstructionTool.reflectionInPlane,
       );
