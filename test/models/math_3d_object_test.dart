@@ -218,6 +218,28 @@ void main() {
       }
     });
 
+    test(
+      'preserves normals when edge components have very different scales',
+      () {
+        final mesh = SurfaceMesh.fromFunction(
+          xMin: 0,
+          xMax: 1e-200,
+          yMin: 0,
+          yMax: 1e-200,
+          gridX: 1,
+          gridY: 1,
+          f: (x, y) => x == 0 && y == 0 ? 0 : 1e155,
+        );
+
+        final normal = mesh.normals.first;
+        expect(
+          normal.x.isFinite && normal.y.isFinite && normal.z.isFinite,
+          isTrue,
+        );
+        expect(normal.magnitude, closeTo(1, 1e-10));
+      },
+    );
+
     test('computes bounding box', () {
       final mesh = SurfaceMesh.fromFunction(
         xMin: -2,

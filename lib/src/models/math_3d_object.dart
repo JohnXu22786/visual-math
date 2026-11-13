@@ -730,7 +730,18 @@ class SurfaceMesh {
       final p2 = vertices[indices[i + 2]];
       final e1 = p1 - p0;
       final e2 = p2 - p0;
-      faceNormals.add(e1.cross(e2).normalized());
+      final rawNormal = e1.cross(e2);
+      final rawNormalIsFinite =
+          rawNormal.x.isFinite && rawNormal.y.isFinite && rawNormal.z.isFinite;
+      final rawNormalIsNonzero =
+          rawNormal.x != 0 || rawNormal.y != 0 || rawNormal.z != 0;
+      // Keep the original cross-product precision when it is representable.
+      // Scale the edges only as a fallback for overflow or complete underflow.
+      faceNormals.add(
+        rawNormalIsFinite && rawNormalIsNonzero
+            ? rawNormal.normalized()
+            : e1.normalized().cross(e2.normalized()).normalized(),
+      );
     }
 
     final vertexNormals = List<Vector3D>.filled(vertices.length, Vector3D.zero);
