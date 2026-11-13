@@ -486,6 +486,9 @@ class MathCanvasWebViewState extends State<MathCanvasWebView> {
     if (!_startupComplete &&
         oldWidget.initialExpression != widget.initialExpression) {
       if (_webViewController != null || _pendingCommands.isNotEmpty) {
+        if (_webViewController != null) {
+          _loadedInitialExpression = widget.initialExpression;
+        }
         unawaited(
           setExpression(widget.initialExpression, null).catchError((Object e) {
             debugPrint('[MathCanvas] Initial expression update failed: $e');

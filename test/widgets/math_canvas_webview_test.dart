@@ -198,8 +198,12 @@ void main() {
         () => InAppWebViewPlatform.instance = previous ?? _CanvasPlatform(),
       );
       final key = GlobalKey<MathCanvasWebViewState>();
-      Widget canvas(String expression) => MaterialApp(
-        home: MathCanvasWebView(key: key, initialExpression: expression),
+      Widget canvas(String expression, [bool visible = true]) => MaterialApp(
+        home: MathCanvasWebView(
+          key: key,
+          initialExpression: expression,
+          initialShowWebView: visible,
+        ),
       );
       await tester.pumpWidget(canvas('a*x'));
       final view = platform.view!;
@@ -216,6 +220,15 @@ void main() {
       expect(view.controller.sources[1], contains(r'\"c\":3'));
       expect(view.controller.sources[2], contains(r'\"b\":1.0'));
       expect(view.controller.sources[3], contains(r'\"b\":4'));
+      await tester.pumpWidget(canvas('b*x', false));
+      await tester.pumpWidget(canvas('b*x'));
+      final next = platform.view!;
+      final nextController = next
+          .controllerFromPlatform<InAppWebViewController>(next.controller);
+      next.params.onWebViewCreated!(nextController);
+      next.params.onLoadStop!(nextController, null);
+      await tester.pump();
+      expect(next.controller.sources.last, contains(r'\"b\":4'));
     },
   );
 
