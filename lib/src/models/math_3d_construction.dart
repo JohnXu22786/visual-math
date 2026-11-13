@@ -1,4 +1,5 @@
 import 'dart:math' as dart_math;
+import 'dart:typed_data';
 
 import 'math_3d_object.dart';
 import 'math_3d_tool.dart';
@@ -2182,7 +2183,7 @@ class ConstructionState {
     var offsetY = 0.0;
     var offsetZ = 0.0;
     if (directDeltasAreFinite) {
-      final signedDistance = _compensatedSum([
+      final signedDistance = _exactSum([
         normal.x == 0 ? 0.0 : normal.x * deltaX,
         normal.y == 0 ? 0.0 : normal.y * deltaY,
         normal.z == 0 ? 0.0 : normal.z * deltaZ,
@@ -2216,19 +2217,71 @@ class ConstructionState {
     return _isFinitePoint(reflected) ? reflected : null;
   }
 
-  static double _compensatedSum(Iterable<double> terms) {
-    var sum = 0.0;
-    var compensation = 0.0;
-    for (final value in terms) {
-      final next = sum + value;
-      if (sum.abs() >= value.abs()) {
-        compensation += (sum - next) + value;
-      } else {
-        compensation += (value - next) + sum;
-      }
-      sum = next;
+  static double _exactSum(Iterable<double> terms) {
+    final values = terms.toList();
+    for (final value in values) {
+      if (!value.isFinite) return double.nan;
     }
-    return sum + compensation;
+    // Sum exact integer units of the least subnormal so intermediate overflow
+    // cannot erase a small residual that remains after cancellation.
+    var exactUnits = BigInt.zero;
+    for (final value in values) {
+      final data = ByteData(8)..setFloat64(0, value, Endian.big);
+      final bytes = data.buffer.asUint8List();
+      var bits = BigInt.zero;
+      for (final byte in bytes) {
+        bits = (bits << 8) | BigInt.from(byte);
+      }
+      final negative = (bits >> 63) != BigInt.zero;
+      final exponent = ((bits >> 52) & BigInt.from(0x7ff)).toInt();
+      var significand = bits & ((BigInt.one << 52) - BigInt.one);
+      var shift = 0;
+      if (exponent != 0) {
+        significand |= BigInt.one << 52;
+        shift = exponent - 1;
+      }
+      final units = significand << shift;
+      exactUnits += negative ? -units : units;
+    }
+    return _doubleFromSubnormalUnits(exactUnits);
+  }
+
+  static double _doubleFromSubnormalUnits(BigInt units) {
+    if (units == BigInt.zero) return 0.0;
+    final negative = units.isNegative;
+    final magnitude = units.abs();
+    final minNormalUnits = BigInt.one << 52;
+    BigInt encoded;
+    if (magnitude < minNormalUnits) {
+      encoded = magnitude;
+    } else {
+      var shift = magnitude.bitLength - 53;
+      var significand = magnitude >> shift;
+      if (shift > 0) {
+        final remainder = magnitude - (significand << shift);
+        final halfway = BigInt.one << (shift - 1);
+        if (remainder > halfway || remainder == halfway && significand.isOdd) {
+          significand += BigInt.one;
+        }
+      }
+      if (significand == BigInt.one << 53) {
+        significand >>= 1;
+        shift++;
+      }
+      final exponent = shift + 1;
+      if (exponent >= 0x7ff) {
+        return negative ? double.negativeInfinity : double.infinity;
+      }
+      final fraction = significand - (BigInt.one << 52);
+      encoded = (BigInt.from(exponent) << 52) | fraction;
+    }
+    if (negative) encoded |= BigInt.one << 63;
+    final data = ByteData(8);
+    for (var index = 0; index < 8; index++) {
+      final shift = (7 - index) * 8;
+      data.setUint8(index, ((encoded >> shift) & BigInt.from(0xff)).toInt());
+    }
+    return data.getFloat64(0, Endian.big);
   }
 
   static Vector3D? _scaledReflectionOffsets(
@@ -2236,7 +2289,7 @@ class ConstructionState {
     Point3D planePoint,
     Vector3D normal,
   ) {
-    final directSignedDistance = _compensatedSum([
+    final directSignedDistance = _exactSum([
       point.x * normal.x,
       -planePoint.x * normal.x,
       point.y * normal.y,
@@ -2272,7 +2325,7 @@ class ConstructionState {
       );
     }
     if (coordinateScale == 0) return Vector3D.zero;
-    final scaledDistance = _compensatedSum([
+    final scaledDistance = _exactSum([
       normal.x == 0
           ? 0.0
           : (point.x / coordinateScale - planePoint.x / coordinateScale) *

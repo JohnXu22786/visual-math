@@ -141,6 +141,27 @@ void main() {
         closeTo(1 / 3, 1e-12),
       );
 
+      final overflowIntermediateCancellationResidual = ConstructionState(
+        tool: ConstructionTool.reflectionInPlane,
+      );
+      overflowIntermediateCancellationResidual.addPoint(
+        const Point3D(1.7e308, -1.7e308, 1e-20),
+      );
+      overflowIntermediateCancellationResidual.addPoint(
+        const Point3D(-1.7e308, 1.7e308, 0),
+      );
+      overflowIntermediateCancellationResidual.addPoint(Point3D.origin);
+      expect(
+        overflowIntermediateCancellationResidual.addPoint(
+          const Point3D(0, 1.7e308, -1.7e308),
+        ),
+        ConstructionAction.complete,
+      );
+      expect(
+        overflowIntermediateCancellationResidual.result!.point.z / 1e-20,
+        closeTo(1 / 3, 1e-12),
+      );
+
       final largeTangentPoint = ConstructionState(
         tool: ConstructionTool.reflectionInPlane,
       );
