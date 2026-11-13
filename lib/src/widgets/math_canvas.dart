@@ -298,22 +298,68 @@ class MathCanvasState extends State<MathCanvas> {
       return;
     }
     final point = focalPoint ?? Offset(_canvasWidth / 2, _canvasHeight / 2);
-    final fx = _screenToMathX(point.dx);
-    final fy = _screenToMathY(point.dy);
-    final oldXRange = _xMax - _xMin;
-    final (oldYMin, oldYMax) = _effectiveYBounds();
-    final newXRange = oldXRange * factor;
-    final newYRange = (oldYMax - oldYMin) * factor;
-
-    setState(() {
-      _xMin = fx - (fx - _xMin) * factor;
-      _xMax = _xMin + newXRange;
-      _yMin = fy - (fy - oldYMin) * factor;
-      _yMax = _yMin + newYRange;
-      _resampleAll();
-    });
+    if (!_applyZoom(factor, point, point)) return;
+    setState(_resampleAll);
     widget.onCoordinateUpdate?.call(curvePoints);
     _notifyViewportChange();
+  }
+
+  // Keep enough precision in both axes for later zoom-out operations to
+  // increase the range, even when the viewport is far from the origin.
+  bool _applyZoom(double factor, Offset previousPoint, Offset point) {
+    if (!factor.isFinite ||
+        factor <= 0 ||
+        _canvasWidth <= 0 ||
+        _canvasHeight <= 0) {
+      return false;
+    }
+    final fx = _screenToMathX(previousPoint.dx);
+    final fy = _screenToMathY(previousPoint.dy);
+    final oldRange = _xMax - _xMin;
+    final (oldYMin, oldYMax) = _effectiveYBounds();
+    final aspect = _canvasWidth / _canvasHeight;
+    const precisionMargin = 7.105427357601002e-15;
+    final minimumRange = dart_math.max(
+      double.minPositive * 32 * dart_math.max(1, aspect),
+      dart_math.max(
+        dart_math.max(_xMin.abs(), _xMax.abs()) * precisionMargin,
+        dart_math.max(oldYMin.abs(), oldYMax.abs()) * precisionMargin * aspect,
+      ),
+    );
+    var newRange = oldRange * factor;
+    if (factor < 1) {
+      newRange = dart_math.max(newRange, dart_math.min(oldRange, minimumRange));
+    } else if (factor > 1) {
+      newRange = dart_math.max(newRange, minimumRange);
+    }
+    final newYRange = newRange / aspect;
+    final xMin = fx - point.dx / _canvasWidth * newRange;
+    final xMax = xMin + newRange;
+    final yMin = fy - (1 - point.dy / _canvasHeight) * newYRange;
+    final yMax = yMin + newYRange;
+    if (!xMin.isFinite ||
+        !xMax.isFinite ||
+        !yMin.isFinite ||
+        !yMax.isFinite ||
+        xMax <= xMin ||
+        yMax <= yMin ||
+        !(xMax - xMin).isFinite ||
+        !(yMax - yMin).isFinite)
+      return false;
+    final (visibleMin, visibleMax) = _visibleYBounds(
+      xMin,
+      yMin,
+      xMax,
+      yMax,
+      _canvasWidth,
+      _canvasHeight,
+    );
+    if (visibleMax <= visibleMin) return false;
+    _xMin = xMin;
+    _xMax = xMax;
+    _yMin = yMin;
+    _yMax = yMax;
+    return true;
   }
 
   /// Set the horizontal bounds and vertical center of the viewport.
@@ -336,6 +382,32 @@ class MathCanvasState extends State<MathCanvas> {
         !(xMax - xMin).isFinite ||
         !(yMax - yMin).isFinite) {
       return;
+    }
+    if (_hasCanvasDimensions && _canvasWidth > 0 && _canvasHeight > 0) {
+      final aspect = _canvasWidth / _canvasHeight;
+      final yCenter = yMin + (yMax - yMin) / 2;
+      final yRange = (xMax - xMin) / aspect;
+      if (yCenter - yRange / 2 >= yCenter + yRange / 2) {
+        // Expand the horizontal range when the requested vertical center
+        // cannot represent an aspect-corrected span at the requested scale.
+        final minimumRange = dart_math.max(
+          double.minPositive * 32 * dart_math.max(1, aspect),
+          dart_math.max(yMin.abs(), yMax.abs()) *
+              7.105427357601002e-15 *
+              aspect,
+        );
+        final xCenter = xMin + (xMax - xMin) / 2;
+        final adjustedMin = xCenter - minimumRange / 2;
+        final adjustedMax = xCenter + minimumRange / 2;
+        if (!adjustedMin.isFinite ||
+            !adjustedMax.isFinite ||
+            adjustedMax <= adjustedMin ||
+            !(adjustedMax - adjustedMin).isFinite) {
+          return;
+        }
+        xMin = adjustedMin;
+        xMax = adjustedMax;
+      }
     }
     setState(() {
       _xMin = xMin;
@@ -717,6 +789,7 @@ class MathCanvasState extends State<MathCanvas> {
   void _onScaleUpdate(ScaleUpdateDetails details) {
     final focalPoint = details.localFocalPoint;
     final scale = details.scale;
+    var nextFocalPoint = focalPoint;
 
     if (details.pointerCount == 1) {
       // Pan 1:1 — the graph tracks the finger exactly.
@@ -734,37 +807,84 @@ class MathCanvasState extends State<MathCanvas> {
           : focalPoint.dy - _lastFocalPoint!.dy;
       final perPixel = (_xMax - _xMin) / _canvasWidth;
 
+      var xMin = _xMin - dx * perPixel;
+      var xMax = _xMax - dx * perPixel;
+      final (effectiveYMin, effectiveYMax) = _effectiveYBounds();
+      var yMin = effectiveYMin + dy * perPixel;
+      var yMax = effectiveYMax + dy * perPixel;
+      if (!xMin.isFinite ||
+          !xMax.isFinite ||
+          xMax <= xMin ||
+          !(xMax - xMin).isFinite) {
+        xMin = _xMin;
+        xMax = _xMax;
+      }
+      final (unchangedYMin, unchangedYMax) = _visibleYBounds(
+        xMin,
+        effectiveYMin,
+        xMax,
+        effectiveYMax,
+        _canvasWidth,
+        _canvasHeight,
+      );
+      if (unchangedYMax <= unchangedYMin) {
+        xMin = _xMin;
+        xMax = _xMax;
+      }
+      final (visibleMin, visibleMax) = _visibleYBounds(
+        xMin,
+        yMin,
+        xMax,
+        yMax,
+        _canvasWidth,
+        _canvasHeight,
+      );
+      if (!yMin.isFinite ||
+          !yMax.isFinite ||
+          yMax <= yMin ||
+          !(yMax - yMin).isFinite ||
+          visibleMax <= visibleMin) {
+        yMin = effectiveYMin;
+        yMax = effectiveYMax;
+      }
+      // Keep sub-ULP or rejected movement until each axis can move.
+      final previous = _lastFocalPoint;
+      if (previous != null) {
+        nextFocalPoint = Offset(
+          xMin == _xMin && xMax == _xMax ? previous.dx : focalPoint.dx,
+          yMin == effectiveYMin && yMax == effectiveYMax
+              ? previous.dy
+              : focalPoint.dy,
+        );
+      }
       setState(() {
-        _xMin -= dx * perPixel;
-        _xMax -= dx * perPixel;
-        _yMin += dy * perPixel;
-        _yMax += dy * perPixel;
+        _xMin = xMin;
+        _xMax = xMax;
+        _yMin = yMin;
+        _yMax = yMax;
       });
     } else if (_lastScale != null) {
       // Keep the math point under the previous focal point under the new one.
       final previousFocalPoint = _lastFocalPoint ?? focalPoint;
-      final fx = _screenToMathX(previousFocalPoint.dx);
-      final fy = _screenToMathY(previousFocalPoint.dy);
       final scaleChange = scale / _lastScale!;
-      final newXRange = (_xMax - _xMin) / scaleChange;
-      final (effectiveYMin, effectiveYMax) = _effectiveYBounds();
-      final newYRange = (effectiveYMax - effectiveYMin) / scaleChange;
-
+      final oldXMin = _xMin;
+      final oldXMax = _xMax;
+      final (oldYMin, oldYMax) = _effectiveYBounds();
       setState(() {
-        _xMin =
-            fx -
-            (fx - _xMin) / scaleChange -
-            (focalPoint.dx - previousFocalPoint.dx) * newXRange / _canvasWidth;
-        _xMax = _xMin + newXRange;
-        _yMin =
-            fy -
-            (fy - effectiveYMin) / scaleChange +
-            (focalPoint.dy - previousFocalPoint.dy) * newXRange / _canvasWidth;
-        _yMax = _yMin + newYRange;
+        _applyZoom(1 / scaleChange, previousFocalPoint, focalPoint);
       });
+      final (newYMin, newYMax) = _effectiveYBounds();
+      nextFocalPoint = Offset(
+        _xMin == oldXMin && _xMax == oldXMax
+            ? previousFocalPoint.dx
+            : focalPoint.dx,
+        newYMin == oldYMin && newYMax == oldYMax
+            ? previousFocalPoint.dy
+            : focalPoint.dy,
+      );
     }
 
-    _lastFocalPoint = focalPoint;
+    _lastFocalPoint = nextFocalPoint;
     _lastScale = scale;
   }
 
@@ -849,6 +969,29 @@ class MathCanvasState extends State<MathCanvas> {
         _canvasWidth = width;
         _canvasHeight = height;
         _hasCanvasDimensions = true;
+        if (dimensionsChanged && width > 0 && height > 0) {
+          final aspect = width / height;
+          final yCenter = _yMin + (_yMax - _yMin) / 2;
+          final yRange = (_xMax - _xMin) / aspect;
+          if (yCenter - yRange / 2 >= yCenter + yRange / 2) {
+            final minimumRange = dart_math.max(
+              double.minPositive * 32 * dart_math.max(1, aspect),
+              dart_math.max(_yMin.abs(), _yMax.abs()) *
+                  7.105427357601002e-15 *
+                  aspect,
+            );
+            final xCenter = _xMin + (_xMax - _xMin) / 2;
+            final xMin = xCenter - minimumRange / 2;
+            final xMax = xCenter + minimumRange / 2;
+            if (xMin.isFinite &&
+                xMax.isFinite &&
+                xMax > xMin &&
+                (xMax - xMin).isFinite) {
+              _xMin = xMin;
+              _xMax = xMax;
+            }
+          }
+        }
         if (dimensionsChanged && viewport != previousViewport) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) _notifyViewportChange();
