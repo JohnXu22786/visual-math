@@ -6,6 +6,15 @@ import 'package:visual_math/visual_math.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('domain bounds reject evaluation errors and retain validation', () {
+    expect(MathExpression.resolveDomainBound('0.5!', {}), isNull);
+    expect(MathExpression.resolveDomainBound('a!', {'a': 0.5}), isNull);
+    expect(MathExpression.resolveDomainBound('a!', {'a': 3}), 6);
+    expect(MathExpression.resolveDomainBound('1/0', {}), isNull);
+    expect(MathExpression.resolveDomainBound('x+1', {}), isNull);
+    expect(MathExpression.resolveDomainBound('y=1', {}), isNull);
+  });
+
   group('MathExpression - fromInput (evaluator)', () {
     test('evaluates simple power expression', () {
       final expr = MathExpression.fromInput('x^2');
