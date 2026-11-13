@@ -56,6 +56,187 @@ void main() {
       expect(hit, isNull);
     });
 
+    test('reflection handles large valid plane coordinates', () {
+      final construction = ConstructionState(
+        tool: ConstructionTool.reflectionInPlane,
+      );
+      construction.addPoint(const Point3D(0, 0, 1));
+      construction.addPoint(Point3D.origin);
+      construction.addPoint(const Point3D(1e100, 0, 0));
+
+      expect(
+        construction.addPoint(const Point3D(0, 1e100, 0)),
+        ConstructionAction.complete,
+      );
+      expect(construction.result!.point, const Point3D(0, 0, -1));
+
+      final overflowedEdge = ConstructionState(
+        tool: ConstructionTool.reflectionInPlane,
+      );
+      overflowedEdge.addPoint(const Point3D(0, 0, 1));
+      overflowedEdge.addPoint(const Point3D(-1e308, 0, 0));
+      overflowedEdge.addPoint(const Point3D(1e308, 0, 0));
+      expect(
+        overflowedEdge.addPoint(const Point3D(-1e308, 1e308, 0)),
+        ConstructionAction.complete,
+      );
+      expect(overflowedEdge.result!.point, const Point3D(0, 0, -1));
+
+      final largePoint = ConstructionState(
+        tool: ConstructionTool.reflectionInPlane,
+      );
+      largePoint.addPoint(const Point3D(1e308, 0, 0));
+      largePoint.addPoint(Point3D.origin);
+      largePoint.addPoint(const Point3D(0, 1, 0));
+      expect(
+        largePoint.addPoint(const Point3D(0, 0, 1)),
+        ConstructionAction.complete,
+      );
+      expect(largePoint.result!.point, const Point3D(-1e308, 0, 0));
+
+      final largeProjection = ConstructionState(
+        tool: ConstructionTool.reflectionInPlane,
+      );
+      largeProjection.addPoint(const Point3D(1.7e308, 1.7e308, 1.7e308));
+      largeProjection.addPoint(Point3D.origin);
+      largeProjection.addPoint(const Point3D(1, -1, 0));
+      expect(
+        largeProjection.addPoint(const Point3D(1, 1, -2)),
+        ConstructionAction.complete,
+      );
+      final reflectedLarge = largeProjection.result!.point;
+      expect(reflectedLarge.x / 1.7e308, closeTo(-1, 1e-12));
+      expect(reflectedLarge.y / 1.7e308, closeTo(-1, 1e-12));
+      expect(reflectedLarge.z / 1.7e308, closeTo(-1, 1e-12));
+
+      final smallResidualAfterLargeCancellation = ConstructionState(
+        tool: ConstructionTool.reflectionInPlane,
+      );
+      smallResidualAfterLargeCancellation.addPoint(
+        const Point3D(1e308, 1e-20, -1e308),
+      );
+      smallResidualAfterLargeCancellation.addPoint(Point3D.origin);
+      smallResidualAfterLargeCancellation.addPoint(const Point3D(1, -1, 0));
+      expect(
+        smallResidualAfterLargeCancellation.addPoint(const Point3D(1, 0, -1)),
+        ConstructionAction.complete,
+      );
+      expect(
+        smallResidualAfterLargeCancellation.result!.point.y / 1e-20,
+        closeTo(1 / 3, 1e-12),
+      );
+
+      final overflowFallbackResidual = ConstructionState(
+        tool: ConstructionTool.reflectionInPlane,
+      );
+      overflowFallbackResidual.addPoint(const Point3D(1e308, 1e-20, -1e308));
+      overflowFallbackResidual.addPoint(const Point3D(-1e308, 0, 1e308));
+      overflowFallbackResidual.addPoint(const Point3D(0, -1e308, 1e308));
+      expect(
+        overflowFallbackResidual.addPoint(const Point3D(-1e308, 1e308, 0)),
+        ConstructionAction.complete,
+      );
+      expect(
+        overflowFallbackResidual.result!.point.y / 1e-20,
+        closeTo(1 / 3, 1e-12),
+      );
+
+      final overflowIntermediateCancellationResidual = ConstructionState(
+        tool: ConstructionTool.reflectionInPlane,
+      );
+      overflowIntermediateCancellationResidual.addPoint(
+        const Point3D(1.7e308, -1.7e308, 1e-20),
+      );
+      overflowIntermediateCancellationResidual.addPoint(
+        const Point3D(-1.7e308, 1.7e308, 0),
+      );
+      overflowIntermediateCancellationResidual.addPoint(Point3D.origin);
+      expect(
+        overflowIntermediateCancellationResidual.addPoint(
+          const Point3D(0, 1.7e308, -1.7e308),
+        ),
+        ConstructionAction.complete,
+      );
+      expect(
+        overflowIntermediateCancellationResidual.result!.point.z / 1e-20,
+        closeTo(1 / 3, 1e-12),
+      );
+
+      final largeTangentPoint = ConstructionState(
+        tool: ConstructionTool.reflectionInPlane,
+      );
+      const tangentPoint = Point3D(1e308, 1e308, 0);
+      largeTangentPoint.addPoint(tangentPoint);
+      largeTangentPoint.addPoint(const Point3D(-1e308, -1e308, 0));
+      largeTangentPoint.addPoint(const Point3D(-1e308, -9e307, 0));
+      expect(
+        largeTangentPoint.addPoint(const Point3D(-9e307, -1e308, 0)),
+        ConstructionAction.complete,
+      );
+      expect(largeTangentPoint.result!.point, tangentPoint);
+
+      final smallNormalComponent = ConstructionState(
+        tool: ConstructionTool.reflectionInPlane,
+      );
+      smallNormalComponent.addPoint(const Point3D(0, 1e278, 1e308));
+      smallNormalComponent.addPoint(Point3D.origin);
+      smallNormalComponent.addPoint(const Point3D(0, 0, 1));
+      expect(
+        smallNormalComponent.addPoint(const Point3D(1, -1e-300, 0)),
+        ConstructionAction.complete,
+      );
+      expect(smallNormalComponent.result!.point.x / 1e-22, closeTo(-2, 1e-12));
+
+      final smallAlignedOffset = ConstructionState(
+        tool: ConstructionTool.reflectionInPlane,
+      );
+      smallAlignedOffset.addPoint(const Point3D(1e308, 1e-100, 0));
+      smallAlignedOffset.addPoint(Point3D.origin);
+      smallAlignedOffset.addPoint(const Point3D(1e308, 0, 0));
+      expect(
+        smallAlignedOffset.addPoint(const Point3D(0, 0, 1)),
+        ConstructionAction.complete,
+      );
+      expect(smallAlignedOffset.result!.point.y, -1e-100);
+
+      final pointOnPlane = ConstructionState(
+        tool: ConstructionTool.reflectionInPlane,
+      );
+      pointOnPlane.addPoint(Point3D.origin);
+      pointOnPlane.addPoint(Point3D.origin);
+      pointOnPlane.addPoint(const Point3D(1, 0, 0));
+      expect(
+        pointOnPlane.addPoint(const Point3D(0, 1, 0)),
+        ConstructionAction.complete,
+      );
+      expect(pointOnPlane.result!.point, Point3D.origin);
+    });
+
+    test('reflection rejects unrepresentable derived points', () {
+      final construction = ConstructionState(
+        tool: ConstructionTool.reflectionInPlane,
+      );
+      construction.addPoint(Point3D.origin);
+      construction.addPoint(const Point3D(1e308, 0, 0));
+      construction.addPoint(const Point3D(1e308, 1e100, 0));
+      final previewBeforeRejectedPoint = construction.previewObject;
+
+      expect(
+        construction.addPoint(const Point3D(1e308, 0, 1e100)),
+        ConstructionAction.awaitInput,
+      );
+      expect(construction.points, hasLength(3));
+      expect(construction.result, isNull);
+      expect(construction.currentInstruction, contains('无法表示'));
+      expect(construction.previewObject, same(previewBeforeRejectedPoint));
+      expect(
+        construction.addPoint(const Point3D(0, 0, 1e308)),
+        ConstructionAction.complete,
+      );
+      expect(construction.result!.point.x, closeTo(1e308, 1e294));
+      expect(construction.result!.point.z, closeTo(1e308, 1e294));
+    });
+
     test('round constructions reject unrepresentable radii and recover', () {
       for (final tool in [
         ConstructionTool.sphere,
