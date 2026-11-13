@@ -730,7 +730,28 @@ class SurfaceMesh {
       final p2 = vertices[indices[i + 2]];
       final e1 = p1 - p0;
       final e2 = p2 - p0;
-      faceNormals.add(e1.cross(e2).normalized());
+      final edgesAreFinite =
+          e1.x.isFinite &&
+          e1.y.isFinite &&
+          e1.z.isFinite &&
+          e2.x.isFinite &&
+          e2.y.isFinite &&
+          e2.z.isFinite;
+      if (!edgesAreFinite) {
+        final halfE1 = Vector3D(
+          _halfDifference(p1.x, p0.x),
+          _halfDifference(p1.y, p0.y),
+          _halfDifference(p1.z, p0.z),
+        );
+        final halfE2 = Vector3D(
+          _halfDifference(p2.x, p0.x),
+          _halfDifference(p2.y, p0.y),
+          _halfDifference(p2.z, p0.z),
+        );
+        faceNormals.add(_normalizedCross(halfE1, halfE2));
+        continue;
+      }
+      faceNormals.add(_normalizedCross(e1, e2));
     }
 
     final vertexNormals = List<Vector3D>.filled(vertices.length, Vector3D.zero);
@@ -770,4 +791,26 @@ class SurfaceMesh {
       boundingBoxMax: Point3D(maxX, maxY, maxZ),
     );
   }
+}
+
+double _halfDifference(double to, double from) {
+  final difference = to - from;
+  if (difference.isFinite) {
+    final half = difference / 2;
+    return half == 0 && difference != 0 ? difference : half;
+  }
+  return to / 2 - from / 2;
+}
+
+Vector3D _normalizedCross(Vector3D first, Vector3D second) {
+  final rawNormal = first.cross(second);
+  final rawNormalIsFinite =
+      rawNormal.x.isFinite && rawNormal.y.isFinite && rawNormal.z.isFinite;
+  final rawNormalIsNonzero =
+      rawNormal.x != 0 || rawNormal.y != 0 || rawNormal.z != 0;
+  // Keep the original cross-product precision when it is representable.
+  // Scale the edges only as a fallback for overflow or complete underflow.
+  return rawNormalIsFinite && rawNormalIsNonzero
+      ? rawNormal.normalized()
+      : first.normalized().cross(second.normalized()).normalized();
 }

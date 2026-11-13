@@ -351,6 +351,81 @@ void main() {
     expect(restored.formulaRowId, 'f-17');
   });
 
+  test('serializes a very large flat sampled surface with finite normals', () {
+    final mesh = SurfaceMesh.fromFunction(
+      xMin: 0,
+      xMax: 1e155,
+      yMin: 0,
+      yMax: 1e155,
+      gridX: 1,
+      gridY: 1,
+      f: (_, _) => 0,
+    );
+    expect(mesh.vertices, hasLength(4));
+    expect(mesh.indices, hasLength(6));
+    for (final normal in mesh.normals) {
+      expect(
+        normal.x.isFinite && normal.y.isFinite && normal.z.isFinite,
+        isTrue,
+      );
+      expect(normal.z, greaterThan(0));
+    }
+
+    final document = MathDrawingDocument(
+      name: 'large flat mesh',
+      drawing: snapshot(
+        scene: [
+          ...snapshot().scene3D,
+          Object3D.surface(
+            vertices: mesh.vertices,
+            indices: mesh.indices,
+            normals: mesh.normals,
+          ),
+        ],
+      ),
+    );
+    final encoded = document.encode();
+    final restored = MathDrawingDocument.decode(encoded);
+    expect(restored.drawing.scene3D.last.normals, mesh.normals);
+  });
+
+  test('serializes finite mesh vertices whose edge differences overflow', () {
+    final mesh = SurfaceMesh.fromFunction(
+      xMin: 0,
+      xMax: 1e-200,
+      yMin: 0,
+      yMax: 1e-200,
+      gridX: 1,
+      gridY: 1,
+      f: (x, y) => x == 0 && y == 0 ? -1e308 : 1e308,
+    );
+    expect(mesh.vertices, hasLength(4));
+    expect(mesh.indices, hasLength(6));
+    for (final normal in mesh.normals) {
+      expect(
+        normal.x.isFinite && normal.y.isFinite && normal.z.isFinite,
+        isTrue,
+      );
+      expect(normal.magnitude, closeTo(1, 1e-10));
+    }
+
+    final document = MathDrawingDocument(
+      name: 'large elevation mesh',
+      drawing: snapshot(
+        scene: [
+          ...snapshot().scene3D,
+          Object3D.surface(
+            vertices: mesh.vertices,
+            indices: mesh.indices,
+            normals: mesh.normals,
+          ),
+        ],
+      ),
+    );
+    final restored = MathDrawingDocument.decode(document.encode());
+    expect(restored.drawing.scene3D.last.normals, mesh.normals);
+  });
+
   test('rejects mesh and curve objects with missing geometry', () {
     final json = MathDrawingDocument(name: 'x', drawing: snapshot()).toJson();
     final drawing = json['drawing'] as Map<String, dynamic>;
