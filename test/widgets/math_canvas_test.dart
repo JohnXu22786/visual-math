@@ -655,6 +655,38 @@ void main() {
       final deep = key.currentState!.viewport;
       expect(deep.$3, greaterThan(deep.$1));
       expect(deep.$4, greaterThan(deep.$2));
+      await key.currentState!.setViewport(100, -1, 100 + 1e-13, 1);
+      final detector = tester.widget<GestureDetector>(
+        find
+            .descendant(
+              of: find.byType(MathCanvas),
+              matching: find.byWidgetPredicate(
+                (widget) =>
+                    widget is GestureDetector && widget.onScaleUpdate != null,
+              ),
+            )
+            .first,
+      );
+      detector.onScaleStart!(
+        ScaleStartDetails(localFocalPoint: const Offset(150, 75)),
+      );
+      final pinchPanStart = key.currentState!.viewport;
+      for (var i = 1; i <= 60; i++) {
+        detector.onScaleUpdate!(
+          ScaleUpdateDetails(
+            localFocalPoint: Offset(150 + i.toDouble(), 75),
+            scale: 1,
+            pointerCount: 2,
+          ),
+        );
+      }
+      detector.onScaleEnd!(ScaleEndDetails());
+      expect(key.currentState!.viewport.$1, lessThan(pinchPanStart.$1));
+
+      await key.currentState!.setViewport(90, 90, 110, 110);
+      for (var i = 0; i < 300; i++) {
+        key.currentState!.zoomIn();
+      }
       final fineDrag = await tester.startGesture(
         tester.getCenter(find.byType(MathCanvas)),
       );
@@ -1568,5 +1600,19 @@ void main() {
     expect(screenX, closeTo(newFocal.dx, 1e-9));
     expect(screenY, closeTo(newFocal.dy, 1e-9));
     expect(after.$3 - after.$1, closeTo((before.$3 - before.$1) / 1.5, 1e-9));
+
+    await key.currentState!.setViewport(0, -10, 20, 10);
+    detector.onScaleStart!(
+      ScaleStartDetails(localFocalPoint: const Offset(200, 150)),
+    );
+    final update = ScaleUpdateDetails(
+      localFocalPoint: const Offset(400, 150),
+      scale: 2,
+      pointerCount: 2,
+    );
+    detector.onScaleUpdate!(update);
+    final firstZoom = key.currentState!.viewport;
+    detector.onScaleUpdate!(update);
+    expect(key.currentState!.viewport, firstZoom);
   });
 }

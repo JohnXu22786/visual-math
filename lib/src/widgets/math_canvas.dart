@@ -867,9 +867,21 @@ class MathCanvasState extends State<MathCanvas> {
       // Keep the math point under the previous focal point under the new one.
       final previousFocalPoint = _lastFocalPoint ?? focalPoint;
       final scaleChange = scale / _lastScale!;
+      final oldXMin = _xMin;
+      final oldXMax = _xMax;
+      final (oldYMin, oldYMax) = _effectiveYBounds();
       setState(() {
         _applyZoom(1 / scaleChange, previousFocalPoint, focalPoint);
       });
+      final (newYMin, newYMax) = _effectiveYBounds();
+      nextFocalPoint = Offset(
+        _xMin == oldXMin && _xMax == oldXMax
+            ? previousFocalPoint.dx
+            : focalPoint.dx,
+        newYMin == oldYMin && newYMax == oldYMax
+            ? previousFocalPoint.dy
+            : focalPoint.dy,
+      );
     }
 
     _lastFocalPoint = nextFocalPoint;
