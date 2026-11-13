@@ -391,31 +391,162 @@ class MathCanvasWebView extends StatefulWidget {
 
 /// The state class for [MathCanvasWebView], exposing methods that can be
 /// called from the parent widget to control the canvas.
+class _CanvasCommand {
+  _CanvasCommand(this.source, this.completer, [this.onApplied]);
+  final String source;
+  final Completer<void>? completer;
+  final VoidCallback? onApplied;
+}
+
 class MathCanvasWebViewState extends State<MathCanvasWebView> {
   InAppWebViewController? _webViewController;
   final _htmlLoader = MathCanvasHtmlLoader();
   bool _loadFinished = false;
   Set<String> _allowedParameters = {};
+  final List<_CanvasCommand> _pendingCommands = [];
+  String? _loadedInitialExpression;
+  String? _appliedExpression;
+  final Map<String, double> _appliedParameters = {};
+  bool _pageReady = false;
+  bool _startupComplete = false;
+  InAppWebViewController? _drainingController;
+
+  @override
+  void initState() {
+    super.initState();
+    final parsed = MathExpression.fromInput(widget.initialExpression);
+    _allowedParameters =
+        parsed.isValid && parsed.type == MathExpressionType.explicit
+        ? parsed.parameters
+        : {};
+  }
+
+  Future<void> _enqueue(String source, [VoidCallback? onApplied]) async {
+    final completer = _pageReady ? Completer<void>() : null;
+    _pendingCommands.add(_CanvasCommand(source, completer, onApplied));
+    unawaited(_drainCommands());
+    if (completer != null) await completer.future;
+  }
+
+  Future<void> _drainCommands() async {
+    if (!_pageReady ||
+        _webViewController == null ||
+        _drainingController == _webViewController)
+      return;
+    final ctrl = _webViewController!;
+    _drainingController = ctrl;
+    try {
+      while (mounted &&
+          _pageReady &&
+          ctrl == _webViewController &&
+          _pendingCommands.isNotEmpty) {
+        final command = _pendingCommands.first;
+        try {
+          await ctrl.evaluateJavascript(source: command.source);
+          if (!mounted || !_pageReady || ctrl != _webViewController) break;
+          command.onApplied?.call();
+          if (command.completer != null && !command.completer!.isCompleted) {
+            command.completer!.complete();
+          }
+        } catch (e, stack) {
+          if (!mounted || !_pageReady || ctrl != _webViewController) break;
+          if (command.completer != null && !command.completer!.isCompleted) {
+            command.completer!.completeError(e, stack);
+          } else {
+            debugPrint('[MathCanvas] Command failed: $e');
+          }
+        }
+        _pendingCommands.removeAt(0);
+      }
+    } finally {
+      if (_drainingController == ctrl) _drainingController = null;
+    }
+  }
+
+  void _cancelPendingFutures() {
+    for (final command in _pendingCommands) {
+      if (command.completer != null && !command.completer!.isCompleted) {
+        command.completer!.completeError(
+          StateError('WebView was replaced or disposed'),
+        );
+      }
+    }
+  }
 
   @override
   void didUpdateWidget(covariant MathCanvasWebView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.initialShowWebView && !widget.initialShowWebView) {
+      _cancelPendingFutures();
       _webViewController = null;
       _loadFinished = false;
+      _pageReady = false;
+      _startupComplete = false;
+    }
+    if (!_startupComplete &&
+        oldWidget.initialExpression != widget.initialExpression) {
+      if (_webViewController != null || _pendingCommands.isNotEmpty) {
+        if (_webViewController != null) {
+          _loadedInitialExpression = widget.initialExpression;
+        }
+        unawaited(
+          setExpression(widget.initialExpression, null).catchError((Object e) {
+            debugPrint('[MathCanvas] Initial expression update failed: $e');
+          }),
+        );
+      } else {
+        final parsed = MathExpression.fromInput(widget.initialExpression);
+        _allowedParameters =
+            parsed.isValid && parsed.type == MathExpressionType.explicit
+            ? parsed.parameters
+            : {};
+      }
     }
   }
 
   @override
   void dispose() {
+    _cancelPendingFutures();
     _webViewController = null;
+    _pageReady = false;
+    _startupComplete = false;
+    _pendingCommands.clear();
     _htmlLoader.dispose();
     super.dispose();
   }
 
   void _onWebViewCreated(InAppWebViewController controller) {
+    if (_webViewController != null) _cancelPendingFutures();
+    if (_loadedInitialExpression == widget.initialExpression) {
+      final replay = <_CanvasCommand>[];
+      final expression = _appliedExpression;
+      final parameters = Map<String, double>.of(_appliedParameters);
+      if (expression != null) {
+        replay.add(
+          _CanvasCommand(expression, null, () {
+            _appliedExpression = expression;
+            _appliedParameters.clear();
+          }),
+        );
+      }
+      if (parameters.isNotEmpty) {
+        replay.add(
+          _CanvasCommand(
+            'window.updateParameters(${jsonEncode(jsonEncode(parameters))});',
+            null,
+            () => _appliedParameters.addAll(parameters),
+          ),
+        );
+      }
+      _pendingCommands.insertAll(0, replay);
+    }
+    _loadedInitialExpression = widget.initialExpression;
+    _appliedExpression = null;
+    _appliedParameters.clear();
     _webViewController = controller;
     _loadFinished = false;
+    _pageReady = false;
+    _startupComplete = false;
 
     // Set up JavaScript channel for WebView → Flutter communication.
     // The web platform of flutter_inappwebview does not implement
@@ -442,11 +573,16 @@ class MathCanvasWebViewState extends State<MathCanvasWebView> {
 
     // Load initial HTML
     final initialParsed = MathExpression.fromInput(widget.initialExpression);
-    _allowedParameters =
+    final initialAllowedParameters =
         initialParsed.isValid &&
             initialParsed.type == MathExpressionType.explicit
         ? initialParsed.parameters
-        : {};
+        : <String>{};
+    if (!_pendingCommands.any(
+      (command) => command.source.startsWith('window.setExpression('),
+    )) {
+      _allowedParameters = initialAllowedParameters;
+    }
     final initialExpression =
         widget.initialExpression.isNotEmpty &&
             initialParsed.isValid &&
@@ -454,7 +590,7 @@ class MathCanvasWebViewState extends State<MathCanvasWebView> {
         ? MathExpression.toJsExpression(widget.initialExpression)
         : '';
     final initialParameters = {
-      for (final name in _allowedParameters) name: 1.0,
+      for (final name in initialAllowedParameters) name: 1.0,
     };
     final html = MathCanvasWebView.buildMathHtml(
       initialExpression,
@@ -494,9 +630,6 @@ class MathCanvasWebViewState extends State<MathCanvasWebView> {
     String expression,
     Map<String, double>? parameters,
   ) async {
-    final ctrl = _webViewController;
-    if (ctrl == null) return;
-
     final parsed = MathExpression.fromInput(expression);
     final isSafeExpression =
         parsed.isValid && parsed.type == MathExpressionType.explicit;
@@ -520,17 +653,18 @@ class MathCanvasWebViewState extends State<MathCanvasWebView> {
     final paramsJson = safeParameters.isNotEmpty
         ? jsonEncode(safeParameters)
         : null;
-    await ctrl.evaluateJavascript(
-      source:
-          'window.setExpression(${jsonEncode(jsExpression)}, ${jsonEncode(paramsJson)});',
+    await _enqueue(
+      'window.setExpression(${jsonEncode(jsExpression)}, ${jsonEncode(paramsJson)});',
+      () {
+        _appliedExpression =
+            'window.setExpression(${jsonEncode(jsExpression)}, ${jsonEncode(paramsJson)});';
+        _appliedParameters.clear();
+      },
     );
   }
 
   /// Update parameter values without changing the expression.
   Future<void> updateParameters(Map<String, double> parameters) async {
-    final ctrl = _webViewController;
-    if (ctrl == null) return;
-
     final safeParameters = <String, double>{};
     for (final entry in parameters.entries) {
       if (_allowedParameters.contains(entry.key) &&
@@ -540,16 +674,14 @@ class MathCanvasWebViewState extends State<MathCanvasWebView> {
       }
     }
     final paramsJson = jsonEncode(safeParameters);
-    await ctrl.evaluateJavascript(
-      source: 'window.updateParameters(${jsonEncode(paramsJson)});',
-    );
+    await _enqueue('window.updateParameters(${jsonEncode(paramsJson)});', () {
+      _appliedParameters.addAll(safeParameters);
+    });
   }
 
   /// Reset the viewport to the default bounds.
   Future<void> resetView() async {
-    final ctrl = _webViewController;
-    if (ctrl == null) return;
-    await ctrl.evaluateJavascript(source: 'window.resetView();');
+    await _enqueue('window.resetView();');
   }
 
   /// Set the viewport to specific bounds.
@@ -559,8 +691,6 @@ class MathCanvasWebViewState extends State<MathCanvasWebView> {
     double xMax,
     double yMax,
   ) async {
-    final ctrl = _webViewController;
-    if (ctrl == null) return;
     if (!xMin.isFinite ||
         !yMin.isFinite ||
         !xMax.isFinite ||
@@ -569,9 +699,7 @@ class MathCanvasWebViewState extends State<MathCanvasWebView> {
         yMax <= yMin) {
       return;
     }
-    await ctrl.evaluateJavascript(
-      source: 'window.setViewport($xMin, $yMin, $xMax, $yMax);',
-    );
+    await _enqueue('window.setViewport($xMin, $yMin, $xMax, $yMax);');
   }
 
   @override
@@ -615,7 +743,12 @@ class MathCanvasWebViewState extends State<MathCanvasWebView> {
               _loadFinished = true;
             });
             if (initialized) {
-              widget.onReady?.call();
+              _pageReady = true;
+              await _drainCommands();
+              if (mounted && ctrl.platform == _webViewController?.platform) {
+                _startupComplete = true;
+                widget.onReady?.call();
+              }
             } else {
               widget.onError?.call('绘图引擎初始化失败');
             }
