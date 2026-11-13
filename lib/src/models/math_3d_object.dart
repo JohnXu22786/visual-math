@@ -123,7 +123,18 @@ class Vector3D {
   static const unitZ = Vector3D(0, 0, 1);
 
   /// Magnitude (length) of this vector.
-  double get magnitude => dart_math.sqrt(x * x + y * y + z * z);
+  double get magnitude {
+    if (x.isNaN || y.isNaN || z.isNaN) return double.nan;
+    if (x.isInfinite || y.isInfinite || z.isInfinite) return double.infinity;
+
+    final scale = dart_math.max(x.abs(), dart_math.max(y.abs(), z.abs()));
+    if (scale == 0) return 0;
+
+    final sx = x / scale;
+    final sy = y / scale;
+    final sz = z / scale;
+    return scale * dart_math.sqrt(sx * sx + sy * sy + sz * sz);
+  }
 
   /// Returns a unit vector in the same direction.
   /// Returns zero vector if magnitude is zero.
