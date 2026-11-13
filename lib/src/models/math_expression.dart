@@ -36,6 +36,9 @@ class MathExpression {
   /// Set of parameter names extracted from the expression (e.g. {"a", "b"}).
   final Set<String> parameters;
 
+  /// Values bound to parameters when this expression was compiled.
+  final Map<String, double> parameterValues;
+
   /// For explicit functions: evaluates at a given x value.
   /// For implicit equations: evaluates f(x, y) at a given x (y defaults to 0).
   final double Function(double) evaluator;
@@ -58,6 +61,7 @@ class MathExpression {
     required this.type,
     required this.latexDisplay,
     required this.parameters,
+    this.parameterValues = const {},
     required this.evaluator,
     this.implicitEvaluator,
     String? parseError,
@@ -146,6 +150,9 @@ class MathExpression {
           : MathExpressionType.explicit,
       latexDisplay: _toLatexDisplay(trimmed),
       parameters: params,
+      parameterValues: Map.unmodifiable({
+        for (final name in params) name: parameterValues[name] ?? 1.0,
+      }),
       evaluator:
           evalFn ??
           ((double x) {
@@ -211,6 +218,9 @@ class MathExpression {
       type: type,
       latexDisplay: latexDisplay,
       parameters: parameters,
+      parameterValues: Map.unmodifiable({
+        for (final name in parameters) name: parameterValues[name] ?? 1.0,
+      }),
       evaluator:
           evalFn ??
           ((double x) {
@@ -228,6 +238,7 @@ class MathExpression {
     type: type,
     latexDisplay: latexDisplay,
     parameters: Set.unmodifiable(parameters),
+    parameterValues: Map.unmodifiable(parameterValues),
     evaluator: evaluator,
     implicitEvaluator: implicitEvaluator,
     parseError: parseError,
@@ -364,6 +375,10 @@ class MathExpression {
 
     final evaluator2D = implicitEvaluator;
     if (evaluator2D == null) return result;
+    final equationParts = normalizedExpression.split('=');
+    if (equationParts.length != 2) return result;
+    final zeroResidual = '(${equationParts[0]})-(${equationParts[1]})';
+    final expressionVariables = ['x', 'y', ...parameters];
 
     final stepX = (xMax - xMin) / gridX;
     final stepY = (yMax - yMin) / gridY;
@@ -540,7 +555,50 @@ class MathExpression {
         final y = yMin + iy * stepY;
 
         final zeroEdges = <List<Map<String, double>>>[];
+        var hasFalseZeroEdge = false;
+        final rejectedZeroEdgeCorners = <(double, double)>{};
+        void rejectZeroEdge(double x1, double y1, double x2, double y2) {
+          hasFalseZeroEdge = true;
+          rejectedZeroEdgeCorners.add((x1, y1));
+          rejectedZeroEdgeCorners.add((x2, y2));
+        }
+
         void addZeroEdge(double x1, double y1, double x2, double y2) {
+          final horizontal = y1 == y2;
+          final fixedCoordinate = horizontal ? {'y': y1} : {'x': x1};
+          if (!MathExpressionParser.isIdenticallyZeroAfterSubstitution(
+            zeroResidual,
+            variables: expressionVariables,
+            substitutions: {...parameterValues, ...fixedCoordinate},
+            intervals: horizontal
+                ? {'x': (x1 < x2 ? x1 : x2, x1 < x2 ? x2 : x1)}
+                : {'y': (y1 < y2 ? y1 : y2, y1 < y2 ? y2 : y1)},
+          )) {
+            rejectZeroEdge(x1, y1, x2, y2);
+            return;
+          }
+
+          const maxZeroEdgeProbeDepth = 4;
+          bool edgeProbesAreZero(double lo, double hi, int depth) {
+            final t = (lo + hi) / 2;
+            try {
+              final value = evaluator2D(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t);
+              if (!value.isFinite || value != 0.0) return false;
+            } catch (_) {
+              return false;
+            }
+            return depth == 0 ||
+                (edgeProbesAreZero(lo, t, depth - 1) &&
+                    edgeProbesAreZero(t, hi, depth - 1));
+          }
+
+          // Exact zeros make edge acceptance independent of expression scale.
+          // This bounded sampling catches ordinary between-root variation, but
+          // finite probes cannot prove an arbitrary expression is zero there.
+          if (!edgeProbesAreZero(0, 1, maxZeroEdgeProbeDepth)) {
+            rejectZeroEdge(x1, y1, x2, y2);
+            return;
+          }
           zeroEdges.add([
             {'x': x1, 'y': y1},
             {'x': x2, 'y': y2},
@@ -567,7 +625,6 @@ class MathExpression {
             (v00 != 0.0 || v01 != 0.0)) {
           addZeroEdge(x + stepX, y, x + stepX, y + stepY);
         }
-
         // Collect crossing info for each edge.
         // Use a small epsilon to handle exact-zero values at grid points.
         // When f(x,y) == 0 at a grid point (e.g. at the origin for y²=4x,
@@ -797,6 +854,11 @@ class MathExpression {
           }
         }
 
+        if (hasFalseZeroEdge && refinements > 0) {
+          refineCell();
+          continue;
+        }
+
         bool hasMultipleMinima(double x1, double y1, double x2, double y2) {
           try {
             final values = [
@@ -848,10 +910,19 @@ class MathExpression {
             {'x': x + stepX, 'y': y + tangentRight * stepY},
         ];
         if (zeroEdges.isEmpty && crossingsHaveSameSign(v00, v10, v01, v11)) {
-          if (v00 == 0) tangentPoints.add({'x': x, 'y': y});
-          if (v10 == 0) tangentPoints.add({'x': x + stepX, 'y': y});
-          if (v01 == 0) tangentPoints.add({'x': x, 'y': y + stepY});
-          if (v11 == 0) tangentPoints.add({'x': x + stepX, 'y': y + stepY});
+          if (v00 == 0 && !rejectedZeroEdgeCorners.contains((x, y))) {
+            tangentPoints.add({'x': x, 'y': y});
+          }
+          if (v10 == 0 && !rejectedZeroEdgeCorners.contains((x + stepX, y))) {
+            tangentPoints.add({'x': x + stepX, 'y': y});
+          }
+          if (v01 == 0 && !rejectedZeroEdgeCorners.contains((x, y + stepY))) {
+            tangentPoints.add({'x': x, 'y': y + stepY});
+          }
+          if (v11 == 0 &&
+              !rejectedZeroEdgeCorners.contains((x + stepX, y + stepY))) {
+            tangentPoints.add({'x': x + stepX, 'y': y + stepY});
+          }
         }
         // One bounded subdivision improves separation when nearby touching
         // roots occupy the same sampled valley on a coarse grid edge.
