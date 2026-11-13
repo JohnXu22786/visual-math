@@ -893,6 +893,41 @@ void main() {
     expect(recreated.showEdges, plot.showEdges);
   });
 
+  testWidgets('showing a 3D formula in 2D restores it when returning to 3D', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    await tester.pumpWidget(_buildTestApp(controller: controller));
+    await tester.pump();
+    await tester.tap(find.text('3D'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'x+y');
+    await tester.pump();
+    await tester.tap(find.byTooltip('绘制').first);
+    await tester.pumpAndSettle();
+
+    final canvas = tester.state<MathCanvas3DState>(find.byType(MathCanvas3D));
+    final original = canvas.objects.singleWhere((o) => o.formulaRowId != null);
+    canvas.setObjects([original.copyWith(color: 0xff123456, opacity: 0.4)]);
+
+    await tester.tap(find.text('2D'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.visibility));
+    await tester.pumpAndSettle();
+    expect(canvas.objects.where((o) => o.formulaRowId != null), isEmpty);
+
+    await tester.tap(find.byIcon(Icons.visibility_off));
+    await tester.pumpAndSettle();
+    expect(canvas.objects.where((o) => o.formulaRowId != null), isEmpty);
+
+    await tester.tap(find.text('3D'));
+    await tester.pumpAndSettle();
+    final restored = canvas.objects.singleWhere((o) => o.formulaRowId != null);
+    expect(restored.documentId, original.documentId);
+    expect(restored.color, 0xff123456);
+    expect(restored.opacity, 0.4);
+  });
+
   testWidgets('3D replots preserve constructed objects and relationships', (
     tester,
   ) async {

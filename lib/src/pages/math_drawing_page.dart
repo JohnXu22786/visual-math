@@ -851,6 +851,34 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       return;
     setState(() => _currentView = target);
     _syncController();
+    if (target == ViewMode.mode3D) {
+      final canvas = _canvas3DKey.currentState;
+      final currentFormulaObjects =
+          canvas?.objects
+              .where((object) => object.formulaRowId != null)
+              .toList() ??
+          const <Object3D>[];
+      final currentFormulaIds = currentFormulaObjects
+          .map((object) => object.formulaRowId)
+          .toSet();
+      final restored = [
+        for (final formula in _formulas)
+          if (formula.visible &&
+              formula.hiddenPlot3D != null &&
+              !currentFormulaIds.contains(formula.id))
+            formula.hiddenPlot3D!,
+      ];
+      if (restored.isNotEmpty) {
+        canvas?.replaceFormulaObjects([...currentFormulaObjects, ...restored]);
+        for (final formula in _formulas) {
+          if (restored.any((object) => object.formulaRowId == formula.id)) {
+            formula.hiddenPlot3D = null;
+          }
+        }
+        _publish3DChange();
+        widget.controller?.onPlotted?.call(_makeSnapshot());
+      }
+    }
     widget.controller?.onViewChanged?.call(target);
   }
 
