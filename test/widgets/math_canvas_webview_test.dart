@@ -188,6 +188,103 @@ void main() {
     expect(second.controller.sources.last, contains(r'\"b\":5'));
   });
 
+  testWidgets(
+    'initial expression changes during loading follow earlier commands',
+    (tester) async {
+      final previous = InAppWebViewPlatform.instance;
+      final platform = _CanvasPlatform()..initialized = true;
+      InAppWebViewPlatform.instance = platform;
+      addTearDown(
+        () => InAppWebViewPlatform.instance = previous ?? _CanvasPlatform(),
+      );
+      final key = GlobalKey<MathCanvasWebViewState>();
+      Widget canvas(String expression) => MaterialApp(
+        home: MathCanvasWebView(key: key, initialExpression: expression),
+      );
+      await tester.pumpWidget(canvas('a*x'));
+      final view = platform.view!;
+      final controller = view.controllerFromPlatform<InAppWebViewController>(
+        view.controller,
+      );
+      view.params.onWebViewCreated!(controller);
+      await key.currentState!.setExpression('c*x', {'c': 3});
+      await tester.pumpWidget(canvas('b*x'));
+      await key.currentState!.updateParameters({'b': 4});
+      view.params.onLoadStop!(controller, null);
+      await tester.pump();
+      expect(view.controller.sources, hasLength(4));
+      expect(view.controller.sources[1], contains(r'\"c\":3'));
+      expect(view.controller.sources[2], contains(r'\"b\":1.0'));
+      expect(view.controller.sources[3], contains(r'\"b\":4'));
+    },
+  );
+
+  testWidgets(
+    'replacement restores applied expression before new parameter updates',
+    (tester) async {
+      final previous = InAppWebViewPlatform.instance;
+      final platform = _CanvasPlatform()..initialized = true;
+      InAppWebViewPlatform.instance = platform;
+      addTearDown(
+        () => InAppWebViewPlatform.instance = previous ?? _CanvasPlatform(),
+      );
+      final key = GlobalKey<MathCanvasWebViewState>();
+      Widget canvas(bool visible) => MaterialApp(
+        home: MathCanvasWebView(key: key, initialShowWebView: visible),
+      );
+      await tester.pumpWidget(canvas(true));
+      final first = platform.view!;
+      final controller = first.controllerFromPlatform<InAppWebViewController>(
+        first.controller,
+      );
+      first.params.onWebViewCreated!(controller);
+      first.params.onLoadStop!(controller, null);
+      await tester.pump();
+      await key.currentState!.setExpression('a*x', {'a': 3});
+      await tester.pumpWidget(canvas(false));
+      await tester.pumpWidget(canvas(true));
+      final second = platform.view!;
+      final nextController = second
+          .controllerFromPlatform<InAppWebViewController>(second.controller);
+      second.params.onWebViewCreated!(nextController);
+      await key.currentState!.updateParameters({'a': 4});
+      second.params.onLoadStop!(nextController, null);
+      await tester.pump();
+      expect(second.controller.sources[1], contains(r'\"a\":3'));
+      expect(second.controller.sources[2], contains(r'\"a\":4'));
+    },
+  );
+
+  testWidgets('initial expression changes while startup commands drain', (
+    tester,
+  ) async {
+    final previous = InAppWebViewPlatform.instance;
+    final platform = _CanvasPlatform()..initialized = true;
+    InAppWebViewPlatform.instance = platform;
+    addTearDown(
+      () => InAppWebViewPlatform.instance = previous ?? _CanvasPlatform(),
+    );
+    final key = GlobalKey<MathCanvasWebViewState>();
+    Widget canvas(String expression) => MaterialApp(
+      home: MathCanvasWebView(key: key, initialExpression: expression),
+    );
+    await tester.pumpWidget(canvas('a*x'));
+    final view = platform.view!;
+    final controller = view.controllerFromPlatform<InAppWebViewController>(
+      view.controller,
+    );
+    view.params.onWebViewCreated!(controller);
+    await key.currentState!.setExpression('c*x', {'c': 3});
+    view.params.onLoadStop!(controller, null);
+    view.controller.gate = Completer<void>();
+    await tester.pump();
+    await tester.pumpWidget(canvas('b*x'));
+    view.controller.gate!.complete();
+    view.controller.gate = null;
+    await tester.pump();
+    expect(view.controller.sources.last, contains(r'\"b\":1.0'));
+  });
+
   group('MathCanvasWebView - buildMathHtml', () {
     test('replaces EXPRESSION_PLACEHOLDER with JS expression', () {
       final html = MathCanvasWebView.buildMathHtml('Math.pow(x,2)');
