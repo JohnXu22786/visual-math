@@ -52,6 +52,45 @@ class Point3D {
   /// Convert to a position vector (from origin).
   Vector3D toVector() => Vector3D(x, y, z);
 
+  /// Return the unit direction from this point to [other].
+  ///
+  /// Scaling the coordinates before subtracting keeps finite endpoints from
+  /// overflowing when their difference is larger than the largest double.
+  Vector3D directionTo(Point3D other) {
+    if (![
+      x,
+      y,
+      z,
+      other.x,
+      other.y,
+      other.z,
+    ].every((value) => value.isFinite)) {
+      return Vector3D.zero;
+    }
+    final dx = other.x - x;
+    final dy = other.y - y;
+    final dz = other.z - z;
+    if (dx.isFinite && dy.isFinite && dz.isFinite) {
+      return Vector3D(dx, dy, dz).normalized();
+    }
+
+    final scale = <double>[
+      x.abs(),
+      y.abs(),
+      z.abs(),
+      other.x.abs(),
+      other.y.abs(),
+      other.z.abs(),
+    ].reduce(dart_math.max);
+    if (scale == 0) return Vector3D.zero;
+
+    return Vector3D(
+      other.x / scale - x / scale,
+      other.y / scale - y / scale,
+      other.z / scale - z / scale,
+    ).normalized();
+  }
+
   @override
   bool operator ==(Object other) =>
       other is Point3D && x == other.x && y == other.y && z == other.z;
