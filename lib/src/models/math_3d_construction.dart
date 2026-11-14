@@ -476,22 +476,6 @@ class ConstructionState {
         _points[0].distanceTo(point) < 1e-9) {
       return _reject('底面半径必须大于 0，请重新选择半径点');
     }
-    if ((tool == ConstructionTool.cone ||
-            tool == ConstructionTool.extrudeCone ||
-            tool == ConstructionTool.cylinder) &&
-        _points.length == 2) {
-      final axis = point - _points[0];
-      if (axis.magnitude < 1e-9) {
-        return _reject('高度必须大于 0，请重新选择顶部位置');
-      }
-      final axisUnit = axis.normalized();
-      final radiusVector = _points[1] - _points[0];
-      final projectedRadius =
-          radiusVector - axisUnit * radiusVector.dot(axisUnit);
-      if (projectedRadius.magnitude < 1e-9) {
-        return _reject('半径方向不能与高度方向平行，请重新选择顶部位置');
-      }
-    }
     if (tool == ConstructionTool.conic &&
         _points.length == 3 &&
         _conicPlane([..._points, point]) == null) {
@@ -721,6 +705,9 @@ class ConstructionState {
         return ConstructionAction.advanceStep;
       case ConstructionTool.cone:
         if (_points.length >= 3) {
+          if (!_hasRoundSolidGeometry(_points[0], _points[1], _points[2])) {
+            return _rejectLastRoundSolidPoint();
+          }
           _result = _createCone(_points[0], _points[1], _points[2]);
           _updatePreview();
           return ConstructionAction.complete;
@@ -729,6 +716,9 @@ class ConstructionState {
         return ConstructionAction.advanceStep;
       case ConstructionTool.cylinder:
         if (_points.length >= 3) {
+          if (!_hasRoundSolidGeometry(_points[0], _points[1], _points[2])) {
+            return _rejectLastRoundSolidPoint();
+          }
           _result = _createCylinder(_points[0], _points[1], _points[2]);
           _updatePreview();
           return ConstructionAction.complete;
@@ -868,6 +858,10 @@ class ConstructionState {
           );
         });
       case ConstructionTool.extrudeCone:
+        if (count >= 3 &&
+            !_hasRoundSolidGeometry(_points[0], _points[1], _points[2])) {
+          return _rejectLastRoundSolidPoint();
+        }
         return finishWhenReady(
           3,
           () => _createCone(_points[0], _points[1], _points[2]),
@@ -3419,6 +3413,13 @@ class ConstructionState {
   ConstructionAction _reject(String message) {
     _validationMessage = message;
     return ConstructionAction.awaitInput;
+  }
+
+  ConstructionAction _rejectLastRoundSolidPoint() {
+    _points.removeLast();
+    _stepIndex = _points.length < totalSteps ? _points.length : totalSteps - 1;
+    _updatePreview();
+    return _reject('高度必须大于 0 且半径方向不能与高度方向平行，请重新选择顶部位置');
   }
 
   // Radius-squared is used by conics and sphere operations. Check it and the

@@ -676,6 +676,66 @@ void main() {
       expect(cylinder.result?.indices.length, 24 * 12);
     });
 
+    test('cone rejects zero height and an axis-degenerate radius', () {
+      final zeroHeight = ConstructionState(tool: ConstructionTool.cone);
+      zeroHeight.addPoint(Point3D.origin);
+      zeroHeight.addPoint(const Point3D(2, 0, 0));
+      expect(
+        zeroHeight.addPoint(Point3D.origin),
+        ConstructionAction.awaitInput,
+      );
+      expect(zeroHeight.points, [Point3D.origin, const Point3D(2, 0, 0)]);
+      expect(zeroHeight.result, isNull);
+      expect(
+        zeroHeight.currentInstruction,
+        '高度必须大于 0 且半径方向不能与高度方向平行，请重新选择顶部位置',
+      );
+
+      final axialRadius = ConstructionState(tool: ConstructionTool.cone);
+      axialRadius.addPoint(Point3D.origin);
+      axialRadius.addPoint(const Point3D(0, 0, 2));
+      expect(
+        axialRadius.addPoint(const Point3D(0, 0, 3)),
+        ConstructionAction.awaitInput,
+      );
+      expect(axialRadius.points, [Point3D.origin, const Point3D(0, 0, 2)]);
+      expect(axialRadius.result, isNull);
+      expect(
+        axialRadius.currentInstruction,
+        '高度必须大于 0 且半径方向不能与高度方向平行，请重新选择顶部位置',
+      );
+    });
+
+    test('cylinder rejects zero height and an axis-degenerate radius', () {
+      final zeroHeight = ConstructionState(tool: ConstructionTool.cylinder);
+      zeroHeight.addPoint(Point3D.origin);
+      zeroHeight.addPoint(const Point3D(2, 0, 0));
+      expect(
+        zeroHeight.addPoint(Point3D.origin),
+        ConstructionAction.awaitInput,
+      );
+      expect(zeroHeight.points, [Point3D.origin, const Point3D(2, 0, 0)]);
+      expect(zeroHeight.result, isNull);
+      expect(
+        zeroHeight.currentInstruction,
+        '高度必须大于 0 且半径方向不能与高度方向平行，请重新选择顶部位置',
+      );
+
+      final axialRadius = ConstructionState(tool: ConstructionTool.cylinder);
+      axialRadius.addPoint(Point3D.origin);
+      axialRadius.addPoint(const Point3D(0, 0, 2));
+      expect(
+        axialRadius.addPoint(const Point3D(0, 0, 3)),
+        ConstructionAction.awaitInput,
+      );
+      expect(axialRadius.points, [Point3D.origin, const Point3D(0, 0, 2)]);
+      expect(axialRadius.result, isNull);
+      expect(
+        axialRadius.currentInstruction,
+        '高度必须大于 0 且半径方向不能与高度方向平行，请重新选择顶部位置',
+      );
+    });
+
     test('prism and pyramid tools create triangular solids', () {
       final prism = ConstructionState(tool: ConstructionTool.extrudePrism);
       prism.addPoint(Point3D.origin);
