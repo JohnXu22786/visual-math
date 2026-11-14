@@ -88,6 +88,45 @@ void main() {
     },
   );
 
+  test('surface of revolution handles finite extreme axis endpoints', () {
+    final state = ConstructionState(tool: ConstructionTool.surfaceOfRevolution);
+
+    state.addPoint(const Point3D(-1e308, 0, 0));
+    state.addPoint(const Point3D(1e308, 0, 0));
+    state.addPoint(const Point3D(0, 1, 0));
+    expect(state.addPoint(const Point3D(0, 2, 0)), ConstructionAction.complete);
+
+    final result = state.result;
+    expect(result?.type, Object3DType.surface);
+    expect(
+      result?.vertices.every(
+        (point) => point.x.isFinite && point.y.isFinite && point.z.isFinite,
+      ),
+      isTrue,
+    );
+  });
+
+  test('surface of revolution rejects non-finite generated geometry', () {
+    final state = ConstructionState(tool: ConstructionTool.surfaceOfRevolution);
+
+    state.addPoint(Point3D.origin);
+    state.addPoint(const Point3D(1, 0, 0));
+    state.addPoint(const Point3D(1e308, 1e308, 0));
+    expect(
+      state.addPoint(const Point3D(1e308, -1e308, 0)),
+      ConstructionAction.complete,
+    );
+
+    final result = state.result;
+    expect(result?.type, Object3DType.curve);
+    expect(
+      result?.vertices.every(
+        (point) => point.x.isFinite && point.y.isFinite && point.z.isFinite,
+      ),
+      isTrue,
+    );
+  });
+
   test('dilation direction handles subtraction overflow', () {
     final state = ConstructionState(tool: ConstructionTool.dilation);
 
