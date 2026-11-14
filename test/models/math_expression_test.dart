@@ -752,6 +752,49 @@ void main() {
         ),
         isTrue,
       );
+      void expectShiftedGridPoleSeparated({
+        required double yMin,
+        required double yMax,
+        required int gridY,
+      }) {
+        final segments = MathExpression.fromInput('nrt(-3,x)*y=0')
+            .sampleContourSegments(
+              xMin: -0.9,
+              xMax: 1.1,
+              yMin: yMin,
+              yMax: yMax,
+              gridX: 1,
+              gridY: gridY,
+            );
+        final zeroSegments = segments
+            .where((segment) => segment.every((point) => point['y'] == 0))
+            .toList();
+        expect(
+          zeroSegments.any(
+            (segment) => segment.every((point) => point['x']! < 0),
+          ),
+          isTrue,
+        );
+        expect(
+          zeroSegments.any(
+            (segment) => segment.every((point) => point['x']! > 0),
+          ),
+          isTrue,
+        );
+        expect(
+          zeroSegments.every(
+            (segment) =>
+                segment.every((point) => point['x']! < 0) ||
+                segment.every((point) => point['x']! > 0),
+          ),
+          isTrue,
+          reason: 'yMin=$yMin, yMax=$yMax, gridY=$gridY',
+        );
+      }
+
+      expectShiftedGridPoleSeparated(yMin: 0, yMax: 1, gridY: 1);
+      expectShiftedGridPoleSeparated(yMin: -1, yMax: 1, gridY: 1);
+      expectShiftedGridPoleSeparated(yMin: -1, yMax: 1, gridY: 2);
       final negativeEvenRootOnNegativeDomain =
           MathExpression.fromInput('nrt(-2,x)*y=0').sampleContourSegments(
             xMin: -2,
