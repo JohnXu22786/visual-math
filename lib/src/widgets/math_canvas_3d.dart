@@ -6,6 +6,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 
 import '../models/math_3d_object.dart';
+import '../geometry/sphere_intersection_curve.dart';
 import '../models/formula_entry.dart';
 import '../models/math_3d_scene.dart';
 import '../models/math_3d_tool.dart';
@@ -3869,115 +3870,11 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   }
 
   Object3D? _spherePlaneIntersection(Object3D sphere, Object3D plane) {
-    final equation = _normalizedPlaneEquation(plane);
-    if (equation == null) return null;
-    final normal = equation.normal;
-    final normalSquared = equation.normalSquared;
-    final center = sphere.sphereCenter;
-    final signedDistance =
-        (normal.dot(center.toVector()) - equation.d) /
-        dart_math.sqrt(normalSquared);
-    final radius = sphere.sphereRadius.abs();
-    final coordinateScale = dart_math.max(
-      equation.d.abs(),
-      dart_math.max(
-        center.x.abs(),
-        dart_math.max(center.y.abs(), center.z.abs()),
-      ),
-    );
-    final geometryScale = dart_math.max(radius, signedDistance.abs());
-    final tolerance = dart_math.max(
-      geometryScale * 1e-12,
-      coordinateScale * 1.7763568394002505e-15,
-    );
-    if (signedDistance.abs() > radius + tolerance) return null;
-    final circleCenter =
-        center +
-        normal * ((equation.d - normal.dot(center.toVector())) / normalSquared);
-    var radiusSquared = radius * radius - signedDistance * signedDistance;
-    final radiusSquaredTolerance =
-        tolerance * (radius + signedDistance.abs()) + tolerance * tolerance;
-    if (radiusSquared < -radiusSquaredTolerance) return null;
-    if (radiusSquared < 0) radiusSquared = 0;
-    final circleRadius = dart_math.sqrt(radiusSquared);
-    return _circleOnPlane(circleCenter, normal, circleRadius);
+    return spherePlaneIntersectionCurve(sphere, plane);
   }
 
   Object3D? _sphereSphereIntersection(Object3D first, Object3D second) {
-    final delta = second.sphereCenter - first.sphereCenter;
-    final distance = delta.magnitude;
-    final firstRadius = first.sphereRadius.abs();
-    final secondRadius = second.sphereRadius.abs();
-    final coordinateScale = [
-      first.sphereCenter.x.abs(),
-      first.sphereCenter.y.abs(),
-      first.sphereCenter.z.abs(),
-      second.sphereCenter.x.abs(),
-      second.sphereCenter.y.abs(),
-      second.sphereCenter.z.abs(),
-    ].fold<double>(0, (scale, value) => dart_math.max(scale, value).toDouble());
-    final geometryScale = dart_math.max(
-      distance,
-      dart_math.max(firstRadius, secondRadius),
-    );
-    final tolerance = dart_math.max(
-      geometryScale * 1e-12,
-      coordinateScale * 1.7763568394002505e-15,
-    );
-    final radiusDifference = (firstRadius - secondRadius).abs();
-    if (distance == 0) {
-      return firstRadius == 0 && secondRadius == 0
-          ? Object3D.point(first.sphereCenter, color: 0xFF1565C0)
-          : null;
-    }
-    if (distance > firstRadius + secondRadius + tolerance ||
-        distance < radiusDifference - tolerance) {
-      return null;
-    }
-    final axis = delta * (1 / distance);
-    final along =
-        (firstRadius * firstRadius -
-            secondRadius * secondRadius +
-            distance * distance) /
-        (2 * distance);
-    final center = first.sphereCenter + axis * along;
-    var radiusSquared = firstRadius * firstRadius - along * along;
-    final radiusSquaredTolerance =
-        tolerance * (firstRadius + along.abs()) + tolerance * tolerance;
-    if (radiusSquared < -radiusSquaredTolerance) return null;
-    if (radiusSquared < 0) radiusSquared = 0;
-    final radius = dart_math.sqrt(radiusSquared);
-    return _circleOnPlane(center, axis, radius);
-  }
-
-  Object3D _circleOnPlane(Point3D center, Vector3D normal, double radius) {
-    if (radius == 0) {
-      return Object3D.point(center, color: 0xFF1565C0);
-    }
-    var u = normal.cross(Vector3D.unitX).normalized();
-    if (u.magnitude < 1e-9) u = normal.cross(Vector3D.unitY).normalized();
-    final v = normal.normalized().cross(u).normalized();
-    final points = List.generate(65, (i) {
-      final angle = 2 * dart_math.pi * i / 64;
-      return center +
-          u * (radius * dart_math.cos(angle)) +
-          v * (radius * dart_math.sin(angle));
-    });
-    return Object3D.curve(
-      points: points,
-      color: 0xFF1565C0,
-      conic: Conic3D(
-        origin: center,
-        axisU: u,
-        axisV: v,
-        quadraticX: 1,
-        quadraticXY: 0,
-        quadraticY: 1,
-        linearX: 0,
-        linearY: 0,
-        constant: -radius * radius,
-      ),
-    );
+    return sphereSphereIntersectionCurve(first, second);
   }
 
   void _removeObjectAt(int index, {bool notify = true}) {
