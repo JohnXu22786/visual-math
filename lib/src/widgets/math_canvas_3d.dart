@@ -674,7 +674,9 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       default:
         break;
     }
-    widget.onSceneChanged?.call();
+    if (tool == ConstructionTool.showHideLabels) {
+      widget.onSceneChanged?.call();
+    }
   }
 
   Future<void> _chooseViewDirection() async {
