@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import '../models/math_3d_object.dart';
 
+const _separationRoundoffFactor = 1.7763568394002505e-15;
+
 /// Returns the circle or tangent point where [sphere] meets [plane].
 Object3D? spherePlaneIntersectionCurve(Object3D sphere, Object3D plane) {
   final equation = _planeEquation(plane);
@@ -104,19 +106,31 @@ Object3D? spherePlaneIntersectionCurve(Object3D sphere, Object3D plane) {
       ? 0.0
       : centerScale *
             (math.max(projectedCenterRatio, planeOffsetRatio) *
-                4.440892098500626e-16);
+                _separationRoundoffFactor);
+  final tangentRoundoff = math.max(
+    coordinateTolerance,
+    geometryScale * _separationRoundoffFactor,
+  );
+  final exactSpherePlaneTangent =
+      (distance - radius).abs() <= tangentRoundoff &&
+      _isExactSpherePlaneTangent(sphere, plane, radius);
   if (geometryScale != 0 && coordinateTolerance >= geometryScale) {
     return null;
   }
   if (distance == radius &&
       coordinateTolerance > 0 &&
-      !exactDistanceEvaluation) {
+      !exactDistanceEvaluation &&
+      !exactSpherePlaneTangent) {
     return null;
   }
-  if (distance != radius && (distance - radius).abs() <= coordinateTolerance) {
+  if (distance > radius &&
+      distance - radius <= coordinateTolerance &&
+      !exactSpherePlaneTangent) {
     return null;
   }
-  final tolerance = math.max(geometryScale * 1e-12, coordinateTolerance);
+  final tolerance = exactSpherePlaneTangent
+      ? math.max(coordinateTolerance, (distance - radius).abs())
+      : coordinateTolerance;
   final comparisonScale = math.max(radius, distance);
   if (comparisonScale != 0 &&
       distance / comparisonScale >
@@ -197,13 +211,16 @@ Object3D? sphereSphereIntersectionCurve(Object3D first, Object3D second) {
     distanceRatio,
     math.max(scaledFirstRadius, scaledSecondRadius),
   );
-  final coordinateTolerance = deltaIsFinite && distance.isFinite
-      ? 0.0
-      : coordinateScale / scale * 4.440892098500626e-16;
+  final coordinateTolerance = math.max(
+    scaledGeometry * _separationRoundoffFactor,
+    deltaIsFinite && distance.isFinite
+        ? 0.0
+        : coordinateScale / scale * _separationRoundoffFactor,
+  );
   if (scaledGeometry != 0 && coordinateTolerance >= scaledGeometry) {
     return null;
   }
-  final scaledTolerance = math.max(scaledGeometry * 1e-12, coordinateTolerance);
+  final scaledTolerance = coordinateTolerance;
   if (distanceRatio >
           scaledFirstRadius + scaledSecondRadius + scaledTolerance ||
       distanceRatio <
@@ -361,6 +378,76 @@ bool _productIsExact(double first, double second) {
       firstLow * secondHigh +
       firstLow * secondLow;
   return error == 0;
+}
+
+bool _isExactSpherePlaneTangent(
+  Object3D sphere,
+  Object3D plane,
+  double radius,
+) {
+  const minNormal = 2.2250738585072014e-308;
+  final a = plane.planeA;
+  final b = plane.planeB;
+  final c = plane.planeC;
+  final d = plane.planeD;
+  final center = sphere.sphereCenter;
+  final ax = a * center.x;
+  final by = b * center.y;
+  final cz = c * center.z;
+  final axBy = ax + by;
+  final dot = axBy + cz;
+  final numerator = dot + d;
+  final aSquared = a * a;
+  final bSquared = b * b;
+  final cSquared = c * c;
+  final aSquaredBy = aSquared + bSquared;
+  final normalSquared = aSquaredBy + cSquared;
+  final numeratorSquared = numerator * numerator;
+  final radiusSquared = radius * radius;
+  final tangentSquared = radiusSquared * normalSquared;
+  final products = [
+    ax,
+    by,
+    cz,
+    aSquared,
+    bSquared,
+    cSquared,
+    numeratorSquared,
+    radiusSquared,
+    normalSquared,
+    tangentSquared,
+  ];
+  return [a, b, c, d, radius, center.x, center.y, center.z]
+          .every((value) => value.isFinite) &&
+      [axBy, dot, numerator, aSquaredBy, normalSquared]
+          .every((value) => value.isFinite) &&
+      tangentSquared.isFinite &&
+      products.every(
+        (value) => value.isFinite && (value == 0 || value.abs() >= minNormal),
+      ) &&
+      !(a != 0 && center.x != 0 && ax == 0) &&
+      !(b != 0 && center.y != 0 && by == 0) &&
+      !(c != 0 && center.z != 0 && cz == 0) &&
+      !(a != 0 && aSquared == 0) &&
+      !(b != 0 && bSquared == 0) &&
+      !(c != 0 && cSquared == 0) &&
+      !(radius != 0 && radiusSquared == 0) &&
+      !(radiusSquared != 0 && normalSquared != 0 && tangentSquared == 0) &&
+      _productIsExact(a, center.x) &&
+      _productIsExact(b, center.y) &&
+      _productIsExact(c, center.z) &&
+      _sumIsExact(ax, by) &&
+      _sumIsExact(axBy, cz) &&
+      _sumIsExact(dot, d) &&
+      _productIsExact(a, a) &&
+      _productIsExact(b, b) &&
+      _productIsExact(c, c) &&
+      _sumIsExact(aSquared, bSquared) &&
+      _sumIsExact(aSquaredBy, cSquared) &&
+      _productIsExact(numerator, numerator) &&
+      _productIsExact(radius, radius) &&
+      _productIsExact(radiusSquared, normalSquared) &&
+      numeratorSquared == tangentSquared;
 }
 
 bool _sumIsExact(double first, double second) {

@@ -252,6 +252,64 @@ void main() {
       expect(shallowIntersection, isNotNull);
     });
 
+    test('rejects oblique disjoint pairs within the relative tolerance', () {
+      final sphereSphereMiss = sphereSphereIntersectionCurve(
+        const Object3D.sphere(radius: 1),
+        const Object3D.sphere(
+          center: Point3D(1.2 + 1e-12, 1.6, 0),
+          radius: 1,
+        ),
+      );
+      final spherePlaneMiss = spherePlaneIntersectionCurve(
+        const Object3D.sphere(
+          center: Point3D(0.600000000001, 0.8, 0),
+          radius: 1,
+        ),
+        const Object3D.plane(a: 0.6, b: 0.8, c: 0),
+      );
+      final sphereSphereTangent = sphereSphereIntersectionCurve(
+        const Object3D.sphere(radius: 1),
+        const Object3D.sphere(center: Point3D(1.2, 1.6, 0), radius: 1),
+      );
+      final spherePlaneTangent = spherePlaneIntersectionCurve(
+        const Object3D.sphere(center: Point3D(3, 4, 0), radius: 5),
+        const Object3D.plane(a: 3, b: 4, c: 0),
+      );
+      final shallowSpherePlaneIntersection = spherePlaneIntersectionCurve(
+        const Object3D.sphere(
+          center: Point3D(0.5999999999999997, 0.8, 0),
+          radius: 1,
+        ),
+        const Object3D.plane(a: 0.6, b: 0.8, c: 0),
+      );
+      final obliqueOriginTangent = spherePlaneIntersectionCurve(
+        const Object3D.sphere(radius: 1),
+        const Object3D.plane(a: 1, b: 52, c: 268, d: -273),
+      );
+      final underflowedProductsMiss = spherePlaneIntersectionCurve(
+        const Object3D.sphere(radius: 0.5),
+        const Object3D.plane(a: 1e-200, c: 0, d: 1e-200),
+      );
+      final subnormalProductsMiss = spherePlaneIntersectionCurve(
+        const Object3D.sphere(radius: 1),
+        const Object3D.plane(a: 1e-160, c: 0, d: 1.0000000000000002e-160),
+      );
+      final obliquePythagoreanTangent = spherePlaneIntersectionCurve(
+        const Object3D.sphere(center: Point3D(5, 12, 0), radius: 13),
+        const Object3D.plane(a: 5, b: 12, c: 0),
+      );
+
+      expect(sphereSphereMiss, isNull);
+      expect(spherePlaneMiss, isNull);
+      expect(sphereSphereTangent?.type, Object3DType.point);
+      expect(spherePlaneTangent?.type, Object3DType.point);
+      expect(shallowSpherePlaneIntersection, isNotNull);
+      expect(obliqueOriginTangent?.type, Object3DType.point);
+      expect(underflowedProductsMiss, isNull);
+      expect(subnormalProductsMiss, isNull);
+      expect(obliquePythagoreanTangent?.type, Object3DType.point);
+    });
+
     test('representably disjoint sphere pair has no intersection', () {
       final miss = sphereSphereIntersectionCurve(
         const Object3D.sphere(radius: 1),
