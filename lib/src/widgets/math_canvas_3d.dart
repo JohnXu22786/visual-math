@@ -5169,12 +5169,18 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         case Object3DType.point:
           if (pointInDepthRange(object.point)) {
             candidates.add(object.point);
+            occlusionSensitiveCandidates.add(object.point);
           }
         case Object3DType.line:
           candidates.addAll([object.pointA, object.pointB]);
+          occlusionSensitiveCandidates.addAll([object.pointA, object.pointB]);
           final endpoints = clipLineToView(object, camera, projection);
           if (endpoints.length == 2)
-            addSegmentCandidate(endpoints[0], endpoints[1]);
+            addSegmentCandidate(
+              endpoints[0],
+              endpoints[1],
+              excludeOccluded: true,
+            );
         case Object3DType.surface:
         case Object3DType.polyhedron:
           candidates.addAll(object.vertices);
@@ -5254,9 +5260,14 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           }
         case Object3DType.curve:
           candidates.addAll(object.vertices);
+          occlusionSensitiveCandidates.addAll(object.vertices);
           for (var i = 1; i < object.vertices.length; i++) {
             if (!object.curveStarts.contains(i)) {
-              addSegmentCandidate(object.vertices[i - 1], object.vertices[i]);
+              addSegmentCandidate(
+                object.vertices[i - 1],
+                object.vertices[i],
+                excludeOccluded: true,
+              );
             }
           }
         case Object3DType.sphere:
@@ -5303,8 +5314,10 @@ class MathCanvas3DState extends State<MathCanvas3D> {
             }
           }
         case Object3DType.vector:
-          candidates.addAll([object.point, object.point + object.vector]);
-          addSegmentCandidate(object.point, object.point + object.vector);
+          final endpoint = object.point + object.vector;
+          candidates.addAll([object.point, endpoint]);
+          occlusionSensitiveCandidates.addAll([object.point, endpoint]);
+          addSegmentCandidate(object.point, endpoint, excludeOccluded: true);
         case Object3DType.plane:
           final equation = _normalizedPlaneEquation(object);
           if (equation == null) break;

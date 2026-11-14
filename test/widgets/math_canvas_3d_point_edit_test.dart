@@ -2123,6 +2123,73 @@ void main() {
     expect(state.constructionState!.points.single.z, closeTo(hidden.z, 1e-8));
   });
 
+  testWidgets('object snap features respect opaque surface occlusion', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    state.setCamera(const Camera3D(theta: 0, phi: 0));
+    const frontFace = Object3D.surface(
+      vertices: [
+        Point3D(-2, 0, -2),
+        Point3D(2, 0, -2),
+        Point3D(2, 0, 2),
+        Point3D(-2, 0, 2),
+      ],
+      indices: [0, 1, 2, 0, 2, 3],
+    );
+    const hidden = Point3D(-0.8, -3, 1.2);
+    final hiddenFeatures = <Object3D>[
+      const Object3D.point(hidden),
+      const Object3D.line(hidden, Point3D(-0.6, -3, 1.2)),
+      const Object3D.curve(points: [hidden]),
+      const Object3D.vectorObj(origin: hidden, vector: Vector3D(0.2, 0, 0)),
+    ];
+
+    for (final projection in ProjectionType.values) {
+      state.setProjectionType(projection);
+      for (final feature in hiddenFeatures) {
+        state.setObjects([frontFace, feature]);
+        state.setTool(ConstructionTool.segment);
+        await tester.pump();
+        await tester.tapAt(screen(state, hidden));
+        await tester.pump();
+        expect(
+          state.constructionState!.points.single.distanceTo(hidden),
+          greaterThan(0.1),
+          reason: '$projection should not snap to hidden ${feature.type}',
+        );
+      }
+
+      const visible = Point3D(3, -3, 1.2);
+      state.setObjects([frontFace, const Object3D.point(visible)]);
+      state.setTool(ConstructionTool.move);
+      state.setTool(ConstructionTool.segment);
+      await tester.pump();
+      await tester.tapAt(screen(state, visible));
+      await tester.pump();
+      expect(
+        state.constructionState!.points.single.distanceTo(visible),
+        lessThan(1e-8),
+        reason: '$projection should keep unoccluded points snappable',
+      );
+
+      state.setObjects([
+        frontFace.copyWith(opacity: 0.5),
+        hiddenFeatures.first,
+      ]);
+      state.setTool(ConstructionTool.move);
+      state.setTool(ConstructionTool.segment);
+      await tester.pump();
+      await tester.tapAt(screen(state, hidden));
+      await tester.pump();
+      expect(
+        state.constructionState!.points.single.distanceTo(hidden),
+        lessThan(1e-8),
+        reason: '$projection should not let transparent surfaces occlude',
+      );
+    }
+  });
+
   testWidgets('clipped perspective points cannot intercept selection', (
     tester,
   ) async {
