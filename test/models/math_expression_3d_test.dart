@@ -189,6 +189,207 @@ void main() {
       expect(pts.length, 50);
     });
 
+    test('splits branches when a pole falls between default samples', () {
+      final expr = Expression3D.parametricCurve(
+        '(1/t, 0, t)',
+        tMin: -1,
+        tMax: 1,
+      );
+
+      final segments = expr.sampleCurveSegments();
+
+      expect(segments, hasLength(2));
+      expect(segments.first.last.x, lessThan(0));
+      expect(segments.last.first.x, greaterThan(0));
+    });
+
+    test('splits branches when a pole is close to a default sample', () {
+      final expr = Expression3D.parametricCurve(
+        '(1/(t+0.010001), 0, t)',
+        tMin: -1,
+        tMax: 1,
+      );
+
+      final segments = expr.sampleCurveSegments();
+
+      expect(segments.length, greaterThan(1));
+      expect(segments.first.last.x, lessThan(0));
+      expect(segments.last.first.x, greaterThan(0));
+    });
+
+    test('splits a pole immediately before a default sample', () {
+      final expr = Expression3D.parametricCurve(
+        '(1/(t-0.0101010100), 0, t)',
+        tMin: -1,
+        tMax: 1,
+      );
+
+      expect(expr.sampleCurveSegments().length, greaterThan(1));
+    });
+
+    test('keeps a steep smooth crossing near a sample connected', () {
+      final expr = Expression3D.parametricCurve(
+        '(tanh(10000*(t-0.01010096)), 0, t)',
+        tMin: 0,
+        tMax: 1,
+      );
+
+      expect(expr.sampleCurveSegments(), hasLength(1));
+    });
+
+    test('keeps a smooth steep exponential crossing connected', () {
+      final expr = Expression3D.parametricCurve(
+        '((t-0.000001)*exp(1000*(t-0.000001)), 0, t)',
+        tMin: 0,
+        tMax: 2,
+      );
+
+      expect(expr.sampleCurveSegments(), hasLength(1));
+    });
+
+    test(
+      'keeps an asymmetric smooth crossing connected with sparse samples',
+      () {
+        final expr = Expression3D.parametricCurve(
+          '((t-0.01)*exp(400*(t-0.01)), 0, t)',
+          tMin: -0.02,
+          tMax: 0.02,
+        );
+
+        expect(expr.sampleCurveSegments(numSamples: 2), hasLength(1));
+      },
+    );
+
+    test('splits branches across an even-order pole', () {
+      final expr = Expression3D.parametricCurve(
+        '(1/(t+0.010001)^2, 0, t)',
+        tMin: -1,
+        tMax: 1,
+      );
+
+      expect(expr.sampleCurveSegments().length, greaterThan(1));
+    });
+
+    test('splits branches when a pole falls between adaptive probes', () {
+      final expr = Expression3D.parametricCurve(
+        '(1/(t-0.1875), 0, t)',
+        tMin: 0,
+        tMax: 1,
+      );
+
+      expect(expr.sampleCurveSegments(numSamples: 3).length, greaterThan(1));
+    });
+
+    test('detects a pole with a small coordinate amplitude', () {
+      final expr = Expression3D.parametricCurve(
+        '(0.000000000001/(t-0.001), 0, t)',
+        tMin: -1,
+        tMax: 1,
+      );
+
+      expect(expr.sampleCurveSegments().length, greaterThan(1));
+    });
+
+    test('detects a pole beside a large coordinate offset', () {
+      final expr = Expression3D.parametricCurve(
+        '(1000000000+1/(t-0.001), 0, t)',
+        tMin: -1,
+        tMax: 1,
+      );
+
+      expect(expr.sampleCurveSegments().length, greaterThan(1));
+    });
+
+    test('detects a pole beside a large constant coordinate', () {
+      final expr = Expression3D.parametricCurve(
+        '(1/(t-0.001), 1000000000, t)',
+        tMin: -1,
+        tMax: 1,
+      );
+
+      expect(expr.sampleCurveSegments().length, greaterThan(1));
+    });
+
+    test('keeps a narrow smooth peak connected', () {
+      final expr = Expression3D.parametricCurve(
+        '(1/(1+((t+1/99)/0.001)^2), 0, t)',
+        tMin: -1,
+        tMax: 1,
+      );
+
+      expect(expr.sampleCurveSegments(), hasLength(1));
+    });
+
+    test('keeps a narrow smooth peak between samples connected', () {
+      final expr = Expression3D.parametricCurve(
+        '(1/(1+(t/0.000001)^2), 0, t)',
+        tMin: -1,
+        tMax: 1,
+      );
+
+      expect(expr.sampleCurveSegments(), hasLength(1));
+    });
+
+    test('keeps a smooth high-frequency curve connected', () {
+      final expr = Expression3D.parametricCurve(
+        '(sin(100000*t), 0, t)',
+        tMin: -1,
+        tMax: 1,
+      );
+
+      expect(expr.sampleCurveSegments(), hasLength(1));
+    });
+
+    test('keeps a smooth steep curve connected at the range boundary', () {
+      final expr = Expression3D.parametricCurve(
+        '((1+t)^1200, 0, 0)',
+        tMin: -0.9,
+        tMax: 0,
+      );
+
+      expect(expr.sampleCurveSegments(), hasLength(1));
+    });
+
+    test('keeps a continuous cusp connected', () {
+      final expr = Expression3D.parametricCurve(
+        '(t^(1/4), 0, t)',
+        tMin: 0,
+        tMax: 1,
+      );
+
+      expect(expr.sampleCurveSegments(), hasLength(1));
+    });
+
+    test('splits branches across a pole between interior probes', () {
+      final expr = Expression3D.parametricCurve(
+        '(1/(t+0.0025252525)^2, 0, t)',
+        tMin: -1,
+        tMax: 1,
+      );
+
+      expect(expr.sampleCurveSegments().length, greaterThan(1));
+    });
+
+    test('keeps a smooth large peak in one curve segment', () {
+      final expr = Expression3D.parametricCurve(
+        '(100-990000*t^2, t, 0)',
+        tMin: -1,
+        tMax: 1,
+      );
+
+      expect(expr.sampleCurveSegments(), hasLength(1));
+    });
+
+    test('keeps a smooth crossing between sparse samples connected', () {
+      final expr = Expression3D.parametricCurve(
+        '(4*((t+1)*99/2)^2-2*((t+1)*99/2)-1, 0, 0)',
+        tMin: -1,
+        tMax: 1,
+      );
+
+      expect(expr.sampleCurveSegments(), hasLength(1));
+    });
+
     test('returns empty points for invalid curve', () {
       final expr = Expression3D.parametricCurve('invalid');
       expect(expr.isValid, isFalse);

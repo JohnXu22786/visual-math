@@ -20,6 +20,9 @@ enum Expression3DType {
 ///
 /// Uses the same native expression parser as the 2D [MathExpression] class.
 class Expression3D {
+  // Bound adaptive work to 9,504 midpoint evaluations for the default sample.
+  static const _maxCurveIntervalProbes = 96;
+
   final String rawExpression;
   final String normalizedExpression;
   final Expression3DType type;
@@ -269,6 +272,9 @@ class Expression3D {
           .toList();
 
   /// Sample the curve into finite, contiguous paths separated at invalid values.
+  ///
+  /// Intermediate points are checked between samples so poles between finite
+  /// samples do not connect otherwise separate branches.
   List<List<Point3D>> sampleCurveSegments({int numSamples = 100}) {
     if (!isValid || _curveX == null || numSamples < 2) return [];
 
@@ -285,17 +291,224 @@ class Expression3D {
       final t = tMin + i * step;
       try {
         final point = evaluateCurve(t);
-        if (point.x.isFinite && point.y.isFinite && point.z.isFinite) {
-          current.add(point);
-        } else {
+        if (!point.x.isFinite || !point.y.isFinite || !point.z.isFinite) {
           endSegment();
+          continue;
         }
+
+        if (current.isNotEmpty && i > 0) {
+          final previousT = tMin + (i - 1) * step;
+          if (_isCurveIntervalDiscontinuous(
+            previousT,
+            current.last,
+            t,
+            point,
+            probeBudget: [_maxCurveIntervalProbes],
+          )) {
+            endSegment();
+          }
+        }
+        current.add(point);
       } catch (_) {
         endSegment();
       }
     }
     endSegment();
     return segments;
+  }
+
+  bool _hasSignificantMidpointDeviation(
+    double start,
+    double midpoint,
+    double end,
+  ) {
+    final variation = [
+      (midpoint - start).abs(),
+      (end - midpoint).abs(),
+      (end - start).abs(),
+    ].reduce((a, b) => a > b ? a : b);
+    final deviation = (midpoint - (start + end) / 2).abs();
+    return variation > 0 && deviation > variation * 0.05;
+  }
+
+  double _coordinateVariation(double start, double midpoint, double end) {
+    return [
+      (midpoint - start).abs(),
+      (end - midpoint).abs(),
+      (end - start).abs(),
+    ].reduce((a, b) => a > b ? a : b);
+  }
+
+  bool _isCurveIntervalDiscontinuous(
+    double startT,
+    Point3D start,
+    double endT,
+    Point3D end, {
+    required List<int> probeBudget,
+    int depth = 0,
+    Point3D? anchor,
+    Point3D? referenceScale,
+    Point3D? previousSlope,
+    int increasingX = 0,
+    int increasingY = 0,
+    int increasingZ = 0,
+  }) {
+    if (probeBudget[0] == 0) return false;
+    probeBudget[0]--;
+    final midpointT = (startT + endT) / 2;
+    final midpoint = evaluateCurve(midpointT);
+    if (!midpoint.x.isFinite || !midpoint.y.isFinite || !midpoint.z.isFinite) {
+      return true;
+    }
+
+    if (_hasPoleLikeSignChange(
+          startT,
+          start.x,
+          endT,
+          end.x,
+          midpoint.x,
+          probeBudget,
+          (point) => point.x,
+        ) ||
+        _hasPoleLikeSignChange(
+          startT,
+          start.y,
+          endT,
+          end.y,
+          midpoint.y,
+          probeBudget,
+          (point) => point.y,
+        ) ||
+        _hasPoleLikeSignChange(
+          startT,
+          start.z,
+          endT,
+          end.z,
+          midpoint.z,
+          probeBudget,
+          (point) => point.z,
+        )) {
+      return true;
+    }
+
+    anchor ??= midpoint;
+    referenceScale ??= Point3D(
+      _coordinateVariation(start.x, midpoint.x, end.x),
+      _coordinateVariation(start.y, midpoint.y, end.y),
+      _coordinateVariation(start.z, midpoint.z, end.z),
+    );
+    final duration = (endT - startT).abs();
+    final slope = Point3D(
+      (end.x - start.x).abs() / duration,
+      (end.y - start.y).abs() / duration,
+      (end.z - start.z).abs() / duration,
+    );
+    final nextIncreasingX =
+        previousSlope != null && slope.x > previousSlope.x * 1.5
+        ? increasingX + 1
+        : 0;
+    final nextIncreasingY =
+        previousSlope != null && slope.y > previousSlope.y * 1.5
+        ? increasingY + 1
+        : 0;
+    final nextIncreasingZ =
+        previousSlope != null && slope.z > previousSlope.z * 1.5
+        ? increasingZ + 1
+        : 0;
+    if (depth >= 8) {
+      return (nextIncreasingX >= 3 &&
+              _maxDeviation(start.x, midpoint.x, end.x, anchor.x) >
+                  referenceScale.x * 5) ||
+          (nextIncreasingY >= 3 &&
+              _maxDeviation(start.y, midpoint.y, end.y, anchor.y) >
+                  referenceScale.y * 5) ||
+          (nextIncreasingZ >= 3 &&
+              _maxDeviation(start.z, midpoint.z, end.z, anchor.z) >
+                  referenceScale.z * 5);
+    }
+
+    final hasSignificantDeviation =
+        _hasSignificantMidpointDeviation(start.x, midpoint.x, end.x) ||
+        _hasSignificantMidpointDeviation(start.y, midpoint.y, end.y) ||
+        _hasSignificantMidpointDeviation(start.z, midpoint.z, end.z);
+    if (!hasSignificantDeviation) return false;
+
+    return _isCurveIntervalDiscontinuous(
+          startT,
+          start,
+          midpointT,
+          midpoint,
+          probeBudget: probeBudget,
+          depth: depth + 1,
+          anchor: anchor,
+          referenceScale: referenceScale,
+          previousSlope: slope,
+          increasingX: nextIncreasingX,
+          increasingY: nextIncreasingY,
+          increasingZ: nextIncreasingZ,
+        ) ||
+        _isCurveIntervalDiscontinuous(
+          midpointT,
+          midpoint,
+          endT,
+          end,
+          probeBudget: probeBudget,
+          depth: depth + 1,
+          anchor: anchor,
+          referenceScale: referenceScale,
+          previousSlope: slope,
+          increasingX: nextIncreasingX,
+          increasingY: nextIncreasingY,
+          increasingZ: nextIncreasingZ,
+        );
+  }
+
+  bool _hasPoleLikeSignChange(
+    double startT,
+    double start,
+    double endT,
+    double end,
+    double midpoint,
+    List<int> probeBudget,
+    double Function(Point3D) coordinate,
+  ) {
+    final crossesZero = (start < 0 && end > 0) || (start > 0 && end < 0);
+    final largestEndpoint = start.abs() > end.abs() ? start.abs() : end.abs();
+    final smallestEndpoint = start.abs() < end.abs() ? start.abs() : end.abs();
+    if (!crossesZero ||
+        largestEndpoint <= smallestEndpoint * 1000 ||
+        largestEndpoint <= midpoint.abs() * 1000) {
+      return false;
+    }
+
+    if (probeBudget[0] == 0) return false;
+    probeBudget[0]--;
+    final probeT = start.abs() > end.abs()
+        ? startT + (endT - startT) * 0.1
+        : startT + (endT - startT) * 0.9;
+    final probe = evaluateCurve(probeT);
+    if (!probe.x.isFinite || !probe.y.isFinite || !probe.z.isFinite)
+      return true;
+    // A pole near the extreme endpoint has not crossed at the 10% probe, and
+    // its value grows sharply between that probe and the sampled endpoint.
+    final smallerEndpoint = start.abs() < end.abs() ? start : end;
+    final probeValue = coordinate(probe);
+    return probeValue * smallerEndpoint > 0 &&
+        largestEndpoint > probeValue.abs() * 1000 &&
+        (midpoint - (start + end) / 2).abs() > (end - start).abs() * 0.4;
+  }
+
+  double _maxDeviation(
+    double start,
+    double midpoint,
+    double end,
+    double anchor,
+  ) {
+    return [
+      (start - anchor).abs(),
+      (midpoint - anchor).abs(),
+      (end - anchor).abs(),
+    ].reduce((a, b) => a > b ? a : b);
   }
 
   // ==================================================================
