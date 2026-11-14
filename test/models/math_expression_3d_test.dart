@@ -423,6 +423,25 @@ void main() {
       expect(expr.parameters, isNot(contains('y')));
     });
 
+    test('does not expose supported parser functions as parameters', () {
+      final expr = Expression3D.surface(
+        'min(x,y) + max(x,y) + gcd(2,3) + arg(x) + Re(y) + Im(x) + a',
+      );
+
+      expect(expr.isValid, isTrue, reason: expr.parseError);
+      expect(expr.parameters, {'a'});
+      expect(expr.evaluateSurface(1, 2), closeTo(7, 1e-10));
+
+      final bareFunctionName = Expression3D.surface('min + x');
+      expect(
+        bareFunctionName.isValid,
+        isTrue,
+        reason: bareFunctionName.parseError,
+      );
+      expect(bareFunctionName.parameters, {'min'});
+      expect(bareFunctionName.evaluateSurface(2, 0), 3);
+    });
+
     test('evaluates surface with parameters', () {
       final expr = Expression3D.surface(
         'a*x^2 + b*y^2',
