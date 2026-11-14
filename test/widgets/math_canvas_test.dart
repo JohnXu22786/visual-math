@@ -242,6 +242,43 @@ void main() {
     }
   });
 
+  test('origin label stays inside the canvas at right and bottom edges', () {
+    const size = Size(200, 200);
+    for (final testCase in [
+      (
+        bounds: (xMin: -10.0, xMax: 0.0, yMin: -10.0, yMax: 10.0),
+        onRight: true,
+      ),
+      (
+        bounds: (xMin: -10.0, xMax: 10.0, yMin: 5.0, yMax: 15.0),
+        onRight: false,
+      ),
+    ]) {
+      final canvas = TestRecordingCanvas();
+      GraphPainter(
+        xMin: testCase.bounds.xMin,
+        xMax: testCase.bounds.xMax,
+        yMin: testCase.bounds.yMin,
+        yMax: testCase.bounds.yMax,
+      ).paint(canvas, size);
+
+      final labels = canvas.invocations
+          .map((record) => record.invocation)
+          .where((call) => call.memberName == #drawParagraph)
+          .where((call) {
+            final paragraph = call.positionalArguments[0] as ui.Paragraph;
+            final offset = call.positionalArguments[1] as Offset;
+            return testCase.onRight
+                ? (offset.dx + paragraph.longestLine - size.width).abs() <
+                          0.01 &&
+                      (offset.dy - 104).abs() < 0.01
+                : (offset.dx - 104).abs() < 0.01 &&
+                      (offset.dy + paragraph.height - size.height).abs() < 0.01;
+          });
+      expect(labels, hasLength(1));
+    }
+  });
+
   test('paints large finite viewport coordinates at the visible center', () {
     final canvas = TestRecordingCanvas();
     const GraphPainter(
