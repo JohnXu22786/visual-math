@@ -16,16 +16,15 @@ Object3D? spherePlaneIntersectionCurve(Object3D sphere, Object3D plane) {
     center.z.abs(),
   );
   final normalLength = math.sqrt(equation.normalSquared);
-  final scaledCenterDot = centerScale == 0
-      ? 0.0
-      : equation.normal.dot(
-          Vector3D(
-            center.x / centerScale,
-            center.y / centerScale,
-            center.z / centerScale,
-          ),
+  final scaledCenter = centerScale == 0
+      ? Vector3D.zero
+      : Vector3D(
+          center.x / centerScale,
+          center.y / centerScale,
+          center.z / centerScale,
         );
-  final signedDistance = centerScale == 0
+  final scaledCenterDot = equation.normal.dot(scaledCenter);
+  final scaledSignedDistance = centerScale == 0
       ? -_quotientByProduct(equation.d, [
           equation.coefficientScale,
           normalLength,
@@ -37,13 +36,83 @@ Object3D? spherePlaneIntersectionCurve(Object3D sphere, Object3D plane) {
                   equation.coefficientScale,
                   normalLength,
                 ]));
+  final directCenterDot =
+      equation.normal.x * center.x +
+      equation.normal.y * center.y +
+      equation.normal.z * center.z;
+  final projectedCenter = directCenterDot.isFinite
+      ? directCenterDot / normalLength
+      : centerScale * (scaledCenterDot / normalLength);
+  final planeOffset = _quotientByProduct(equation.d, [
+    equation.coefficientScale,
+    normalLength,
+  ]);
+  final signedDistance = projectedCenter.isFinite && planeOffset.isFinite
+      ? projectedCenter - planeOffset
+      : scaledSignedDistance;
   if (!signedDistance.isFinite) return null;
 
   final distance = signedDistance.abs();
-  final coordinateScale = centerScale;
   final geometryScale = math.max(radius, distance);
-  final coordinateTolerance = coordinateScale * 1.7763568394002505e-15;
+  final projectedCenterMagnitude =
+      (equation.normal.x * scaledCenter.x).abs() +
+      (equation.normal.y * scaledCenter.y).abs() +
+      (equation.normal.z * scaledCenter.z).abs();
+  final projectedCenterRatio = projectedCenterMagnitude / normalLength;
+  final planeOffsetRatio = centerScale == 0
+      ? 0.0
+      : _quotientByProduct(equation.d.abs(), [
+          centerScale,
+          equation.coefficientScale,
+          normalLength,
+        ]);
+  final isUnitAxisNormal =
+      normalLength == 1 &&
+      ((equation.normal.x.abs() == 1 &&
+              equation.normal.y == 0 &&
+              equation.normal.z == 0) ||
+          (equation.normal.y.abs() == 1 &&
+              equation.normal.x == 0 &&
+              equation.normal.z == 0) ||
+          (equation.normal.z.abs() == 1 &&
+              equation.normal.x == 0 &&
+              equation.normal.y == 0));
+  final smallerProjection = math.min(projectedCenter.abs(), planeOffset.abs());
+  final largerProjection = math.max(projectedCenter.abs(), planeOffset.abs());
+  final exactAxisAlignedComparison =
+      isUnitAxisNormal &&
+      equation.coefficientScale == 1 &&
+      _sumIsExact(projectedCenter, -planeOffset) &&
+      (smallerProjection == 0 || smallerProjection >= largerProjection / 2);
+  final exactDistanceEvaluation =
+      _productIsExact(equation.normal.x, center.x) &&
+      _productIsExact(equation.normal.y, center.y) &&
+      _productIsExact(equation.normal.z, center.z) &&
+      _sumIsExact(equation.normal.x * center.x, equation.normal.y * center.y) &&
+      _sumIsExact(
+        equation.normal.x * center.x + equation.normal.y * center.y,
+        equation.normal.z * center.z,
+      ) &&
+      _productIsExact(normalLength, normalLength) &&
+      normalLength * normalLength == equation.normalSquared &&
+      projectedCenter * normalLength == directCenterDot &&
+      _sumIsExact(projectedCenter, -planeOffset) &&
+      (equation.d == 0 ||
+          planeOffset * equation.coefficientScale * normalLength == equation.d);
+  final coordinateTolerance = exactAxisAlignedComparison
+      ? 0.0
+      : centerScale *
+            (math.max(projectedCenterRatio, planeOffsetRatio) *
+                4.440892098500626e-16);
   if (geometryScale != 0 && coordinateTolerance >= geometryScale) {
+    return null;
+  }
+  if (distance == radius &&
+      coordinateTolerance > 0 &&
+      !exactDistanceEvaluation) {
+    return null;
+  }
+  if (distance != radius && (distance - radius).abs() <= coordinateTolerance) {
     return null;
   }
   final tolerance = math.max(geometryScale * 1e-12, coordinateTolerance);
@@ -113,7 +182,9 @@ Object3D? sphereSphereIntersectionCurve(Object3D first, Object3D second) {
     distanceRatio,
     math.max(scaledFirstRadius, scaledSecondRadius),
   );
-  final coordinateTolerance = coordinateScale / scale * 1.7763568394002505e-15;
+  final coordinateTolerance = deltaIsFinite && distance.isFinite
+      ? 0.0
+      : coordinateScale / scale * 4.440892098500626e-16;
   if (scaledGeometry != 0 && coordinateTolerance >= scaledGeometry) {
     return null;
   }
@@ -257,6 +328,32 @@ double _scaledMagnitude(Vector3D vector) {
   final y = vector.y / scale;
   final z = vector.z / scale;
   return scale * math.sqrt(x * x + y * y + z * z);
+}
+
+bool _productIsExact(double first, double second) {
+  const splitter = 134217729.0;
+  final product = first * second;
+  if (!product.isFinite) return false;
+  final firstSplit = splitter * first;
+  final secondSplit = splitter * second;
+  if (!firstSplit.isFinite || !secondSplit.isFinite) return false;
+  final firstHigh = firstSplit - (firstSplit - first);
+  final firstLow = first - firstHigh;
+  final secondHigh = secondSplit - (secondSplit - second);
+  final secondLow = second - secondHigh;
+  final error =
+      ((firstHigh * secondHigh - product) + firstHigh * secondLow) +
+      firstLow * secondHigh +
+      firstLow * secondLow;
+  return error == 0;
+}
+
+bool _sumIsExact(double first, double second) {
+  final sum = first + second;
+  if (!sum.isFinite) return false;
+  final secondVirtual = sum - first;
+  final error = (first - (sum - secondVirtual)) + (second - secondVirtual);
+  return error == 0;
 }
 
 bool _finitePoint(Point3D point) =>
