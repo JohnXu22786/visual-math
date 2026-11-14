@@ -226,5 +226,55 @@ void main() {
 
       expect(sphereSphereMiss, isNull);
     });
+
+    test('representably disjoint sphere-plane pair has no intersection', () {
+      final miss = spherePlaneIntersectionCurve(
+        const Object3D.sphere(
+          center: Point3D(1.0000000000005, 0, 0),
+          radius: 1,
+        ),
+        const Object3D.plane(a: 1, c: 0),
+      );
+      final tangent = spherePlaneIntersectionCurve(
+        const Object3D.sphere(center: Point3D(1, 0, 0), radius: 1),
+        const Object3D.plane(a: 1, c: 0),
+      );
+      final shallowIntersection = spherePlaneIntersectionCurve(
+        const Object3D.sphere(
+          center: Point3D(0.9999999999995, 0, 0),
+          radius: 1,
+        ),
+        const Object3D.plane(a: 1, c: 0),
+      );
+
+      expect(miss, isNull);
+      expect(tangent?.type, Object3DType.point);
+      expect(shallowIntersection, isNotNull);
+    });
+
+    test('representably disjoint sphere pair has no intersection', () {
+      final miss = sphereSphereIntersectionCurve(
+        const Object3D.sphere(radius: 1),
+        const Object3D.sphere(
+          center: Point3D(2.0000000000005, 0, 0),
+          radius: 1,
+        ),
+      );
+      final tangent = sphereSphereIntersectionCurve(
+        const Object3D.sphere(radius: 1),
+        const Object3D.sphere(center: Point3D(2, 0, 0), radius: 1),
+      );
+      final shallowIntersection = sphereSphereIntersectionCurve(
+        const Object3D.sphere(radius: 1),
+        const Object3D.sphere(
+          center: Point3D(1.9999999999995, 0, 0),
+          radius: 1,
+        ),
+      );
+
+      expect(miss, isNull);
+      expect(tangent?.type, Object3DType.point);
+      expect(shallowIntersection, isNotNull);
+    });
   });
 }
