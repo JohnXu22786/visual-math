@@ -3467,7 +3467,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           (point - secondCircle.center).dot(secondCircle.normal).abs() <=
               tolerance * 2;
 
-      if (normalCrossMagnitude <= 1e-9) {
+      if (normalCrossMagnitude == 0) {
         if (centerOffset.dot(firstCircle.normal).abs() > tolerance) {
           return const [];
         }
@@ -3508,18 +3508,19 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         ];
       }
 
-      final lineDirection = normalCross * (1 / normalCrossMagnitude);
-      final denominator = normalCross.dot(normalCross);
+      final lineDirection = normalCross.normalized();
       final firstPlaneOffset = firstCircle.normal.dot(
         firstCircle.center.toVector(),
       );
       final secondPlaneOffset = secondCircle.normal.dot(
         secondCircle.center.toVector(),
       );
-      final lineOriginVector =
-          (secondCircle.normal.cross(normalCross) * firstPlaneOffset +
-              normalCross.cross(firstCircle.normal) * secondPlaneOffset) *
-          (1 / denominator);
+      final lineOriginVector = firstCircle.center == secondCircle.center
+          ? firstCircle.center.toVector()
+          : (secondCircle.normal.cross(lineDirection) * firstPlaneOffset +
+                    lineDirection.cross(firstCircle.normal) *
+                        secondPlaneOffset) *
+                (1 / normalCrossMagnitude);
       final lineOrigin = Point3D(
         lineOriginVector.x,
         lineOriginVector.y,
