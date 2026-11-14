@@ -375,6 +375,37 @@ void main() {
     },
   );
 
+  testWidgets('special function keys insert supported scalar templates', (
+    tester,
+  ) async {
+    final commands = <String>[];
+    await _pumpKeyboard(tester, commands);
+    await _selectCategory(tester, '函数');
+
+    for (final key in [r'\min', r'\max', r'\gcd', r'\arg', r'\Re', r'\Im']) {
+      var finder = find.byTooltip(key);
+      for (var page = 0; page < 4 && finder.evaluate().isEmpty; page++) {
+        await tester.tap(find.byTooltip('下一页'));
+        await tester.pumpAndSettle();
+        finder = find.byTooltip(key);
+      }
+      expect(finder, findsOneWidget, reason: key);
+      await tester.ensureVisible(finder);
+      await tester.tap(finder);
+      await tester.pumpAndSettle();
+    }
+
+    expect(commands, [
+      r'insert:\min\left(#0,#?\right)',
+      r'insert:\max\left(#0,#?\right)',
+      r'insert:\gcd\left(#0,#?\right)',
+      r'insert:\arg\left(#0\right)',
+      r'insert:\Re\left(#0\right)',
+      r'insert:\Im\left(#0\right)',
+    ]);
+    expect(find.byTooltip(r'\det'), findsNothing);
+  });
+
   for (final width in [320.0, 390.0]) {
     testWidgets(
       'Latin QWERTY shows all letters at $width with persistent Shift and pinned navigation',

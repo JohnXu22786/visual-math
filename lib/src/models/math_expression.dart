@@ -1667,6 +1667,9 @@ class MathExpression {
     result = result.replaceAll(RegExp(r'\\coth\b'), 'coth');
     result = result.replaceAll(RegExp(r'\\sech\b'), 'sech');
     result = result.replaceAll(RegExp(r'\\csch\b'), 'csch');
+    for (final name in ['min', 'max', 'gcd', 'arg', 'Re', 'Im']) {
+      result = result.replaceAll(RegExp('\\\\$name\\b'), name);
+    }
 
     // 5) Constants
     result = result.replaceAll(RegExp(r'\\pi(?![a-zA-Z])'), ' pi ');
@@ -1812,6 +1815,18 @@ class MathExpression {
   static final Set<String> _knownFunctions = {
     ...mathUnaryInputs.map((input) => input.name),
     ...mathBinaryInputs.map((input) => input.name),
+    'min',
+    'max',
+    'gcd',
+    'arg',
+    'Re',
+    'Im',
+    'arccot',
+    'arcsec',
+    'arccsc',
+    'arsinh',
+    'arcosh',
+    'artanh',
   };
   static final Set<String> _builtinConstants = {
     ...mathConstantInputs.map((input) => input.name),

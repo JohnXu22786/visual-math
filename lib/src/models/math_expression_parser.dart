@@ -178,6 +178,19 @@ class MathExpressionParser {
     final code = switch (name) {
       'ln' => 'Math.log($a)',
       'log' when args.length == 2 => '(Math.log(${args[1]})/Math.log($a))',
+      'min' => 'Math.min(${args.join(',')})',
+      'max' => 'Math.max(${args.join(',')})',
+      'gcd' =>
+        '((...v)=>{if(v.some(x=>!Number.isSafeInteger(x)))throw new Error("GCD expects integers.");return v.reduce((a,b)=>{a=Math.abs(a);b=Math.abs(b);while(b){const r=a%b;a=b;b=r;}return a;},0);})(${args.join(',')})',
+      'arg' => '((v)=>Number.isNaN(v)||v===0?NaN:(v<0?Math.PI:0))($a)',
+      'Re' => a,
+      'Im' => '0',
+      'arccot' => 'Math.atan2(1,$a)',
+      'arcsec' => 'Math.acos(1/$a)',
+      'arccsc' => 'Math.asin(1/$a)',
+      'arsinh' => 'Math.asinh($a)',
+      'arcosh' => 'Math.acosh($a)',
+      'artanh' => 'Math.atanh($a)',
       'cot' => '(1/Math.tan($a))',
       'csc' => '(1/Math.sin($a))',
       'sec' => '(1/Math.cos($a))',
@@ -311,7 +324,14 @@ class MathExpressionParser {
       return (values) =>
           binary(first(values).toDouble(), second(values).toDouble());
     }
+    final variadic = _variadicFunctions[name];
+    if (variadic != null && arguments.length >= variadic.$1) {
+      return (values) => variadic.$2(
+        arguments.map((argument) => argument(values).toDouble()).toList(),
+      );
+    }
     final supportedArities = <int>{if (unary != null) 1, if (binary != null) 2};
+    if (variadic != null) supportedArities.add(variadic.$1);
     if (supportedArities.isEmpty) {
       throw FormatException('Unknown function $name', null, token.offset);
     }
@@ -441,6 +461,14 @@ class MathExpressionParser {
     'acos': math.acos,
     'asin': math.asin,
     'atan': math.atan,
+    'arccot': (value) => math.atan2(1, value),
+    'arcsec': (value) => math.acos(1 / value),
+    'arccsc': (value) => math.asin(1 / value),
+    'arsinh': _asinh,
+    'arcosh': _acosh,
+    'artanh': _atanh,
+    'arg': (value) =>
+        value.isNaN || value == 0 ? double.nan : (value < 0 ? math.pi : 0),
     'ceil': (value) => value.ceilToDouble(),
     'cos': math.cos,
     'cosh': (value) => (math.exp(value) + math.exp(-value)) / 2,
@@ -454,6 +482,8 @@ class MathExpressionParser {
     'ln': math.log,
     'log': math.log,
     'round': (value) => value.roundToDouble(),
+    'Re': (value) => value,
+    'Im': (_) => 0,
     'sec': (value) => 1 / math.cos(value),
     'sech': (value) => 2 / (math.exp(value) + math.exp(-value)),
     'sin': math.sin,
@@ -471,6 +501,13 @@ class MathExpressionParser {
     'pow': (base, exponent) => math.pow(base, exponent).toDouble(),
   };
 
+  static final Map<String, (int, double Function(List<double>))>
+  _variadicFunctions = {
+    'min': (1, (values) => values.reduce(math.min)),
+    'max': (1, (values) => values.reduce(math.max)),
+    'gcd': (2, _gcd),
+  };
+
   static double _sinh(double value) {
     if (value == 0) return value;
     // A Taylor approximation avoids subtracting nearly equal exponentials.
@@ -479,6 +516,32 @@ class MathExpressionParser {
       return value * (1 + square / 6 + square * square / 120);
     }
     return (math.exp(value) - math.exp(-value)) / 2;
+  }
+
+  static double _asinh(double value) {
+    final absolute = value.abs();
+    if (absolute < 1e-4) {
+      final square = value * value;
+      return value * (1 - square / 6 + 3 * square * square / 40);
+    }
+    final result = absolute > 1e154
+        ? math.log(absolute) + math.ln2
+        : math.log(absolute + math.sqrt(absolute * absolute + 1));
+    return value.isNegative ? -result : result;
+  }
+
+  static double _acosh(double value) {
+    if (value < 1) return double.nan;
+    if (value > 1e154) return math.log(value) + math.ln2;
+    return math.log(value + math.sqrt(value - 1) * math.sqrt(value + 1));
+  }
+
+  static double _atanh(double value) {
+    if (value.abs() < 1e-4) {
+      final square = value * value;
+      return value * (1 + square / 3 + square * square / 5);
+    }
+    return 0.5 * math.log((1 + value) / (1 - value));
   }
 
   static double _tanh(double value) {
@@ -504,6 +567,26 @@ class MathExpressionParser {
     for (var factor = 2; factor <= value; factor++) {
       result *= factor;
       if (!result.isFinite) return result;
+    }
+    return result;
+  }
+
+  static double _gcd(List<double> values) {
+    var result = 0.0;
+    for (final value in values) {
+      if (!value.isFinite ||
+          value.abs() > 9007199254740991 ||
+          value.truncateToDouble() != value) {
+        throw ArgumentError.value(value, 'value', 'GCD expects integers.');
+      }
+      var left = result.abs();
+      var right = value.abs();
+      while (right != 0) {
+        final remainder = left % right;
+        left = right;
+        right = remainder;
+      }
+      result = left;
     }
     return result;
   }

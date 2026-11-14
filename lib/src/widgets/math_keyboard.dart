@@ -1084,7 +1084,9 @@ final Map<String, List<_MathKey>> _groups = {
     for (final input in mathBinaryInputs)
       if (!['log', 'pow'].contains(input.name))
         _MathKey(input.label, input.latex, description: input.name),
-    for (final name in ['min', 'max', 'det', 'gcd', 'arg', 'Re', 'Im'])
+    for (final name in ['min', 'max', 'gcd'])
+      _MathKey('\\$name', '\\$name\\left(#0,#?\\right)'),
+    for (final name in ['arg', 'Re', 'Im'])
       _MathKey('\\$name', '\\$name\\left(#0\\right)'),
     for (final name in [
       'arccot',
