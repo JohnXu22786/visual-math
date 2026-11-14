@@ -602,6 +602,50 @@ void main() {
       expect(key.currentState!.curvePoints.length, greaterThanOrEqualTo(2));
     });
 
+    testWidgets('setFormulas plots and reports only visible formulas', (
+      tester,
+    ) async {
+      final key = GlobalKey<MathCanvasState>();
+      List<Map<String, double>>? reportedPoints;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 300,
+              height: 300,
+              child: MathCanvas(
+                key: key,
+                onCoordinateUpdate: (points) => reportedPoints = points,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await key.currentState!.setFormulas([
+        FormulaEntry(rawExpression: 'x', parsed: MathExpression.fromInput('x')),
+        FormulaEntry(
+          rawExpression: 'x^2',
+          parsed: MathExpression.fromInput('x^2'),
+          visible: false,
+        ),
+      ]);
+      await tester.pump();
+
+      final plottedPoints = key.currentState!.curvePoints;
+      expect(plottedPoints, isNotEmpty);
+      expect(
+        plottedPoints.every(
+          (point) => (point['y']! - point['x']!).abs() < 1e-10,
+        ),
+        isTrue,
+        reason: 'only the visible y=x formula should be plotted',
+      );
+      expect(reportedPoints, plottedPoints);
+    });
+
     testWidgets('domain expressions clip curves and exclude open endpoints', (
       tester,
     ) async {

@@ -165,9 +165,11 @@ class MathCanvasState extends State<MathCanvas> {
       _formulaCurves
         ..clear()
         ..addAll(
-          newFormulas.map(
-            (f) => _FormulaCurve(formula: f, polylines: _sampleCurve(f)),
-          ),
+          newFormulas
+              .where((formula) => formula.visible)
+              .map(
+                (f) => _FormulaCurve(formula: f, polylines: _sampleCurve(f)),
+              ),
         );
     });
     final allPoints = _formulaCurves
