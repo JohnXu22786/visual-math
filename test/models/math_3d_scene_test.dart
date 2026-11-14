@@ -157,6 +157,85 @@ void main() {
       }
     });
 
+    test('perspective fit keeps asymmetric scene inside the far plane', () {
+      final scene = Scene3D();
+      const points = [
+        Point3D(0, 0, 0),
+        Point3D(1e6, 1e6, 0),
+        Point3D(1e6, 0, 0),
+      ];
+      for (final point in points) {
+        scene.add(Object3D.point(point));
+      }
+
+      final projection = scene.fitToView(
+        projection: Projection3D.perspective(),
+      )!;
+      final view = scene.camera.viewMatrix();
+      final viewZAxis = Vector3D(view[2], view[6], view[10]);
+      var minimumDepthOffset = double.infinity;
+      for (final point in points) {
+        final depthOffset = (point - scene.camera.target).dot(viewZAxis);
+        minimumDepthOffset = dart_math.min(minimumDepthOffset, depthOffset);
+        final cameraDepth =
+            -(view[2] * point.x +
+                view[6] * point.y +
+                view[10] * point.z +
+                view[14]);
+        expect(cameraDepth, lessThanOrEqualTo(projection.far));
+      }
+      expect(
+        projection.far,
+        greaterThanOrEqualTo(scene.camera.distance - minimumDepthOffset),
+      );
+
+      final positiveOffsetScene = Scene3D();
+      const positiveOffsetPoints = [
+        Point3D(0, 0, 0),
+        Point3D(1e6, 1e6, 0),
+        Point3D(0, 1e6, 0),
+      ];
+      for (final point in positiveOffsetPoints) {
+        positiveOffsetScene.add(Object3D.point(point));
+      }
+      final positiveOffsetProjection = positiveOffsetScene.fitToView(
+        projection: Projection3D.perspective(),
+      )!;
+      final positiveOffsetView = positiveOffsetScene.camera.viewMatrix();
+      for (final point in positiveOffsetPoints) {
+        final cameraDepth =
+            -(positiveOffsetView[2] * point.x +
+                positiveOffsetView[6] * point.y +
+                positiveOffsetView[10] * point.z +
+                positiveOffsetView[14]);
+        expect(cameraDepth, lessThanOrEqualTo(positiveOffsetProjection.far));
+      }
+    });
+
+    test('perspective far plane follows the final safe camera direction', () {
+      final scene = Scene3D();
+      const points = [Point3D(1.6e308, 0, 0), Point3D(1.79e308, 0, 0)];
+      for (final point in points) {
+        scene.add(Object3D.point(point));
+      }
+
+      final projection = scene.fitToView(
+        projection: Projection3D.perspective(),
+      )!;
+      final view = scene.camera.viewMatrix();
+      final viewZAxis = Vector3D(view[2], view[6], view[10]);
+      var minimumDepthOffset = double.infinity;
+      for (final point in points) {
+        final depthOffset = (point - scene.camera.target).dot(viewZAxis);
+        minimumDepthOffset = dart_math.min(minimumDepthOffset, depthOffset);
+      }
+
+      expect(
+        projection.far,
+        greaterThanOrEqualTo(scene.camera.distance - minimumDepthOffset),
+      );
+    });
+
     test('fitToView updates the camera around finite objects', () {
       final scene = Scene3D();
       scene.add(Object3D.point(const Point3D(10, 20, 30)));
