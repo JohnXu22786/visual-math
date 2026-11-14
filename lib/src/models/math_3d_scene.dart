@@ -63,7 +63,97 @@ Point3D? intersectRayPlane(
   final denominator = direction.dot(unitNormal);
   if (denominator.abs() < 1e-10) return null;
 
-  final distance = (point - ray.origin).dot(unitNormal) / denominator;
+  double weightedDifference(double a, double b, double weight) {
+    if (weight == 0) return 0;
+    final difference = a - b;
+    if (difference.isFinite || !a.isFinite || !b.isFinite) {
+      return difference * weight;
+    }
+    // The endpoints are finite but their difference overflowed. Halving first
+    // preserves the weighted result when the normal component brings it back
+    // into range.
+    return (a / 2 - b / 2) * (2 * weight);
+  }
+
+  final terms = [
+    weightedDifference(point.x, ray.origin.x, unitNormal.x),
+    weightedDifference(point.y, ray.origin.y, unitNormal.y),
+    weightedDifference(point.z, ray.origin.z, unitNormal.z),
+  ];
+  double compensatedSum(List<double> values) {
+    var sum = 0.0;
+    var correction = 0.0;
+    for (final value in values) {
+      final nextSum = sum + value;
+      correction += sum.abs() >= value.abs()
+          ? (sum - nextSum) + value
+          : (value - nextSum) + sum;
+      sum = nextSum;
+    }
+    return sum + correction;
+  }
+
+  late final double distance;
+  if (terms.every((term) => term.isFinite)) {
+    final termScale = terms.map((term) => term.abs()).reduce(dart_math.max);
+    final offset = termScale == 0
+        ? 0.0
+        : termScale *
+              compensatedSum(terms.map((term) => term / termScale).toList());
+    distance = offset / denominator;
+  } else {
+    // If a weighted difference overflows, scale only those coordinates and
+    // retain finite terms at their original scale so small residuals survive.
+    final overflowX = !terms[0].isFinite;
+    final overflowY = !terms[1].isFinite;
+    final overflowZ = !terms[2].isFinite;
+    if (overflowX && (!point.x.isFinite || !ray.origin.x.isFinite) ||
+        overflowY && (!point.y.isFinite || !ray.origin.y.isFinite) ||
+        overflowZ && (!point.z.isFinite || !ray.origin.z.isFinite)) {
+      return null;
+    }
+    final coordinateScale = [
+      if (unitNormal.x != 0) point.x.abs(),
+      if (unitNormal.x != 0) ray.origin.x.abs(),
+      if (unitNormal.y != 0) point.y.abs(),
+      if (unitNormal.y != 0) ray.origin.y.abs(),
+      if (unitNormal.z != 0) point.z.abs(),
+      if (unitNormal.z != 0) ray.origin.z.abs(),
+    ].reduce(dart_math.max);
+    if (!coordinateScale.isFinite) return null;
+    if (coordinateScale == 0) {
+      distance =
+          compensatedSum(terms.where((term) => term.isFinite).toList()) /
+          denominator;
+    } else {
+      final scaledOverflowOffset = compensatedSum([
+        if (overflowX)
+          (point.x / coordinateScale - ray.origin.x / coordinateScale) *
+              unitNormal.x,
+        if (overflowY)
+          (point.y / coordinateScale - ray.origin.y / coordinateScale) *
+              unitNormal.y,
+        if (overflowZ)
+          (point.z / coordinateScale - ray.origin.z / coordinateScale) *
+              unitNormal.z,
+      ]);
+      if (scaledOverflowOffset == 0) {
+        // Keep finite residual terms at their original scale when the
+        // overflowing terms cancel exactly.
+        distance =
+            compensatedSum(terms.where((term) => term.isFinite).toList()) /
+            denominator;
+      } else {
+        final scaledOffset = compensatedSum([
+          scaledOverflowOffset,
+          if (terms[0].isFinite) terms[0] / coordinateScale,
+          if (terms[1].isFinite) terms[1] / coordinateScale,
+          if (terms[2].isFinite) terms[2] / coordinateScale,
+        ]);
+        distance = coordinateScale * (scaledOffset / denominator);
+      }
+    }
+  }
   if (!distance.isFinite || (!allowBehind && distance < 0)) return null;
   return ray.origin + direction * distance;
 }
