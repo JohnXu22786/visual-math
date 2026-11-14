@@ -143,7 +143,7 @@ void main() {
       second.params.onLoadStop!(secondController, null);
       await tester.pump();
       expect(second.controller.sources[1], contains('window.setExpression'));
-      expect(second.controller.sources[2], contains(r'\"a\":4'));
+      expect(second.controller.sources, hasLength(2));
       first.controller.gate!.complete();
       await tester.pump();
     },
