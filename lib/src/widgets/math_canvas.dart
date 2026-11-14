@@ -267,17 +267,22 @@ class MathCanvasState extends State<MathCanvas> {
           0.1,
         )
         .toDouble();
-    final centerX = (xMin + xMax) / 2;
-    final centerY = (yMin + yMax) / 2;
+    double midpoint(double min, double max) => min.isNegative == max.isNegative
+        ? min + (max - min) / 2
+        : (min + max) / 2;
+
+    final centerX = midpoint(xMin, xMax);
+    final centerY = midpoint(yMin, yMax);
     // The requested range can be too small to move either bound away from a
     // large center after floating-point rounding.
     const precisionMargin = 7.105427357601002e-15;
-    final precisionScale = dart_math.max(
-      centerX.abs(),
-      centerY.abs() * aspectRatio,
-    );
-    if (precisionScale.isFinite) {
-      xRange = dart_math.max(xRange, precisionScale * precisionMargin);
+    final precisionMarginX = centerX.abs() * precisionMargin;
+    final precisionMarginY = centerY.abs() * precisionMargin * aspectRatio;
+    if (precisionMarginX.isFinite && precisionMarginY.isFinite) {
+      xRange = dart_math.max(
+        xRange,
+        dart_math.max(precisionMarginX, precisionMarginY),
+      );
     }
     var fittedXMin = centerX - xRange / 2;
     var fittedXMax = centerX + xRange / 2;
