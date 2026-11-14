@@ -699,6 +699,32 @@ void main() {
   });
 
   group('MathCanvas - viewport', () {
+    testWidgets('fitToView keeps large constant bounds distinct', (
+      tester,
+    ) async {
+      final key = GlobalKey<MathCanvasState>();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Center(
+            child: SizedBox(
+              width: 400,
+              height: 200,
+              child: MathCanvas(key: key),
+            ),
+          ),
+        ),
+      );
+      await key.currentState!.setExpression('1000000000000000000', null);
+      await key.currentState!.fitToView();
+
+      final (_, yMin, _, yMax) = key.currentState!.viewport;
+      expect(yMin.isFinite, isTrue);
+      expect(yMax.isFinite, isTrue);
+      expect(yMax, greaterThan(yMin));
+      expect(yMin, lessThanOrEqualTo(1e18));
+      expect(yMax, greaterThanOrEqualTo(1e18));
+    });
+
     testWidgets('reports visible bounds for a non-square canvas', (
       tester,
     ) async {
