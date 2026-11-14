@@ -4,7 +4,11 @@ import 'package:flutter/material.dart' hide Viewport;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:visual_math/visual_math.dart';
 
-MathDrawingSnapshot snapshot({List<Object3D>? scene}) => MathDrawingSnapshot(
+MathDrawingSnapshot snapshot({
+  List<Object3D>? scene,
+  List<ConstructionDependency>? dependencies,
+  List<PointAttachment>? attachments,
+}) => MathDrawingSnapshot(
   formulas: [
     FormulaEntry(
       id: 'f-17',
@@ -72,19 +76,21 @@ MathDrawingSnapshot snapshot({List<Object3D>? scene}) => MathDrawingSnapshot(
           indices: const [0, 1, 2],
         ).copyWith(documentId: 'surface-id'),
       ],
-  constructionDependencies3D: [
-    ConstructionDependency(
-      objectId: 'sphere-id',
-      tool: ConstructionTool.tetrahedron,
-      inputPoints: const [Point3D(1, 2, 3)],
-      sourcePointIds: const ['point-id'],
-      workingPlaneNormal: Vector3D.unitZ,
-      polygonSides: 5,
-    ),
-  ],
-  pointAttachments3D: const [
-    PointAttachment(pointId: 'point-id', targetId: 'sphere-id'),
-  ],
+  constructionDependencies3D:
+      dependencies ??
+      [
+        ConstructionDependency(
+          objectId: 'sphere-id',
+          tool: ConstructionTool.sphere,
+          inputPoints: const [Point3D(1, 2, 3)],
+          sourcePointIds: const ['point-id'],
+          workingPlaneNormal: Vector3D.unitZ,
+          polygonSides: 5,
+        ),
+      ],
+  pointAttachments3D:
+      attachments ??
+      const [PointAttachment(pointId: 'point-id', targetId: 'sphere-id')],
 );
 
 void main() {
@@ -176,6 +182,70 @@ void main() {
     expect(
       () => MathDrawingDocument.decode(jsonEncode(json)),
       throwsFormatException,
+    );
+  });
+
+  test(
+    'rejects a construction dependency attached to the wrong object type',
+    () {
+      final json = MathDrawingDocument(name: 'x', drawing: snapshot()).toJson();
+      final drawing = json['drawing'] as Map<String, dynamic>;
+      final view3D = drawing['view3D'] as Map<String, dynamic>;
+      final dependency =
+          (view3D['constructionDependencies'] as List<dynamic>).single
+              as Map<String, dynamic>;
+      dependency['objectId'] = 'point-id';
+      dependency['tool'] = ConstructionTool.polygon.name;
+
+      expect(
+        () => MathDrawingDocument.decode(jsonEncode(json)),
+        throwsFormatException,
+      );
+
+      dependency['tool'] = ConstructionTool.move.name;
+      expect(
+        () => MathDrawingDocument.decode(jsonEncode(json)),
+        throwsFormatException,
+      );
+    },
+  );
+
+  test('round trips a valid polygon construction dependency', () {
+    final scene = [
+      Object3D.point(const Point3D(0, 0, 0)).copyWith(documentId: 'p1'),
+      Object3D.point(const Point3D(1, 0, 0)).copyWith(documentId: 'p2'),
+      Object3D.point(const Point3D(0, 1, 0)).copyWith(documentId: 'p3'),
+      Object3D.polyhedron(
+        vertices: const [Point3D(0, 0, 0), Point3D(1, 0, 0), Point3D(0, 1, 0)],
+        indices: const [0, 1, 2],
+      ).copyWith(documentId: 'polygon-id'),
+    ];
+    final drawing = snapshot(
+      scene: scene,
+      attachments: const [],
+      dependencies: [
+        ConstructionDependency(
+          objectId: 'polygon-id',
+          tool: ConstructionTool.polygon,
+          inputPoints: const [
+            Point3D(0, 0, 0),
+            Point3D(1, 0, 0),
+            Point3D(0, 1, 0),
+          ],
+          sourcePointIds: const ['p1', 'p2', 'p3'],
+          workingPlaneNormal: Vector3D.unitZ,
+          polygonSides: 6,
+        ),
+      ],
+    );
+
+    final decoded = MathDrawingDocument.decode(
+      MathDrawingDocument(name: 'polygon', drawing: drawing).encode(),
+    );
+    expect(decoded.drawing.scene3D.last.type, Object3DType.polyhedron);
+    expect(
+      decoded.drawing.constructionDependencies3D.single.tool,
+      ConstructionTool.polygon,
     );
   });
 
