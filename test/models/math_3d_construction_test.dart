@@ -131,6 +131,47 @@ void main() {
     expect(state.points, hasLength(1));
   });
 
+  test('hyperbola rejects axes whose implicit coefficients underflow', () {
+    final oversized = ConstructionState(tool: ConstructionTool.hyperbola);
+
+    expect(oversized.addPoint(Point3D.origin), ConstructionAction.advanceStep);
+    expect(
+      oversized.addPoint(const Point3D(1e200, 0, 0)),
+      ConstructionAction.advanceStep,
+    );
+    expect(
+      oversized.addPoint(const Point3D(0, 1e200, 0)),
+      ConstructionAction.awaitInput,
+    );
+
+    expect(oversized.result, isNull);
+    expect(oversized.points, hasLength(2));
+
+    final largeButRepresentable = ConstructionState(
+      tool: ConstructionTool.hyperbola,
+    );
+    largeButRepresentable.addPoint(Point3D.origin);
+    largeButRepresentable.addPoint(const Point3D(1e155, 0, 0));
+    expect(
+      largeButRepresentable.addPoint(const Point3D(0, 1e155, 0)),
+      ConstructionAction.complete,
+    );
+    expect(largeButRepresentable.result!.conic!.quadraticX, greaterThan(0));
+    expect(largeButRepresentable.result!.conic!.quadraticY, lessThan(0));
+
+    final representable = ConstructionState(tool: ConstructionTool.hyperbola);
+    representable.addPoint(Point3D.origin);
+    representable.addPoint(const Point3D(2, 0, 0));
+    expect(
+      representable.addPoint(const Point3D(0, 3, 0)),
+      ConstructionAction.complete,
+    );
+
+    final conic = representable.result!.conic!;
+    expect(conic.quadraticX, closeTo(0.25, 1e-12));
+    expect(conic.quadraticY, closeTo(-1 / 9, 1e-12));
+  });
+
   test('preview uses the current point without mutating construction', () {
     final state = ConstructionState(tool: ConstructionTool.line);
     state.addPoint(const Point3D(1, 2, 3));
