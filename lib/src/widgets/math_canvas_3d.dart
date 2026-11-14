@@ -4489,7 +4489,9 @@ class MathCanvas3DState extends State<MathCanvas3D> {
 
   bool _cancelPointDrag() {
     var rolledBack = false;
-    if (_pointBeforeDrag != null && _selectedPointIndex != null) {
+    if (_pointMoved &&
+        _pointBeforeDrag != null &&
+        _selectedPointIndex != null) {
       _objects[_selectedPointIndex!] = _pointBeforeDrag!;
       _propagateConstructionAndAttachmentMoves(_selectedPointIndex!);
       _objectsVersion++;
@@ -4497,6 +4499,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     }
     _pointBeforeDrag = null;
     _pointEditPointer = null;
+    _pointMoved = false;
     return rolledBack;
   }
 
