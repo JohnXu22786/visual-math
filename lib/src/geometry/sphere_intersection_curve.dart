@@ -84,6 +84,7 @@ Object3D? spherePlaneIntersectionCurve(Object3D sphere, Object3D plane) {
       equation.coefficientScale == 1 &&
       _sumIsExact(projectedCenter, -planeOffset) &&
       (smallerProjection == 0 || smallerProjection >= largerProjection / 2);
+  if (exactAxisAlignedComparison && distance > radius) return null;
   final exactDistanceEvaluation =
       _productIsExact(equation.normal.x, center.x) &&
       _productIsExact(equation.normal.y, center.y) &&
@@ -141,6 +142,20 @@ Object3D? sphereSphereIntersectionCurve(Object3D first, Object3D second) {
   final secondRadius = second.sphereRadius.abs();
   if (!firstRadius.isFinite || !secondRadius.isFinite) {
     return null;
+  }
+
+  final exactAxisAlignedDistance = _exactAxisAlignedDistance(
+    firstCenter,
+    secondCenter,
+  );
+  if (exactAxisAlignedDistance != null &&
+      _sumIsExact(firstRadius, secondRadius) &&
+      _sumIsExact(firstRadius, -secondRadius)) {
+    final radiusDifference = (firstRadius - secondRadius).abs();
+    if (exactAxisAlignedDistance > firstRadius + secondRadius ||
+        exactAxisAlignedDistance < radiusDifference) {
+      return null;
+    }
   }
 
   final coordinateScale = [
@@ -361,3 +376,19 @@ bool _finitePoint(Point3D point) =>
 
 bool _finiteVector(Vector3D vector) =>
     vector.x.isFinite && vector.y.isFinite && vector.z.isFinite;
+
+double? _exactAxisAlignedDistance(Point3D first, Point3D second) {
+  final dx = second.x - first.x;
+  final dy = second.y - first.y;
+  final dz = second.z - first.z;
+  if (dy == 0 && dz == 0 && _sumIsExact(second.x, -first.x)) {
+    return dx.abs();
+  }
+  if (dx == 0 && dz == 0 && _sumIsExact(second.y, -first.y)) {
+    return dy.abs();
+  }
+  if (dx == 0 && dy == 0 && _sumIsExact(second.z, -first.z)) {
+    return dz.abs();
+  }
+  return null;
+}
