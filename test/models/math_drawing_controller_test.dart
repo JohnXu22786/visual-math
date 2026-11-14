@@ -141,6 +141,113 @@ void main() {
     expect(decoded.drawing.constructionDependencies3D, hasLength(1));
   });
 
+  testWidgets('selecting a 3D tool activates it on the canvas', (tester) async {
+    final controller = MathDrawingController();
+    final createdObjects = <Object3D>[];
+    controller.onObjectCreated = createdObjects.add;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          initialShowWebView: false,
+          initialMathematicalMode: false,
+          options: const MathWorkspaceOptions(show3D: true, show3DTools: true),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    controller.setActiveView(ViewMode.mode3D);
+    await tester.pumpAndSettle();
+    controller.setActiveTool(ConstructionTool.point);
+    final canvas = tester.state<MathCanvas3DState>(find.byType(MathCanvas3D));
+    expect(canvas.activeTool, ConstructionTool.point);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(MathCanvas3D));
+    await tester.pumpAndSettle();
+
+    expect(createdObjects, hasLength(1));
+    expect(createdObjects.single.type, Object3DType.point);
+  });
+
+  testWidgets('tool change publishes before clearing the selection', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    final observedTools = <ConstructionTool>[];
+    controller.onSelectionChanged = (_) =>
+        observedTools.add(controller.snapshot!.activeTool);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          initialShowWebView: false,
+          initialMathematicalMode: false,
+          options: const MathWorkspaceOptions(show3D: true, show3DTools: true),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    controller.setActiveView(ViewMode.mode3D);
+    await tester.pumpAndSettle();
+    observedTools.clear();
+    controller.setActiveTool(ConstructionTool.point);
+
+    expect(observedTools, [ConstructionTool.point]);
+  });
+
+  testWidgets('tool changes publish the rolled-back point drag consistently', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    final publishedTools = <ConstructionTool>[];
+    controller.onSelectionChanged = (_) =>
+        publishedTools.add(controller.snapshot!.activeTool);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          controller: controller,
+          initialShowWebView: false,
+          initialMathematicalMode: false,
+          options: const MathWorkspaceOptions(show3D: true, show3DTools: true),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    controller.setActiveView(ViewMode.mode3D);
+    controller.setScene3D([const Object3D.point(Point3D(0, 0, 0))]);
+    await tester.pumpAndSettle();
+    final finder = find.byType(MathCanvas3D);
+    final canvas = tester.state<MathCanvas3DState>(finder);
+    final box = tester.renderObject<RenderBox>(finder);
+    final projection = Projection3D.parallel(
+      width: box.size.width,
+      height: box.size.height,
+      scale: canvas.camera.distance * 0.6,
+    );
+    final point = worldToScreen(
+      const Point3D(0, 0, 0),
+      canvas.camera,
+      projection,
+    );
+    final gesture = await tester.startGesture(
+      box.localToGlobal(Offset(point.x, point.y)),
+    );
+    await gesture.moveBy(const Offset(20, 10));
+    await tester.pump();
+    expect(canvas.objects.single.point, isNot(const Point3D(0, 0, 0)));
+
+    controller.setActiveTool(ConstructionTool.point);
+
+    expect(publishedTools, isNotEmpty);
+    expect(publishedTools.last, ConstructionTool.point);
+    expect(canvas.objects.single.point, const Point3D(0, 0, 0));
+    await gesture.up();
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('controller commands update the attached page snapshot', (
     tester,
   ) async {
