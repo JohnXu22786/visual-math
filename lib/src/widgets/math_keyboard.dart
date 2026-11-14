@@ -46,7 +46,10 @@ class MathKeyboard extends StatefulWidget {
 class _MathKeyboardState extends State<MathKeyboard> {
   String _category = '常用';
   List<String> _categoryOrder = _defaultCategoryOrder;
-  late final Future<void> _categoryOrderLoad;
+  late Future<void> _categoryOrderLoad;
+  int _categoryOrderLoadGeneration = 0;
+  bool _categoryOrderReloading = false;
+  StateSetter? _setCategoryOrderDialogState;
   int _page = 0;
   bool _shifted = false;
   final _categoryScrollController = ScrollController();
@@ -72,6 +75,19 @@ class _MathKeyboardState extends State<MathKeyboard> {
   }
 
   @override
+  void didUpdateWidget(covariant MathKeyboard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.preferenceNamespace != widget.preferenceNamespace ||
+        oldWidget.persistenceEnabled != widget.persistenceEnabled) {
+      _categoryOrderLoadGeneration++;
+      _categoryOrder = _defaultCategoryOrder;
+      _categoryOrderReloading = widget.persistenceEnabled;
+      _refreshCategoryOrderDialog();
+      _categoryOrderLoad = _loadCategoryOrder();
+    }
+  }
+
+  @override
   void dispose() {
     _categoryScrollController.dispose();
     _keyScrollController.dispose();
@@ -91,11 +107,29 @@ class _MathKeyboardState extends State<MathKeyboard> {
 
   Future<void> _loadCategoryOrder() async {
     if (!widget.persistenceEnabled) return;
+    final generation = _categoryOrderLoadGeneration;
+    final preferenceKey = _categoryOrderPreferenceKey;
     final preferences = await SharedPreferences.getInstance();
-    final storedOrder = preferences.getStringList(_categoryOrderPreferenceKey);
-    if (!mounted) return;
-    setState(() => _categoryOrder = _mergeCategoryOrder(storedOrder));
+    final storedOrder = preferences.getStringList(preferenceKey);
+    if (!mounted || generation != _categoryOrderLoadGeneration) return;
+    setState(() {
+      _categoryOrder = _mergeCategoryOrder(storedOrder);
+      _categoryOrderReloading = false;
+    });
+    _refreshCategoryOrderDialog();
     _ensureCategoryVisible(_category);
+  }
+
+  void _refreshCategoryOrderDialog() {
+    final setDialogState = _setCategoryOrderDialogState;
+    if (setDialogState == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          !identical(_setCategoryOrderDialogState, setDialogState)) {
+        return;
+      }
+      setDialogState(() {});
+    });
   }
 
   List<String> _mergeCategoryOrder(List<String>? storedOrder) {
@@ -116,11 +150,10 @@ class _MathKeyboardState extends State<MathKeyboard> {
 
   Future<void> _saveCategoryOrder() async {
     if (!widget.persistenceEnabled) return;
+    final preferenceKey = _categoryOrderPreferenceKey;
+    final categoryOrder = List<String>.of(_categoryOrder);
     final preferences = await SharedPreferences.getInstance();
-    await preferences.setStringList(
-      _categoryOrderPreferenceKey,
-      _categoryOrder,
-    );
+    await preferences.setStringList(preferenceKey, categoryOrder);
   }
 
   void _ensureCategoryVisible(String category) {
@@ -143,7 +176,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
     int newIndex,
     StateSetter setDialogState,
   ) {
-    if (oldIndex == newIndex) return;
+    if (_categoryOrderReloading || oldIndex == newIndex) return;
     final nextOrder = List<String>.of(_categoryOrder);
     final category = nextOrder.removeAt(oldIndex);
     nextOrder.insert(newIndex, category);
@@ -162,6 +195,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
         dialogContext,
         StatefulBuilder(
           builder: (context, setDialogState) {
+            _setCategoryOrderDialogState = setDialogState;
             final cs = Theme.of(context).colorScheme;
             return AlertDialog(
               title: Text(_label('选择符号分类')),
@@ -200,13 +234,18 @@ class _MathKeyboardState extends State<MathKeyboard> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () {
-                    final defaults = List<String>.of(_defaultCategoryOrder);
-                    setState(() => _categoryOrder = defaults);
-                    setDialogState(() {});
-                    _ensureCategoryVisible(_category);
-                    unawaited(_saveCategoryOrder());
-                  },
+                  onPressed: _categoryOrderReloading
+                      ? null
+                      : () {
+                          if (_categoryOrderReloading) return;
+                          final defaults = List<String>.of(
+                            _defaultCategoryOrder,
+                          );
+                          setState(() => _categoryOrder = defaults);
+                          setDialogState(() {});
+                          _ensureCategoryVisible(_category);
+                          unawaited(_saveCategoryOrder());
+                        },
                   child: Text(_label('恢复默认')),
                 ),
                 TextButton(
@@ -219,6 +258,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
         ),
       ),
     );
+    _setCategoryOrderDialogState = null;
   }
 
   void _changePage(int pageCount, int direction) {
