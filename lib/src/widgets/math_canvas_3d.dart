@@ -1635,21 +1635,16 @@ class MathCanvas3DState extends State<MathCanvas3D> {
                   normal: normal,
                   allowBehind: projection.type == ProjectionType.parallel,
                 );
-                if (hit != null) {
-                  if (_pointInTriangle3D(hit, a, b, c)) {
-                    final candidateDepth = depthAt(hit);
-                    if (isVisibleDepth(candidateDepth)) {
-                      distance = 0;
-                      hitDepth = dart_math
-                          .min(hitDepth, candidateDepth)
-                          .toDouble();
-                    }
+                if (hit != null && _pointInTriangle3D(hit, a, b, c)) {
+                  final candidateDepth = depthAt(hit);
+                  if (isVisibleDepth(candidateDepth)) {
+                    distance = 0;
+                    hitDepth = dart_math
+                        .min(hitDepth, candidateDepth)
+                        .toDouble();
                   }
-                  continue;
                 }
-                // A screen ray parallel to this face has no 3D plane hit.
-                // Keep its projected boundary selectable when the face is
-                // edge-on, while retaining face hits and their depth ordering.
+                continue;
               }
               for (var edge = 0; edge < projected.length; edge++) {
                 final next = (edge + 1) % projected.length;
@@ -3699,6 +3694,40 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       if (curve.conic != null && _circleInfo(curve.conic!) != null) {
         return _pointOnConicPath(curve, point);
       }
+      Vector3D? tangentAt(Point3D endpoint) {
+        final conic = curve.conic;
+        if (conic == null) return null;
+        final coordinates = _conicCoordinates(conic, endpoint - conic.origin);
+        if (coordinates == null) return null;
+        final gradientX =
+            2 * conic.quadraticX * coordinates.x +
+            conic.quadraticXY * coordinates.y +
+            conic.linearX;
+        final gradientY =
+            conic.quadraticXY * coordinates.x +
+            2 * conic.quadraticY * coordinates.y +
+            conic.linearY;
+        final tangent = conic.axisU * -gradientY + conic.axisV * gradientX;
+        if (!tangent.magnitude.isFinite || tangent.magnitude == 0) return null;
+        return tangent * (1 / tangent.magnitude);
+      }
+
+      double endpointTolerance(
+        Point3D endpoint,
+        Vector3D tangent,
+        double pathTolerance,
+      ) {
+        final tangentCoordinateScale =
+            (point.x.abs() + endpoint.x.abs()) * tangent.x.abs() +
+            (point.y.abs() + endpoint.y.abs()) * tangent.y.abs() +
+            (point.z.abs() + endpoint.z.abs()) * tangent.z.abs() +
+            1;
+        return dart_math.min(
+          tangentCoordinateScale * 2.220446049250313e-16,
+          pathTolerance * 0.1,
+        );
+      }
+
       for (var i = 1; i < curve.vertices.length; i++) {
         if (curve.curveStarts.contains(i)) continue;
         final start = curve.vertices[i - 1];
@@ -3715,7 +3744,45 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           1e-9,
           dart_math.sqrt(lengthSquared) * 0.02,
         );
-        if (point.distanceTo(closest) <= tolerance) return true;
+        if (point.distanceTo(closest) > tolerance) continue;
+
+        final isPathStart = i == 1 || curve.curveStarts.contains(i - 1);
+        if (isPathStart) {
+          final tangent = tangentAt(start);
+          if (tangent != null) {
+            final pathTangent = direction.dot(tangent) < 0
+                ? tangent * -1
+                : tangent;
+            final precisionTolerance = endpointTolerance(
+              start,
+              pathTangent,
+              tolerance,
+            );
+            if ((point - start).dot(pathTangent) < -precisionTolerance) {
+              continue;
+            }
+          }
+        }
+        final isPathEnd =
+            i == curve.vertices.length - 1 || curve.curveStarts.contains(i + 1);
+        if (isPathEnd) {
+          final endpoint = curve.vertices[i];
+          final tangent = tangentAt(endpoint);
+          if (tangent != null) {
+            final pathTangent = direction.dot(tangent) < 0
+                ? tangent * -1
+                : tangent;
+            final precisionTolerance = endpointTolerance(
+              endpoint,
+              pathTangent,
+              tolerance,
+            );
+            if ((point - endpoint).dot(pathTangent) > precisionTolerance) {
+              continue;
+            }
+          }
+        }
+        return true;
       }
       return false;
     }
