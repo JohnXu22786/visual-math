@@ -86,13 +86,16 @@ class MathDrawingDocument {
   }
 }
 
-String _fallbackId(List<String> ids, int index, String prefix) {
-  if (ids[index].isNotEmpty) return ids[index];
+List<String> _uniqueIds(List<String> ids, String prefix) {
   final used = ids.where((id) => id.isNotEmpty).toSet();
-  for (var i = 0; i < index; i++) {
-    if (ids[i].isEmpty) _addUniqueFallback('$prefix-$i', used);
-  }
-  return _addUniqueFallback('$prefix-$index', used);
+  final seen = <String>{};
+  return [
+    for (var i = 0; i < ids.length; i++)
+      if (ids[i].isNotEmpty && seen.add(ids[i]))
+        ids[i]
+      else
+        _addUniqueFallback(ids[i].isEmpty ? '$prefix-$i' : ids[i], used),
+  ];
 }
 
 String _addUniqueFallback(String base, Set<String> used) {
@@ -104,27 +107,130 @@ String _addUniqueFallback(String base, Set<String> used) {
   return candidate;
 }
 
-String _remapObjectReference(List<Object3D> objects, String id) {
-  final ids = objects.map((object) => object.documentId).toList();
-  final index = ids.indexOf(id);
-  return index < 0 ? id : _fallbackId(ids, index, 'object');
+String _remapObjectReference(
+  List<Object3D> objects,
+  List<String> uniqueIds,
+  String id, {
+  bool Function(Object3D)? matches,
+}) {
+  final index = objects.indexWhere(
+    (object) => object.documentId == id && (matches == null || matches(object)),
+  );
+  return index < 0 ? id : uniqueIds[index];
 }
 
-Map<String, dynamic> _snapshotToJson(MathDrawingSnapshot s) => {
+String? _remapFormulaReference(
+  List<FormulaEntry> formulas,
+  List<String> uniqueIds,
+  String? id,
+) {
+  if (id == null) return null;
+  final index = formulas.indexWhere((formula) => formula.id == id);
+  return index < 0 ? id : uniqueIds[index];
+}
+
+String? _remapSceneFormulaReference(
+  List<FormulaEntry> formulas,
+  List<String> uniqueIds,
+  List<Object3D> objects,
+  int objectIndex,
+) {
+  final id = objects[objectIndex].formulaRowId;
+  if (id == null) return null;
+  final formulaIndexes = [
+    for (var i = 0; i < formulas.length; i++)
+      if (formulas[i].id == id) i,
+  ];
+  if (formulaIndexes.length < 2) {
+    return formulaIndexes.isEmpty ? id : uniqueIds[formulaIndexes.single];
+  }
+
+  final label = objects[objectIndex].label?.trim();
+  if (label != null && label.isNotEmpty) {
+    final labelMatches = formulaIndexes
+        .where(
+          (i) =>
+              formulas[i].rawExpression.trim().isNotEmpty &&
+              formulas[i].rawExpression.trim() == label,
+        )
+        .toList();
+    if (labelMatches.length == 1) return uniqueIds[labelMatches.single];
+  }
+
+  final visibleFormulaIndexes = [
+    for (final i in formulaIndexes)
+      if (formulas[i].visible && formulas[i].rawExpression.trim().isNotEmpty) i,
+  ];
+  final matchingObjects = objects
+      .where((object) => object.formulaRowId == id)
+      .length;
+  if (matchingObjects != visibleFormulaIndexes.length) {
+    return uniqueIds[formulaIndexes.first];
+  }
+
+  // Formula plot objects are stored in formula-row order. With a complete set
+  // of visible plots, that order disambiguates duplicate source row IDs.
+  final objectOccurrence = objects
+      .take(objectIndex)
+      .where((object) => object.formulaRowId == id)
+      .length;
+  return uniqueIds[visibleFormulaIndexes[objectOccurrence]];
+}
+
+Map<String, dynamic> _snapshotToJson(MathDrawingSnapshot s) {
+  final formulaIds = _uniqueIds(
+    s.formulas.map((formula) => formula.id).toList(),
+    'formula',
+  );
+  final sceneObjectIds = s.scene3D.map((object) => object.documentId).toList();
+  final hiddenPlotFormulaIndexes = [
+    for (var i = 0; i < s.formulas.length; i++)
+      if (s.formulas[i].hiddenPlot3D != null) i,
+  ];
+  final allObjectIds = _uniqueIds([
+    ...sceneObjectIds,
+    for (final i in hiddenPlotFormulaIndexes)
+      s.formulas[i].hiddenPlot3D!.documentId,
+  ], 'object');
+  final objectIds = allObjectIds.take(sceneObjectIds.length).toList();
+  final hiddenPlotIdsByFormula = {
+    for (var i = 0; i < hiddenPlotFormulaIndexes.length; i++)
+      hiddenPlotFormulaIndexes[i]: allObjectIds[sceneObjectIds.length + i],
+  };
+  return _snapshotToJsonWithIds(
+    s,
+    formulaIds,
+    objectIds,
+    hiddenPlotIdsByFormula,
+  );
+}
+
+Map<String, dynamic> _snapshotToJsonWithIds(
+  MathDrawingSnapshot s,
+  List<String> formulaIds,
+  List<String> objectIds,
+  Map<int, String> hiddenPlotIdsByFormula,
+) => {
   'formulas': [
     for (var i = 0; i < s.formulas.length; i++)
       {
-        'id': _fallbackId(
-          s.formulas.map((formula) => formula.id).toList(),
-          i,
-          'formula',
-        ),
+        'id': formulaIds[i],
         'source': s.formulas[i].rawExpression,
         'color': s.formulas[i].color.toARGB32(),
         'colorMode': s.formulas[i].autoColor ? 'auto' : 'custom',
         'visible': s.formulas[i].visible,
         if (s.formulas[i].hiddenPlot3D case final plot?)
-          'hiddenPlot3D': _objectToJson(plot, plot.documentId),
+          'hiddenPlot3D': _objectToJson(
+            plot,
+            hiddenPlotIdsByFormula[i]!,
+            formulaRowId: plot.formulaRowId == s.formulas[i].id
+                ? formulaIds[i]
+                : _remapFormulaReference(
+                    s.formulas,
+                    formulaIds,
+                    plot.formulaRowId,
+                  ),
+          ),
         'domainStart': s.formulas[i].domainStartExpression ?? '',
         'domainEnd': s.formulas[i].domainEndExpression ?? '',
         'includeDomainStart': s.formulas[i].includeDomainStart,
@@ -167,29 +273,53 @@ Map<String, dynamic> _snapshotToJson(MathDrawingSnapshot s) => {
       for (var i = 0; i < s.scene3D.length; i++)
         _objectToJson(
           s.scene3D[i],
-          _fallbackId(
-            s.scene3D.map((object) => object.documentId).toList(),
+          objectIds[i],
+          formulaRowId: _remapSceneFormulaReference(
+            s.formulas,
+            formulaIds,
+            s.scene3D,
             i,
-            'object',
           ),
         ),
     ],
     'pointAttachments': [
       for (final relationship in s.pointAttachments3D)
         {
-          'pointId': _remapObjectReference(s.scene3D, relationship.pointId),
-          'targetId': _remapObjectReference(s.scene3D, relationship.targetId),
+          'pointId': _remapObjectReference(
+            s.scene3D,
+            objectIds,
+            relationship.pointId,
+            matches: (object) => object.type == Object3DType.point,
+          ),
+          'targetId': _remapObjectReference(
+            s.scene3D,
+            objectIds,
+            relationship.targetId,
+          ),
         },
     ],
     'constructionDependencies': [
       for (final dependency in s.constructionDependencies3D)
         {
-          'objectId': _remapObjectReference(s.scene3D, dependency.objectId),
+          'objectId': _remapObjectReference(
+            s.scene3D,
+            objectIds,
+            dependency.objectId,
+            matches: (object) =>
+                _dependencyMatchesObjectType(dependency, object),
+          ),
           'tool': dependency.tool.name,
           'inputPoints': [for (final p in dependency.inputPoints) _point(p)],
           'sourcePointIds': [
             for (final id in dependency.sourcePointIds)
-              id == null ? null : _remapObjectReference(s.scene3D, id),
+              id == null
+                  ? null
+                  : _remapObjectReference(
+                      s.scene3D,
+                      objectIds,
+                      id,
+                      matches: (object) => object.type == Object3DType.point,
+                    ),
           ],
           'workingPlaneNormal': _vector(dependency.workingPlaneNormal),
           'polygonSides': dependency.polygonSides,
@@ -537,10 +667,14 @@ ConstructionDependency _dependencyFromJson(Map<String, dynamic> json) {
   );
 }
 
-Map<String, dynamic> _objectToJson(Object3D o, String id) => {
+Map<String, dynamic> _objectToJson(
+  Object3D o,
+  String id, {
+  String? formulaRowId,
+}) => {
   'id': id,
   'type': o.type.name,
-  if (o.formulaRowId != null) 'formulaRowId': o.formulaRowId,
+  if (formulaRowId != null) 'formulaRowId': formulaRowId,
   'color': o.color,
   'opacity': o.opacity,
   'edgeWidth': o.edgeWidth,
