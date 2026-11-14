@@ -2238,6 +2238,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           tool == ConstructionTool.deleteObject,
     );
     if (index == null) return;
+    var sceneChanged = false;
     switch (tool) {
       case ConstructionTool.deleteObject:
         _removeObjectAt(index);
@@ -2248,7 +2249,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           );
           _objectsVersion++;
         });
-        widget.onSceneChanged?.call();
+        sceneChanged = true;
       case ConstructionTool.volume:
         final volume = _objectVolume(_objects[index]);
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
@@ -2302,14 +2303,19 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           widget.onToolInstruction?.call('再点击目标对象');
         } else {
           final source = _objects[_styleSourceIndex!];
-          setState(() {
-            _objects[index] = _objects[index].copyWith(
-              color: source.color,
-              opacity: source.opacity,
-            );
-            _styleSourceIndex = null;
-            _objectsVersion++;
-          });
+          final target = _objects[index];
+          if (target.color != source.color ||
+              target.opacity != source.opacity) {
+            setState(() {
+              _objects[index] = target.copyWith(
+                color: source.color,
+                opacity: source.opacity,
+              );
+              _objectsVersion++;
+            });
+            sceneChanged = true;
+          }
+          _styleSourceIndex = null;
           widget.onToolInstruction?.call(ToolInfo.all[tool]!.tooltip);
         }
       case ConstructionTool.attachDetachPoint:
@@ -2335,6 +2341,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
               _attachmentPointIndex = null;
               _objectsVersion++;
             });
+            sceneChanged = true;
             widget.onToolInstruction?.call('点已附着到对象');
           }
         } else if (_objects[index].type == Object3DType.point) {
@@ -2343,6 +2350,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
               _pointAttachments.remove(index);
               _objectsVersion++;
             });
+            sceneChanged = true;
             widget.onToolInstruction?.call('点已脱离对象');
           } else if (_attachmentPointIndex == null) {
             _attachmentPointIndex = index;
@@ -2355,10 +2363,10 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       default:
         break;
     }
-    widget.onSceneChanged?.call();
+    if (sceneChanged) widget.onSceneChanged?.call();
   }
 
-  void _appendCreatedObject(Object3D object) {
+  void _appendCreatedObject(Object3D object, {bool notify = true}) {
     final toolName = ToolInfo.all[_currentTool]!.name;
     var number = 1;
     while (_objects.any((existing) => existing.label == '$toolName$number')) {
@@ -2374,7 +2382,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         _objects.add(labelled);
         _objectsVersion++;
       });
-      widget.onSceneChanged?.call();
+      if (notify) widget.onSceneChanged?.call();
     }
   }
 
