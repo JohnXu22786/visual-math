@@ -3245,21 +3245,48 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       final closestDistance = -offset.dot(unitDirection);
       final closestPoint = line.origin + unitDirection * closestDistance;
       final closestOffset = closestPoint - sphere.sphereCenter;
-      final closestDistanceSquared = closestOffset.dot(closestOffset);
-      final radiusSquared = sphere.sphereRadius * sphere.sphereRadius;
-      final chordSquared = radiusSquared - closestDistanceSquared;
-      final tangentTolerance = (radiusSquared + closestDistanceSquared) * 1e-12;
-      if (!chordSquared.isFinite || chordSquared < -tangentTolerance) {
+      final radius = sphere.sphereRadius.abs();
+      final scale = dart_math.max(
+        radius,
+        dart_math.max(
+          closestOffset.x.abs(),
+          dart_math.max(closestOffset.y.abs(), closestOffset.z.abs()),
+        ),
+      );
+      if (!scale.isFinite) return const [];
+      final scaledRadius = scale == 0 ? 0 : radius / scale;
+      final scaledClosestX = scale == 0 ? 0 : closestOffset.x / scale;
+      final scaledClosestY = scale == 0 ? 0 : closestOffset.y / scale;
+      final scaledClosestZ = scale == 0 ? 0 : closestOffset.z / scale;
+      final scaledRadiusSquared = scaledRadius * scaledRadius;
+      final scaledClosestDistanceSquared =
+          scaledClosestX * scaledClosestX +
+          scaledClosestY * scaledClosestY +
+          scaledClosestZ * scaledClosestZ;
+      final scaledChordSquared =
+          scaledRadiusSquared - scaledClosestDistanceSquared;
+      final tangentTolerance =
+          (scaledRadiusSquared + scaledClosestDistanceSquared) * 1e-12;
+      if (!scaledChordSquared.isFinite ||
+          scaledChordSquared < -tangentTolerance) {
         return const [];
       }
-      final halfChord = dart_math.sqrt(dart_math.max(0, chordSquared));
+      final halfChord =
+          scale * dart_math.sqrt(dart_math.max(0, scaledChordSquared));
       final candidates = <double>[closestDistance - halfChord];
       if (halfChord > 0) candidates.add(closestDistance + halfChord);
-      return [
-        for (final distance in candidates)
-          if (inRange(line, distance / directionMagnitude))
-            line.origin + line.direction * (distance / directionMagnitude),
-      ];
+      final intersections = <Point3D>[];
+      for (final distance in candidates) {
+        final t = distance / directionMagnitude;
+        if (!inRange(line, t)) continue;
+        final intersection = line.origin + line.direction * t;
+        if (intersection.x.isFinite &&
+            intersection.y.isFinite &&
+            intersection.z.isFinite) {
+          intersections.add(intersection);
+        }
+      }
+      return intersections;
     }
 
     List<Point3D> lineConicIntersections(
