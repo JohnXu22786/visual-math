@@ -168,6 +168,21 @@ void main() {
     }
   });
 
+  test('vector rejects finite endpoints whose difference overflows', () {
+    final state = ConstructionState(tool: ConstructionTool.vector);
+    const start = Point3D(-1e308, 0, 0);
+    const overflowingEnd = Point3D(1e308, 0, 0);
+
+    expect(state.addPoint(start), ConstructionAction.advanceStep);
+    expect(state.addPoint(overflowingEnd), ConstructionAction.awaitInput);
+    expect(state.points, [start]);
+    expect(state.result, isNull);
+
+    const validEnd = Point3D(0, 1, 0);
+    expect(state.addPoint(validEnd), ConstructionAction.complete);
+    expect(state.result!.vector, validEnd - start);
+  });
+
   test(
     'three-point circle rejects collinearity and lies in the input plane',
     () {
