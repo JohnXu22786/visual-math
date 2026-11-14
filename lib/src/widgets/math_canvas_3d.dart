@@ -5096,8 +5096,13 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     final surfaceCandidates = <Point3D>[];
     final parallelSphereHits = Set<Point3D>.identity();
     final segmentCandidates = Set<Point3D>.identity();
+    final occlusionSensitiveSegmentCandidates = Set<Point3D>.identity();
 
-    void addSegmentCandidate(Point3D a, Point3D b) {
+    void addSegmentCandidate(
+      Point3D a,
+      Point3D b, {
+      bool excludeOccluded = false,
+    }) {
       if (projection.type == ProjectionType.perspective) {
         final depthA = worldToScreen(a, camera, projection).z;
         final depthB = worldToScreen(b, camera, projection).z;
@@ -5141,6 +5146,9 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       );
       candidates.add(candidate);
       segmentCandidates.add(candidate);
+      if (excludeOccluded) {
+        occlusionSensitiveSegmentCandidates.add(candidate);
+      }
     }
 
     final ray = _screenRay(screenX, screenY);
@@ -5163,21 +5171,78 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         case Object3DType.surface:
         case Object3DType.polyhedron:
           candidates.addAll(object.vertices);
-          for (var i = 0; i + 2 < object.indices.length; i += 3) {
-            final a = object.indices[i];
-            final b = object.indices[i + 1];
-            final c = object.indices[i + 2];
-            if (a < 0 ||
-                a >= object.vertices.length ||
-                b < 0 ||
-                b >= object.vertices.length ||
-                c < 0 ||
-                c >= object.vertices.length) {
-              continue;
+          if (object.type == Object3DType.polyhedron) {
+            if (object.showEdges && object.edgeWidth > 0) {
+              final edgeNormals = <(int, int), List<Vector3D>>{};
+              void addEdge(int first, int second, Vector3D normal) {
+                final key = first < second ? (first, second) : (second, first);
+                edgeNormals.putIfAbsent(key, () => []).add(normal);
+              }
+
+              for (var i = 0; i + 2 < object.indices.length; i += 3) {
+                final a = object.indices[i];
+                final b = object.indices[i + 1];
+                final c = object.indices[i + 2];
+                if (a < 0 ||
+                    a >= object.vertices.length ||
+                    b < 0 ||
+                    b >= object.vertices.length ||
+                    c < 0 ||
+                    c >= object.vertices.length) {
+                  continue;
+                }
+                final first = object.vertices[a];
+                final second = object.vertices[b];
+                final third = object.vertices[c];
+                final normal = _normalizedTriangleNormal(first, second, third);
+                if (normal == null ||
+                    _clipPolygonToDepthRange(
+                          [first, second, third],
+                          camera,
+                          projection,
+                        ).length <
+                        3) {
+                  continue;
+                }
+                addEdge(a, b, normal);
+                addEdge(b, c, normal);
+                addEdge(c, a, normal);
+              }
+
+              for (final entry in edgeNormals.entries) {
+                final normals = entry.value;
+                final firstNormal = normals.first;
+                final isCrease =
+                    normals.length == 1 ||
+                    normals.any(
+                      (normal) => firstNormal.dot(normal).abs() < 0.9999,
+                    );
+                if (!isCrease) continue;
+                final (first, second) = entry.key;
+                addSegmentCandidate(
+                  object.vertices[first],
+                  object.vertices[second],
+                  excludeOccluded: true,
+                );
+              }
             }
-            addSegmentCandidate(object.vertices[a], object.vertices[b]);
-            addSegmentCandidate(object.vertices[b], object.vertices[c]);
-            addSegmentCandidate(object.vertices[c], object.vertices[a]);
+          } else {
+            for (var i = 0; i + 2 < object.indices.length; i += 3) {
+              final a = object.indices[i];
+              final b = object.indices[i + 1];
+              final c = object.indices[i + 2];
+              if (a < 0 ||
+                  a >= object.vertices.length ||
+                  b < 0 ||
+                  b >= object.vertices.length ||
+                  c < 0 ||
+                  c >= object.vertices.length) {
+                continue;
+              }
+              addSegmentCandidate(object.vertices[a], object.vertices[b]);
+              addSegmentCandidate(object.vertices[b], object.vertices[c]);
+              addSegmentCandidate(object.vertices[c], object.vertices[a]);
+            }
           }
         case Object3DType.curve:
           candidates.addAll(object.vertices);
@@ -5271,6 +5336,11 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         final pixelDistance = parallelSphereHits.contains(candidate)
             ? 0.0
             : dart_math.sqrt(dx * dx + dy * dy);
+        if (pixelDistance < 14.0 &&
+            occlusionSensitiveSegmentCandidates.contains(candidate) &&
+            _isPointOccludedByOpaqueSurface(candidate)) {
+          continue;
+        }
         if (pixelDistance < 14.0 &&
             (pixelDistance < nearestDistance - (resolveDepth ? 1e-7 : 0) ||
                 (resolveDepth &&
