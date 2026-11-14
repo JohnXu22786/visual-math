@@ -169,6 +169,128 @@ void main() {
     });
 
     test(
+      'fitToView computes a finite center for large same-sign coordinates',
+      () {
+        final scene = Scene3D();
+        scene.add(Object3D.point(const Point3D(1e308, 0, 0)));
+        scene.add(Object3D.point(const Point3D(1.1e308, 0, 0)));
+
+        scene.fitToView();
+
+        expect(scene.camera.target.x, closeTo(1.05e308, 1e293));
+        expect(scene.camera.target.x.isFinite, isTrue);
+        expect(scene.camera.position.x.isFinite, isTrue);
+        expect(scene.camera.position.y.isFinite, isTrue);
+        expect(scene.camera.position.z.isFinite, isTrue);
+        expect(
+          scene.camera.viewMatrix().every((value) => value.isFinite),
+          isTrue,
+        );
+
+        scene
+          ..clear()
+          ..add(Object3D.point(const Point3D(1e100, 1e100, 1e100)));
+        scene.fitToView();
+
+        expect(scene.camera.position, isNot(scene.camera.target));
+        expect(
+          scene.camera.viewMatrix().every((value) => value.isFinite),
+          isTrue,
+        );
+
+        scene
+          ..clear()
+          ..add(Object3D.point(const Point3D(1.7e308, 0, 0)))
+          ..add(Object3D.point(const Point3D(1.79e308, 0, 0)));
+        scene.fitToView();
+
+        expect(scene.camera.target.x.isFinite, isTrue);
+        expect(scene.camera.distance.isFinite, isTrue);
+        expect(scene.camera.position.x.isFinite, isTrue);
+        expect(scene.camera.position.y.isFinite, isTrue);
+        expect(scene.camera.position.z.isFinite, isTrue);
+        expect(
+          scene.camera.viewMatrix().every((value) => value.isFinite),
+          isTrue,
+        );
+
+        scene
+          ..clear()
+          ..add(
+            Object3D.point(
+              const Point3D(
+                double.maxFinite,
+                double.maxFinite,
+                double.maxFinite,
+              ),
+            ),
+          );
+        scene.fitToView();
+
+        expect(scene.camera.distance, greaterThan(0));
+        expect(scene.camera.position, isNot(scene.camera.target));
+        expect(
+          scene.camera.viewMatrix().every((value) => value.isFinite),
+          isTrue,
+        );
+      },
+    );
+
+    test(
+      'fitToView keeps distance finite when the extent exceeds double range',
+      () {
+        final scene = Scene3D();
+        scene.add(Object3D.point(const Point3D(-double.maxFinite, 0, 0)));
+        scene.add(Object3D.point(const Point3D(double.maxFinite, 0, 0)));
+
+        scene.fitToView();
+
+        expect(scene.camera.distance.isFinite, isTrue);
+        expect(scene.camera.position.x.isFinite, isTrue);
+        expect(scene.camera.position.y.isFinite, isTrue);
+        expect(scene.camera.position.z.isFinite, isTrue);
+
+        final perspectiveScene = Scene3D();
+        perspectiveScene
+          ..add(Object3D.point(const Point3D(-1.1e308, 0, 0)))
+          ..add(Object3D.point(const Point3D(1.1e308, 0, 0)));
+        final projection = perspectiveScene.fitToView(
+          projection: Projection3D.perspective(),
+        )!;
+
+        expect(perspectiveScene.camera.distance.isFinite, isTrue);
+        expect(perspectiveScene.camera.position.x.isFinite, isTrue);
+        expect(perspectiveScene.camera.position.y.isFinite, isTrue);
+        expect(perspectiveScene.camera.position.z.isFinite, isTrue);
+        expect(
+          perspectiveScene.camera.viewMatrix().every((value) => value.isFinite),
+          isTrue,
+        );
+        expect(projection.far.isFinite, isTrue);
+        expect(projection.far, greaterThan(perspectiveScene.camera.distance));
+        expect(
+          projection.projectionMatrix().every((value) => value.isFinite),
+          isTrue,
+        );
+
+        final wideNearScene = Scene3D();
+        wideNearScene
+          ..add(Object3D.point(const Point3D(-1.1e308, 0, 0)))
+          ..add(Object3D.point(const Point3D(1.1e308, 0, 0)));
+        final wideNearProjection = wideNearScene.fitToView(
+          projection: Projection3D.perspective(near: 7e307, far: 1e308),
+        )!;
+
+        expect(
+          wideNearProjection.projectionMatrix().every(
+            (value) => value.isFinite,
+          ),
+          isTrue,
+        );
+      },
+    );
+
+    test(
       'zooming out preserves fitted camera distances above the zoom cap',
       () {
         final scene = Scene3D();
