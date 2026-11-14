@@ -100,6 +100,11 @@ class ConstructionState {
     if (!_isFinitePoint(point)) {
       return _reject('无法放置无效坐标，请重新选择位置');
     }
+    if (tool == ConstructionTool.vector &&
+        _points.length == 1 &&
+        !_isFiniteVector(point - _points.first)) {
+      return _reject('向量长度过大，无法表示，请重新选择终点');
+    }
     if (_points.isNotEmpty &&
         (tool == ConstructionTool.regularPolygon ||
             tool == ConstructionTool.tetrahedron)) {
