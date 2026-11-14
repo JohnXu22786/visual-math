@@ -1507,7 +1507,17 @@ class GraphPainter extends CustomPainter {
         textDirection: TextDirection.ltr,
       );
       textPainter.layout();
-      textPainter.paint(canvas, Offset(x0v + 4, y0v + 4));
+      final offset = Offset(
+        (x0v + 4).clamp(
+          0.0,
+          dart_math.max(0.0, size.width - textPainter.width),
+        ),
+        (y0v + 4).clamp(
+          0.0,
+          dart_math.max(0.0, size.height - textPainter.height),
+        ),
+      );
+      textPainter.paint(canvas, offset);
     }
   }
 
