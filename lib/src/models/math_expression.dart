@@ -547,10 +547,6 @@ class MathExpression {
         final v01 = grid[ix][iy + 1];
         final v11 = grid[ix + 1][iy + 1];
 
-        if (!v00.isFinite || !v10.isFinite || !v01.isFinite || !v11.isFinite) {
-          continue;
-        }
-
         final x = xMin + ix * stepX;
         final y = yMin + iy * stepY;
 
@@ -564,6 +560,51 @@ class MathExpression {
         }
 
         void addZeroEdge(double x1, double y1, double x2, double y2) {
+          bool isFiniteAt(double t) {
+            try {
+              return evaluator2D(
+                x1 + (x2 - x1) * t,
+                y1 + (y2 - y1) * t,
+              ).isFinite;
+            } catch (_) {
+              return false;
+            }
+          }
+
+          // A grid-aligned zero branch can end at a singular grid point even
+          // though it is valid arbitrarily close on either side. Trim that
+          // endpoint to the nearest finite point so each side remains a
+          // separate segment and the undefined point is never connected.
+          var lo = 0.0;
+          var hi = 1.0;
+          var loFinite = isFiniteAt(lo);
+          var hiFinite = isFiniteAt(hi);
+          if (!loFinite || !hiFinite) {
+            if (!loFinite && !hiFinite) {
+              rejectZeroEdge(x1, y1, x2, y2);
+              return;
+            }
+            for (var i = 0; i < 64; i++) {
+              final middle = (lo + hi) / 2;
+              if (middle == lo || middle == hi) break;
+              if (isFiniteAt(middle) == loFinite) {
+                lo = middle;
+              } else {
+                hi = middle;
+              }
+            }
+            final finiteT = loFinite ? lo : hi;
+            final finiteX = x1 + (x2 - x1) * finiteT;
+            final finiteY = y1 + (y2 - y1) * finiteT;
+            if (loFinite) {
+              x2 = finiteX;
+              y2 = finiteY;
+            } else {
+              x1 = finiteX;
+              y1 = finiteY;
+            }
+          }
+
           final horizontal = y1 == y2;
           final fixedCoordinate = horizontal ? {'y': y1} : {'x': x1};
           if (!MathExpressionParser.isIdenticallyZeroAfterSubstitution(
@@ -605,25 +646,33 @@ class MathExpression {
           ]);
         }
 
+        bool mayBeZeroEdge(double a, double b) =>
+            (a == 0.0 && b == 0.0) ||
+            (a == 0.0 && !b.isFinite) ||
+            (!a.isFinite && b == 0.0);
+
         // Preserve grid-aligned zero sets such as x^2 = 0. Assign interior
         // edges to their left/bottom cell so a zero edge is emitted once.
-        if (v00 == 0.0 && v10 == 0.0 && (v01 != 0.0 || v11 != 0.0)) {
+        if (mayBeZeroEdge(v00, v10) && (v01 != 0.0 || v11 != 0.0)) {
           addZeroEdge(x, y, x + stepX, y);
         }
         if (iy == gridY - 1 &&
-            v01 == 0.0 &&
-            v11 == 0.0 &&
+            mayBeZeroEdge(v01, v11) &&
             (v00 != 0.0 || v10 != 0.0)) {
           addZeroEdge(x, y + stepY, x + stepX, y + stepY);
         }
-        if (v00 == 0.0 && v01 == 0.0 && (v10 != 0.0 || v11 != 0.0)) {
+        if (mayBeZeroEdge(v00, v01) && (v10 != 0.0 || v11 != 0.0)) {
           addZeroEdge(x, y, x, y + stepY);
         }
         if (ix == gridX - 1 &&
-            v10 == 0.0 &&
-            v11 == 0.0 &&
+            mayBeZeroEdge(v10, v11) &&
             (v00 != 0.0 || v01 != 0.0)) {
           addZeroEdge(x + stepX, y, x + stepX, y + stepY);
+        }
+
+        if (!v00.isFinite || !v10.isFinite || !v01.isFinite || !v11.isFinite) {
+          result.addAll(zeroEdges);
+          continue;
         }
         // Collect crossing info for each edge.
         // Use a small epsilon to handle exact-zero values at grid points.

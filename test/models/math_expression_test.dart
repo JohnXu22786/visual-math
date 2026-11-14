@@ -729,11 +729,28 @@ void main() {
             gridX: 2,
             gridY: 1,
           );
+      final negativeRootZeroSegments = negativeRootAcrossPole
+          .where((segment) => segment.every((point) => point['y'] == 0))
+          .toList();
       expect(
-        negativeRootAcrossPole.any(
-          (segment) => segment.every((point) => point['y'] == 0),
+        negativeRootZeroSegments.any(
+          (segment) => segment.every((point) => point['x']! < 0),
         ),
-        isFalse,
+        isTrue,
+      );
+      expect(
+        negativeRootZeroSegments.any(
+          (segment) => segment.every((point) => point['x']! > 0),
+        ),
+        isTrue,
+      );
+      expect(
+        negativeRootZeroSegments.every(
+          (segment) =>
+              segment.every((point) => point['x']! < 0) ||
+              segment.every((point) => point['x']! > 0),
+        ),
+        isTrue,
       );
       final negativeEvenRootOnNegativeDomain =
           MathExpression.fromInput('nrt(-2,x)*y=0').sampleContourSegments(
