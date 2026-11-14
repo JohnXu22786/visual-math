@@ -56,6 +56,29 @@ void main() {
       expect(surfacePoint.z, closeTo(5, 1e-10));
     });
 
+    test('mixed-case constant names remain adjustable parameters', () {
+      for (final input in ['Pi+x', r'\Pi+x']) {
+        final surface = Expression3D.surface(input);
+        expect(surface.isValid, isTrue, reason: surface.parseError);
+        expect(surface.parameters, {'Pi'}, reason: input);
+        expect(surface.evaluateSurface(2, 0), 3, reason: input);
+
+        final updated = Expression3D.surface(input, parameterValues: {'Pi': 4});
+        expect(updated.parameters, {'Pi'}, reason: input);
+        expect(updated.evaluateSurface(2, 0), 6, reason: input);
+      }
+
+      for (final name in ['pi', 'PI']) {
+        final constant = Expression3D.surface('$name+x');
+        expect(constant.parameters, isEmpty, reason: name);
+        expect(
+          constant.evaluateSurface(2, 0),
+          closeTo(dart_math.pi + 2, 1e-10),
+          reason: name,
+        );
+      }
+    });
+
     test('constant products before parentheses accept uppercase names', () {
       for (final name in ['pi', 'PI']) {
         final surface = Expression3D.surface('$name(x+1) + sin(x)');
