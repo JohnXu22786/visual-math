@@ -5020,7 +5020,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     final surfaceCandidates = <Point3D>[];
     final parallelSphereHits = Set<Point3D>.identity();
     final segmentCandidates = Set<Point3D>.identity();
-    final occlusionSensitiveSegmentCandidates = Set<Point3D>.identity();
+    final occlusionSensitiveCandidates = Set<Point3D>.identity();
 
     void addSegmentCandidate(
       Point3D a,
@@ -5071,7 +5071,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       candidates.add(candidate);
       segmentCandidates.add(candidate);
       if (excludeOccluded) {
-        occlusionSensitiveSegmentCandidates.add(candidate);
+        occlusionSensitiveCandidates.add(candidate);
       }
     }
 
@@ -5096,6 +5096,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         case Object3DType.polyhedron:
           candidates.addAll(object.vertices);
           if (object.type == Object3DType.polyhedron) {
+            occlusionSensitiveCandidates.addAll(object.vertices);
             if (object.showEdges && object.edgeWidth > 0) {
               final edgeNormals = <(int, int), List<Vector3D>>{};
               void addEdge(int first, int second, Vector3D normal) {
@@ -5261,7 +5262,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
             ? 0.0
             : dart_math.sqrt(dx * dx + dy * dy);
         if (pixelDistance < 14.0 &&
-            occlusionSensitiveSegmentCandidates.contains(candidate) &&
+            occlusionSensitiveCandidates.contains(candidate) &&
             _isPointOccludedByOpaqueSurface(candidate)) {
           continue;
         }

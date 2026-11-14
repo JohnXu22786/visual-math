@@ -1620,7 +1620,7 @@ void main() {
     );
   });
 
-  testWidgets('polyhedron snapping skips creases hidden behind opaque faces', (
+  testWidgets('polyhedron snapping honors opaque-face visibility', (
     tester,
   ) async {
     final state = await setup(tester);
@@ -1688,6 +1688,17 @@ void main() {
     state.setTool(ConstructionTool.segment);
     await tester.pump();
 
+    const hiddenRearVertex = Point3D(1, -3, 1);
+    await tester.tapAt(screen(state, hiddenRearVertex));
+    await tester.pump();
+    expect(
+      state.constructionState!.points.single.y,
+      closeTo(0, 1e-8),
+      reason: 'the opaque face at y=0 hides the rear vertex at y=-3',
+    );
+
+    state.setTool(ConstructionTool.segment);
+    await tester.pump();
     const hiddenRearCreaseMidpoint = Point3D(1, -3, 0);
     await tester.tapAt(screen(state, hiddenRearCreaseMidpoint));
     await tester.pump();
