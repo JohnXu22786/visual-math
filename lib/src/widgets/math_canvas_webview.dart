@@ -490,6 +490,7 @@ class MathCanvasWebViewState extends State<MathCanvasWebView> {
         );
       }
     }
+    _pendingCommands.clear();
   }
 
   @override
