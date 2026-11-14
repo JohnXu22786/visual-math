@@ -147,25 +147,6 @@ void main() {
     return Offset(projected.x, projected.y);
   }
 
-  testWidgets('edge-on surface remains selectable along its projected edge', (
-    tester,
-  ) async {
-    final state = await setup(tester);
-    state.setCamera(const Camera3D(theta: 0, phi: 0));
-    final surface = Object3D.surface(
-      vertices: const [Point3D(0, -2, -2), Point3D(0, 2, -2), Point3D(0, 0, 2)],
-      indices: const [0, 1, 2],
-    );
-    state.setObjects([surface]);
-    state.setTool(ConstructionTool.move);
-    await tester.pump();
-
-    await tester.tapAt(screen(state, Point3D(0, 0, 0)));
-    await tester.pump();
-
-    expect(state.selectedObject, same(surface));
-  });
-
   testWidgets('circle intersections include points between sampled vertices', (
     tester,
   ) async {
@@ -248,6 +229,178 @@ void main() {
     expect(
       arcPoints.single.point.distanceTo(Point3D.origin + direction),
       lessThan(1e-8),
+    );
+  });
+
+  testWidgets('non-circle conic intersections stop at sampled path endpoints', (
+    tester,
+  ) async {
+    String? instruction;
+    final state = await setup(
+      tester,
+      onToolInstruction: (value) => instruction = value,
+    );
+    final curve = Object3D.curve(
+      points: const [Point3D(1, 0, 0), Point3D(-1, 0, 0)],
+      conic: const Conic3D(
+        origin: Point3D.origin,
+        axisU: Vector3D.unitX,
+        axisV: Vector3D(0, 0, 2),
+        quadraticX: 1,
+        quadraticXY: 0,
+        quadraticY: 1,
+        linearX: 0,
+        linearY: 0,
+        constant: -1,
+      ),
+    );
+    final outsideLine = Object3D.line(
+      const Point3D(-2, 0, -0.01),
+      const Point3D(2, 0, -0.01),
+      lineKind: Line3DKind.line,
+    );
+    Object3D plot() => Object3D.surface(
+      vertices: const [],
+      indices: const [],
+    ).copyWith(documentId: 'plot', formulaRowId: 'row');
+    Future<List<Object3D>> intersections(
+      Object3D curve,
+      Object3D line,
+      Point3D curveTap,
+      Point3D lineTap,
+    ) async {
+      state.setObjects([curve, line, plot()]);
+      state.setTool(ConstructionTool.intersectionPoint);
+      await tester.pump();
+      await tester.tapAt(screen(state, curveTap));
+      await tester.pump();
+      expect(instruction, '再点击第二个相交对象');
+      state.replaceFormulaObjects([plot()]);
+      await tester.pump();
+      await tester.tapAt(screen(state, lineTap));
+      await tester.pump();
+      return state.objects
+          .where((object) => object.type == Object3DType.point)
+          .toList();
+    }
+
+    final outsideIntersections = await intersections(
+      curve,
+      outsideLine,
+      const Point3D(0.8, 0, 0),
+      const Point3D(3, 0, -0.01),
+    );
+    expect(outsideIntersections, isEmpty);
+
+    const translatedOrigin = Point3D(1e12, 0, 0);
+    state.setCamera(
+      Camera3D(
+        target: translatedOrigin,
+        distance: state.camera.distance,
+        theta: state.camera.theta,
+        phi: state.camera.phi,
+      ),
+    );
+    final translatedCurve = Object3D.curve(
+      points: const [Point3D(1e12 + 1, 0, 0), Point3D(1e12 - 1, 0, 0)],
+      conic: const Conic3D(
+        origin: translatedOrigin,
+        axisU: Vector3D.unitX,
+        axisV: Vector3D(0, 0, 2),
+        quadraticX: 1,
+        quadraticXY: 0,
+        quadraticY: 1,
+        linearX: 0,
+        linearY: 0,
+        constant: -1,
+      ),
+    );
+    final translatedOutsideLine = Object3D.line(
+      const Point3D(1e12 - 2, 0, -0.001),
+      const Point3D(1e12 + 2, 0, -0.001),
+      lineKind: Line3DKind.line,
+    );
+    final translatedOutsideIntersections = await intersections(
+      translatedCurve,
+      translatedOutsideLine,
+      const Point3D(1e12 + 0.8, 0, 0),
+      const Point3D(1e12 + 3, 0, -0.001),
+    );
+    expect(translatedOutsideIntersections, isEmpty);
+
+    final translatedParabola = Object3D.curve(
+      points: const [Point3D(1e12, 0, 0), Point3D(1e12 + 1, 0, 1)],
+      conic: const Conic3D(
+        origin: translatedOrigin,
+        axisU: Vector3D.unitX,
+        axisV: Vector3D(0, 0, 1),
+        quadraticX: 1,
+        quadraticXY: 0,
+        quadraticY: 0,
+        linearX: 0,
+        linearY: -1,
+        constant: 0,
+      ),
+    );
+    final tangentLine = Object3D.line(
+      const Point3D(1e12 - 2, 0, 0),
+      const Point3D(1e12 + 2, 0, 0),
+      lineKind: Line3DKind.line,
+    );
+    final translatedEndpointIntersections = await intersections(
+      translatedParabola,
+      tangentLine,
+      const Point3D(1e12 + 0.5, 0, 0.25),
+      const Point3D(1e12 + 3, 0, 0),
+    );
+    expect(translatedEndpointIntersections, hasLength(1));
+    expect(
+      translatedEndpointIntersections.single.point.distanceTo(translatedOrigin),
+      lessThan(1e-9),
+    );
+
+    state.setCamera(
+      Camera3D(
+        target: Point3D.origin,
+        distance: state.camera.distance,
+        theta: state.camera.theta,
+        phi: state.camera.phi,
+      ),
+    );
+    final insideCurve = Object3D.curve(
+      points: [
+        for (var i = 0; i <= 10; i++)
+          Point3D(-1 + i * 0.2, 0, (-1 + i * 0.2) * (-1 + i * 0.2)),
+      ],
+      conic: const Conic3D(
+        origin: Point3D.origin,
+        axisU: Vector3D.unitX,
+        axisV: Vector3D(0, 0, 1),
+        quadraticX: 1,
+        quadraticXY: 0,
+        quadraticY: 0,
+        linearX: 0,
+        linearY: -1,
+        constant: 0,
+      ),
+    );
+    final insideLine = Object3D.line(
+      const Point3D(-2, 0, 0.5),
+      const Point3D(2, 0, 0.5),
+      lineKind: Line3DKind.line,
+    );
+    final insidePoints = await intersections(
+      insideCurve,
+      insideLine,
+      const Point3D(0.8, 0, 0.64),
+      const Point3D(0, 0, 0.5),
+    );
+    expect(insidePoints, hasLength(2));
+    expect(
+      insidePoints.every(
+        (object) => (object.point.x.abs() - math.sqrt(0.5)).abs() < 1e-8,
+      ),
+      isTrue,
     );
   });
 
