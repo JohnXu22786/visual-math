@@ -230,6 +230,63 @@ void main() {
     expect(result?.pointB.x, closeTo(0, 1e-10));
   });
 
+  test('translation rejects overflow and can recover with valid input', () {
+    final state = ConstructionState(tool: ConstructionTool.translation);
+    const original = Point3D(1e308, 0, 0);
+    const vectorStart = Point3D.origin;
+    const overflowingVectorEnd = Point3D(1e308, 0, 0);
+
+    state.addPoint(original);
+    state.addPoint(vectorStart);
+    expect(state.addPoint(overflowingVectorEnd), ConstructionAction.awaitInput);
+
+    expect(state.isComplete, isFalse);
+    expect(state.result, isNull);
+    expect(state.points, [original, vectorStart]);
+    expect(state.previewObject?.type, Object3DType.line);
+    expect(state.previewObject?.pointA, original);
+    expect(state.previewObject?.pointB, vectorStart);
+
+    expect(
+      state.addPoint(const Point3D(1e307, 0, 0)),
+      ConstructionAction.complete,
+    );
+    expect(state.isComplete, isTrue);
+    expect(state.result?.point.x.isFinite, isTrue);
+    expect(state.result?.point.x, greaterThan(1e308));
+  });
+
+  test(
+    'fixed-length segment rejects overflow and can recover with valid input',
+    () {
+      final state = ConstructionState(
+        tool: ConstructionTool.fixedLengthSegment,
+      );
+      const start = Point3D(1e308, 0, 0);
+      const directionPoint = Point3D(1.000000000000001e308, 0, 0);
+
+      state.addPoint(start);
+      state.addPoint(directionPoint);
+      expect(state.addPoint(Point3D.origin), ConstructionAction.awaitInput);
+
+      expect(state.isComplete, isFalse);
+      expect(state.result, isNull);
+      expect(state.points, [start, directionPoint]);
+      expect(state.previewObject?.type, Object3DType.line);
+      expect(state.previewObject?.pointA, start);
+      expect(state.previewObject?.pointB, directionPoint);
+
+      expect(
+        state.addPoint(const Point3D(0.5e308, 0, 0)),
+        ConstructionAction.complete,
+      );
+      expect(state.isComplete, isTrue);
+      expect(state.result?.pointA.x.isFinite, isTrue);
+      expect(state.result?.pointB.x.isFinite, isTrue);
+      expect(state.result?.pointB.x, greaterThan(start.x));
+    },
+  );
+
   test('collinear plane points remain incomplete', () {
     final state = ConstructionState(tool: ConstructionTool.plane);
 
