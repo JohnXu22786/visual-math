@@ -710,6 +710,25 @@ void main() {
       expect(cylinder.result?.indices.length, 24 * 12);
     });
 
+    test('round solids reject radii that produce non-finite meshes', () {
+      for (final tool in [ConstructionTool.cone, ConstructionTool.cylinder]) {
+        final construction = ConstructionState(tool: tool);
+        construction.addPoint(Point3D.origin);
+        construction.addPoint(const Point3D(1.3e308, 1.3e308, 0));
+
+        expect(
+          construction.addPoint(const Point3D(0, 0, 1)),
+          ConstructionAction.awaitInput,
+          reason: '$tool must reject a radius whose magnitude overflows',
+        );
+        expect(construction.points, [
+          Point3D.origin,
+          const Point3D(1.3e308, 1.3e308, 0),
+        ]);
+        expect(construction.result, isNull);
+      }
+    });
+
     test('cone rejects zero height and an axis-degenerate radius', () {
       final zeroHeight = ConstructionState(tool: ConstructionTool.cone);
       zeroHeight.addPoint(Point3D.origin);
