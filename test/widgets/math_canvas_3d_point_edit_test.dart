@@ -147,6 +147,25 @@ void main() {
     return Offset(projected.x, projected.y);
   }
 
+  testWidgets('edge-on surface remains selectable along its projected edge', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    state.setCamera(const Camera3D(theta: 0, phi: 0));
+    final surface = Object3D.surface(
+      vertices: const [Point3D(0, -2, -2), Point3D(0, 2, -2), Point3D(0, 0, 2)],
+      indices: const [0, 1, 2],
+    );
+    state.setObjects([surface]);
+    state.setTool(ConstructionTool.move);
+    await tester.pump();
+
+    await tester.tapAt(screen(state, Point3D(0, 0, 0)));
+    await tester.pump();
+
+    expect(state.selectedObject, same(surface));
+  });
+
   testWidgets('circle intersections include points between sampled vertices', (
     tester,
   ) async {

@@ -1635,16 +1635,21 @@ class MathCanvas3DState extends State<MathCanvas3D> {
                   normal: normal,
                   allowBehind: projection.type == ProjectionType.parallel,
                 );
-                if (hit != null && _pointInTriangle3D(hit, a, b, c)) {
-                  final candidateDepth = depthAt(hit);
-                  if (isVisibleDepth(candidateDepth)) {
-                    distance = 0;
-                    hitDepth = dart_math
-                        .min(hitDepth, candidateDepth)
-                        .toDouble();
+                if (hit != null) {
+                  if (_pointInTriangle3D(hit, a, b, c)) {
+                    final candidateDepth = depthAt(hit);
+                    if (isVisibleDepth(candidateDepth)) {
+                      distance = 0;
+                      hitDepth = dart_math
+                          .min(hitDepth, candidateDepth)
+                          .toDouble();
+                    }
                   }
+                  continue;
                 }
-                continue;
+                // A screen ray parallel to this face has no 3D plane hit.
+                // Keep its projected boundary selectable when the face is
+                // edge-on, while retaining face hits and their depth ordering.
               }
               for (var edge = 0; edge < projected.length; edge++) {
                 final next = (edge + 1) % projected.length;
