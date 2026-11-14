@@ -10,6 +10,97 @@ import 'package:visual_math/visual_math.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('grid tick labels preserve enough precision to distinguish ticks', () {
+    final canvas = TestRecordingCanvas();
+    const size = Size(400, 400);
+    const xMin = 0.9;
+    const xMax = 1.3;
+    const GraphPainter(
+      xMin: xMin,
+      xMax: xMax,
+      yMin: -0.2,
+      yMax: 0.2,
+    ).paint(canvas, size);
+
+    final labels = <double, double>{};
+    for (final record in canvas.invocations) {
+      final call = record.invocation;
+      if (call.memberName != #drawParagraph) continue;
+      final paragraph = call.positionalArguments[0] as ui.Paragraph;
+      final offset = call.positionalArguments[1] as Offset;
+      if ((offset.dy - 204).abs() > 0.01) continue;
+      final centerX = offset.dx + paragraph.longestLine / 2;
+      labels[centerX] = paragraph.longestLine;
+    }
+
+    double labelWidthAt(double value) {
+      final centerX = (value - xMin) / (xMax - xMin) * size.width;
+      return labels.entries
+          .singleWhere((entry) => (entry.key - centerX).abs() < 0.01)
+          .value;
+    }
+
+    expect(labelWidthAt(1.05), isNot(labelWidthAt(1.1)));
+  });
+
+  test('very fine grid labels preserve adjacent tick values', () {
+    final canvas = TestRecordingCanvas();
+    const size = Size(400, 400);
+    const xMin = 1.1e-10 - 1e-24;
+    const xMax = xMin + 8e-21;
+    const GraphPainter(
+      xMin: xMin,
+      xMax: xMax,
+      yMin: -4e-21,
+      yMax: 4e-21,
+    ).paint(canvas, size);
+
+    final labels = <(double, double)>[];
+    for (final record in canvas.invocations) {
+      final call = record.invocation;
+      if (call.memberName != #drawParagraph) continue;
+      final paragraph = call.positionalArguments[0] as ui.Paragraph;
+      final offset = call.positionalArguments[1] as Offset;
+      if ((offset.dy - 204).abs() > 0.01) continue;
+      final centerX = offset.dx + paragraph.longestLine / 2;
+      if (centerX >= 0 && centerX <= 100) {
+        labels.add((centerX, paragraph.longestLine));
+      }
+    }
+    labels.sort((a, b) => a.$1.compareTo(b.$1));
+
+    expect(labels, hasLength(2));
+    expect(labels[0].$2, isNot(labels[1].$2));
+  });
+
+  test('near-zero fine grid labels preserve nonzero ticks', () {
+    final canvas = TestRecordingCanvas();
+    const size = Size(400, 400);
+    const GraphPainter(
+      xMin: -2e-20,
+      xMax: 2e-20,
+      yMin: -2e-20,
+      yMax: 2e-20,
+    ).paint(canvas, size);
+
+    final labels = <(double, double)>[];
+    for (final record in canvas.invocations) {
+      final call = record.invocation;
+      if (call.memberName != #drawParagraph) continue;
+      final paragraph = call.positionalArguments[0] as ui.Paragraph;
+      final offset = call.positionalArguments[1] as Offset;
+      if ((offset.dy - 204).abs() > 0.01) continue;
+      final centerX = offset.dx + paragraph.longestLine / 2;
+      if (centerX >= 0 && centerX <= 100) {
+        labels.add((centerX, paragraph.longestLine));
+      }
+    }
+    labels.sort((a, b) => a.$1.compareTo(b.$1));
+
+    expect(labels, hasLength(2));
+    expect(labels[0].$2, isNot(labels[1].$2));
+  });
+
   test('zero grid lines remain visible when axes are hidden', () {
     for (final showAxes in [false, true]) {
       for (final showGrid in [false, true]) {

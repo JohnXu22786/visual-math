@@ -1370,9 +1370,9 @@ class GraphPainter extends CustomPainter {
 
     double tx = _firstGridTick(xMin, step);
     while (tx <= xMax) {
-      if (tx.abs() > 1e-10) {
+      if (tx.abs() > step * 1e-10) {
         final screenX = _mathToScreenX(tx, size.width);
-        final label = _formatNumber(tx);
+        final label = _formatNumber(tx, step);
         final textPainter = TextPainter(
           text: TextSpan(text: label, style: style),
           textDirection: TextDirection.ltr,
@@ -1412,9 +1412,9 @@ class GraphPainter extends CustomPainter {
 
     double ty = _firstGridTick(eYMin, step);
     while (ty <= eYMax) {
-      if (ty.abs() > 1e-10) {
+      if (ty.abs() > step * 1e-10) {
         final screenY = _mathToScreenY(ty, size.height, eYMin, eYMax);
-        final label = _formatNumber(ty);
+        final label = _formatNumber(ty, step);
         final textPainter = TextPainter(
           text: TextSpan(text: label, style: style),
           textDirection: TextDirection.ltr,
@@ -1587,19 +1587,38 @@ class GraphPainter extends CustomPainter {
   // Number formatting
   // ==================================================================
 
-  static String _formatNumber(double value) {
-    if (value.abs() < 1e-10) return '0';
+  static String _formatNumber(double value, double step) {
+    if (value == 0) return '0';
     if (value == value.roundToDouble()) {
       return value.toInt().toString();
     }
-    // Show up to 2 significant decimal digits
-    final abs = value.abs();
-    if (abs >= 1) {
-      return value.toStringAsFixed(1);
-    } else if (abs >= 0.1) {
-      return value.toStringAsFixed(2);
-    } else {
-      return value.toStringAsExponential(1);
+
+    final decimalPlaces = (-dart_math.log(step) / dart_math.ln10).ceil();
+    if (decimalPlaces > 20) {
+      final significantDigits =
+          ((dart_math.log(value.abs()) - dart_math.log(step)) / dart_math.ln10)
+              .ceil()
+              .clamp(1, 20) +
+          1;
+      final preciseLabel = value.toStringAsPrecision(significantDigits);
+      final exponentIndex = preciseLabel.indexOf('e');
+      final mantissa = exponentIndex < 0
+          ? preciseLabel
+          : preciseLabel.substring(0, exponentIndex);
+      final conciseMantissa = mantissa.contains('.')
+          ? mantissa
+                .replaceFirst(RegExp(r'0+$'), '')
+                .replaceFirst(RegExp(r'\.$'), '')
+          : mantissa;
+      return exponentIndex < 0
+          ? conciseMantissa
+          : '$conciseMantissa${preciseLabel.substring(exponentIndex)}';
     }
+
+    final label = value.toStringAsFixed(decimalPlaces);
+    if (!label.contains('.')) return label;
+    return label
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
   }
 }
