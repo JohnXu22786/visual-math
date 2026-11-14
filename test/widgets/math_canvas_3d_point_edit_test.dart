@@ -319,6 +319,103 @@ void main() {
     );
   });
 
+  testWidgets(
+    'translated near-parallel circles return accurate shared-center intersections',
+    (tester) async {
+      final state = await setup(tester);
+      const tilt = 1e-14;
+      const center = Point3D(0, 1, 1);
+      final firstCircle = Object3D.curve(
+        points: [
+          for (var i = 0; i <= 32; i++)
+            Point3D(
+              math.cos(2 * math.pi * i / 32),
+              1 + math.sin(2 * math.pi * i / 32),
+              1,
+            ),
+        ],
+        conic: const Conic3D(
+          origin: center,
+          axisU: Vector3D.unitX,
+          axisV: Vector3D.unitY,
+          quadraticX: 1,
+          quadraticXY: 0,
+          quadraticY: 1,
+          linearX: 0,
+          linearY: 0,
+          constant: -1,
+        ),
+      );
+      final tiltedAxisV = Vector3D(0, math.cos(tilt), math.sin(tilt));
+      final tiltedCircle = Object3D.curve(
+        points: [
+          for (var i = 0; i <= 6; i++)
+            center +
+                Vector3D.unitX * math.cos(2 * math.pi * i / 6) +
+                tiltedAxisV * math.sin(2 * math.pi * i / 6),
+        ],
+        conic: Conic3D(
+          origin: center,
+          axisU: Vector3D.unitX,
+          axisV: tiltedAxisV,
+          quadraticX: 1,
+          quadraticXY: 0,
+          quadraticY: 1,
+          linearX: 0,
+          linearY: 0,
+          constant: -1,
+        ),
+      );
+      Object3D plot() => Object3D.surface(
+        vertices: const [],
+        indices: const [],
+      ).copyWith(documentId: 'plot', formulaRowId: 'row');
+      state.setObjects([firstCircle, tiltedCircle, plot()]);
+      state.setTool(ConstructionTool.intersectionPoint);
+      await tester.pump();
+
+      final firstAngle = 2 * math.pi / 32;
+      await tester.tapAt(
+        screen(
+          state,
+          center + Vector3D(math.cos(firstAngle), math.sin(firstAngle), 0),
+        ),
+      );
+      await tester.pump();
+      final secondAngle = 2 * math.pi / 6;
+      await tester.tapAt(
+        screen(
+          state,
+          center +
+              Vector3D(
+                math.cos(secondAngle),
+                math.sin(secondAngle) * math.cos(tilt),
+                math.sin(secondAngle) * math.sin(tilt),
+              ),
+        ),
+      );
+      await tester.pump();
+
+      final intersections = state.objects
+          .where((object) => object.type == Object3DType.point)
+          .map((object) => object.point)
+          .toList();
+      expect(intersections, hasLength(2));
+      expect(
+        intersections.any(
+          (point) => point.distanceTo(const Point3D(1, 1, 1)) < 1e-8,
+        ),
+        isTrue,
+      );
+      expect(
+        intersections.any(
+          (point) => point.distanceTo(const Point3D(-1, 1, 1)) < 1e-8,
+        ),
+        isTrue,
+      );
+    },
+  );
+
   testWidgets('snapshot during creation retains point and construction links', (
     tester,
   ) async {

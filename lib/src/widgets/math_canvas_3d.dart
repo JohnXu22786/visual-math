@@ -3515,10 +3515,12 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       final secondPlaneOffset = secondCircle.normal.dot(
         secondCircle.center.toVector(),
       );
-      final lineOriginVector =
-          (secondCircle.normal.cross(lineDirection) * firstPlaneOffset +
-              lineDirection.cross(firstCircle.normal) * secondPlaneOffset) *
-          (1 / normalCrossMagnitude);
+      final lineOriginVector = firstCircle.center == secondCircle.center
+          ? firstCircle.center.toVector()
+          : (secondCircle.normal.cross(lineDirection) * firstPlaneOffset +
+                    lineDirection.cross(firstCircle.normal) *
+                        secondPlaneOffset) *
+                (1 / normalCrossMagnitude);
       final lineOrigin = Point3D(
         lineOriginVector.x,
         lineOriginVector.y,
