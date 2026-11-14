@@ -11,6 +11,12 @@ class MathExpressionParser {
   final Set<String> _variables;
   var _position = 0;
 
+  /// Whether [name] is a function supported by this parser.
+  static bool isSupportedFunction(String name) =>
+      _unaryFunctions.containsKey(name) ||
+      _binaryFunctions.containsKey(name) ||
+      _variadicFunctions.containsKey(name);
+
   /// Parse [source] and return a compiled evaluator over [variables].
   static double Function(Map<String, num>) parse(
     String source, {

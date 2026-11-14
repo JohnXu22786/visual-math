@@ -598,41 +598,14 @@ class Expression3D {
       'sqrt1_2',
       'sqrt2',
     };
-    const knownFunctions = {
-      'sin',
-      'cos',
-      'tan',
-      'sqrt',
-      'abs',
-      'ln',
-      'log',
-      'exp',
-      'asin',
-      'acos',
-      'atan',
-      'sinh',
-      'cosh',
-      'tanh',
-      'sec',
-      'csc',
-      'cot',
-      'pow',
-      'nrt',
-      'fact',
-      'floor',
-      'ceil',
-      'round',
-      'coth',
-      'sech',
-      'csch',
-    };
 
     final result = <String>[...knownVars];
     final matches = RegExp(r'\b([a-zA-Z]\w*)\b').allMatches(expr);
     for (final m in matches) {
       final name = m[1]!;
       if (!result.contains(name) &&
-          !knownFunctions.contains(name) &&
+          !(MathExpressionParser.isSupportedFunction(name) &&
+              expr.startsWith('(', m.end)) &&
           !builtinConstants.contains(name) &&
           !(name == name.toUpperCase() &&
               builtinConstants.contains(name.toLowerCase()))) {
@@ -648,34 +621,6 @@ class Expression3D {
     Set<String> independentVariables = const {'x', 'y'},
   }) {
     if (expr.isEmpty) return {};
-    const knownFunctions = {
-      'sin',
-      'cos',
-      'tan',
-      'sqrt',
-      'abs',
-      'ln',
-      'log',
-      'exp',
-      'asin',
-      'acos',
-      'atan',
-      'sinh',
-      'cosh',
-      'tanh',
-      'sec',
-      'csc',
-      'cot',
-      'pow',
-      'nrt',
-      'fact',
-      'floor',
-      'ceil',
-      'round',
-      'coth',
-      'sech',
-      'csch',
-    };
     const builtinConstants = {
       'e',
       'pi',
@@ -697,7 +642,10 @@ class Expression3D {
               builtinConstants.contains(name.toLowerCase()))) {
         continue;
       }
-      if (knownFunctions.contains(name)) continue;
+      if (MathExpressionParser.isSupportedFunction(name) &&
+          expr.startsWith('(', m.end)) {
+        continue;
+      }
       params.add(name);
     }
     return params;
