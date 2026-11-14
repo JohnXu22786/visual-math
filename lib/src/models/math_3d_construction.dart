@@ -1521,7 +1521,7 @@ class ConstructionState {
     Point3D lengthPoint, {
     required int color,
   }) {
-    final direction = (directionPoint - start).normalized();
+    final direction = start.directionTo(directionPoint);
     final length = start.distanceTo(lengthPoint);
     return Object3D.line(
       start,

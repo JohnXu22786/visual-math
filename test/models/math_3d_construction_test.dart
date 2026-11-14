@@ -216,6 +216,20 @@ void main() {
     expect(result?.point.y, closeTo(0, 1e-10));
   });
 
+  test('fixed-length segment handles direction subtraction overflow', () {
+    final state = ConstructionState(tool: ConstructionTool.fixedLengthSegment);
+
+    state.addPoint(const Point3D(1e308, 0, 0));
+    state.addPoint(const Point3D(-1e308, 0, 0));
+    state.addPoint(const Point3D(1, 0, 0));
+
+    final result = state.result;
+    expect(result?.type, Object3DType.line);
+    expect(result?.pointA.x.isFinite, isTrue);
+    expect(result?.pointB.x.isFinite, isTrue);
+    expect(result?.pointB.x, closeTo(0, 1e-10));
+  });
+
   test('collinear plane points remain incomplete', () {
     final state = ConstructionState(tool: ConstructionTool.plane);
 
