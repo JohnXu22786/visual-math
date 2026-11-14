@@ -210,6 +210,103 @@ void main() {
       expect(hit, isNull);
     });
 
+    test('ray-plane offset ignores overflowing perpendicular separation', () {
+      const ray = Ray3D(Point3D(-1e308, 0, 5), Vector3D(0, 0, -1));
+
+      final hit = intersectRayPlane(
+        ray,
+        point: const Point3D(1e308, 0, 2),
+        normal: Vector3D.unitZ,
+      );
+
+      expect(hit, const Point3D(-1e308, 0, 2));
+      expect(hit!.x.isFinite && hit.y.isFinite && hit.z.isFinite, isTrue);
+
+      const planeBehindRay = Point3D(1e308, 0, 7);
+      expect(
+        intersectRayPlane(ray, point: planeBehindRay, normal: Vector3D.unitZ),
+        isNull,
+      );
+      expect(
+        intersectRayPlane(
+          ray,
+          point: planeBehindRay,
+          normal: Vector3D.unitZ,
+          allowBehind: true,
+        ),
+        const Point3D(-1e308, 0, 7),
+      );
+
+      const obliqueRay = Ray3D(Point3D(-1e308, 1e308, 5), Vector3D(0, 0, -1));
+      final obliqueHit = intersectRayPlane(
+        obliqueRay,
+        point: const Point3D(1e308, -1e308, 2),
+        normal: Vector3D(1, 1, 1),
+      );
+      expect(obliqueHit, const Point3D(-1e308, 1e308, 2));
+
+      const diagonalRay = Ray3D(Point3D.origin, Vector3D(1, 1, 1));
+      final diagonalHit = intersectRayPlane(
+        diagonalRay,
+        point: const Point3D(1.7e308, 1.7e308, -1.5e308),
+        normal: Vector3D(1, 1, 1),
+      );
+      expect(diagonalHit, isNotNull);
+      expect(
+        diagonalHit!.x.isFinite &&
+            diagonalHit.y.isFinite &&
+            diagonalHit.z.isFinite,
+        isTrue,
+      );
+
+      const oppositeDiagonalRay = Ray3D(
+        Point3D(-1.7e308, 1.7e308, 5),
+        Vector3D(1, 1, 1),
+      );
+      final oppositeDiagonalHit = intersectRayPlane(
+        oppositeDiagonalRay,
+        point: const Point3D(1.7e308, -1.7e308, 8),
+        normal: Vector3D(1, 1, 1),
+      );
+      expect(oppositeDiagonalHit, isNotNull);
+      expect(
+        oppositeDiagonalHit!.x.isFinite &&
+            oppositeDiagonalHit.y.isFinite &&
+            oppositeDiagonalHit.z.isFinite,
+        isTrue,
+      );
+
+      const tinyResidualRay = Ray3D(
+        Point3D(-1.7e308, 1.7e308, 0),
+        Vector3D.unitZ,
+      );
+      expect(
+        intersectRayPlane(
+          tinyResidualRay,
+          point: const Point3D(1.7e308, -1.7e308, 1e-200),
+          normal: Vector3D(1, 1, 1),
+        ),
+        const Point3D(-1.7e308, 1.7e308, 1e-200),
+      );
+
+      const weightedCancellationRay = Ray3D(
+        Point3D(-1.5e308, 9.2e307, 0),
+        Vector3D(0.8, 0.6, 0),
+      );
+      final weightedCancellationHit = intersectRayPlane(
+        weightedCancellationRay,
+        point: const Point3D(1.5e308, -9.2e307, 0),
+        normal: const Vector3D(0.8, 0.6, 0),
+      );
+      expect(weightedCancellationHit, isNotNull);
+      expect(
+        weightedCancellationHit!.x.isFinite &&
+            weightedCancellationHit.y.isFinite &&
+            weightedCancellationHit.z.isFinite,
+        isTrue,
+      );
+    });
+
     test('reflection handles large valid plane coordinates', () {
       final construction = ConstructionState(
         tool: ConstructionTool.reflectionInPlane,
