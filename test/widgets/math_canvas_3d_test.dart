@@ -301,6 +301,72 @@ void main() {
       expect(canvas.lines, 0);
     });
 
+    test('selected point ground guides clip at the near depth plane', () {
+      const point = Object3D.point(Point3D(0, 20, 20));
+      const target = Point3D.origin;
+      const cameraDistance = 10.0;
+      const cameraTheta = 0.0;
+      const cameraPhi = -0.8;
+      final canvas = _CountingCanvas();
+      const size = Size(400, 400);
+      MathCanvas3DPainter(
+        cameraDistance: cameraDistance,
+        cameraTheta: cameraTheta,
+        cameraPhi: cameraPhi,
+        cameraTarget: target,
+        projectionType: ProjectionType.perspective,
+        showAxes: false,
+        showPlane: false,
+        showGrid: false,
+        showLabels: false,
+        objects: const [point],
+        selectedPoint: point,
+      ).paint(canvas, size);
+
+      final camera = Camera3D(
+        target: target,
+        distance: cameraDistance,
+        theta: cameraTheta,
+        phi: cameraPhi,
+      );
+      final projection = Projection3D.perspective(
+        width: size.width,
+        height: size.height,
+      );
+      final pointScreen = worldToScreen(point.point, camera, projection);
+      final ground = Point3D(point.point.x, point.point.y, 0);
+      final pointDepth = pointScreen.z;
+      final groundDepth = worldToScreen(ground, camera, projection).z;
+      expect(pointDepth, greaterThan(projection.near));
+      expect(groundDepth, lessThan(projection.near));
+
+      final clippedFraction =
+          (projection.near - pointDepth) / (groundDepth - pointDepth);
+      final clippedGround =
+          point.point + (ground - point.point) * clippedFraction;
+      final clippedScreen = worldToScreen(clippedGround, camera, projection);
+      final selectedCenter = Offset(pointScreen.x, pointScreen.y);
+      final expectedGuideEnd = Offset(clippedScreen.x, clippedScreen.y);
+      expect(
+        canvas.segments.any(
+          (segment) =>
+              (segment.$1 - selectedCenter).distance < 1e-6 &&
+              (segment.$2 - expectedGuideEnd).distance < 1e-5,
+        ),
+        isTrue,
+      );
+      expect(
+        canvas.segments.every(
+          (segment) =>
+              segment.$1.dx.isFinite &&
+              segment.$1.dy.isFinite &&
+              segment.$2.dx.isFinite &&
+              segment.$2.dy.isFinite,
+        ),
+        isTrue,
+      );
+    });
+
     test('grid lines stay on world coordinates after fractional pans', () {
       for (final distance in [10.0, 10.2, 100.0]) {
         for (final target in [

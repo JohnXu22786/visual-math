@@ -6381,6 +6381,9 @@ class MathCanvas3DPainter extends CustomPainter {
     final point = selectedPoint?.point;
     if (point != null) {
       final screen = worldToScreen(point, camera, projection);
+      if (!screen.x.isFinite || !screen.y.isFinite || !screen.z.isFinite) {
+        return;
+      }
       if (projection.type == ProjectionType.perspective &&
           (screen.z <= 0 ||
               screen.z < projection.near ||
@@ -6393,16 +6396,28 @@ class MathCanvas3DPainter extends CustomPainter {
         ..strokeWidth = 1.8
         ..style = PaintingStyle.stroke;
       canvas.drawCircle(center, 10, guide);
-      final ground = worldToScreen(
+      final groundSegment = _clipSegmentToDepthRange(
+        point,
         Point3D(point.x, point.y, 0),
         camera,
         projection,
       );
-      canvas.drawLine(
-        center,
-        Offset(ground.x, ground.y),
-        guide..color = const Color(0x807C4DFF),
-      );
+      if (groundSegment.length == 2) {
+        final clippedGround = worldToScreen(
+          groundSegment[1],
+          camera,
+          projection,
+        );
+        if (clippedGround.x.isFinite &&
+            clippedGround.y.isFinite &&
+            clippedGround.z.isFinite) {
+          canvas.drawLine(
+            center,
+            Offset(clippedGround.x, clippedGround.y),
+            guide..color = const Color(0x807C4DFF),
+          );
+        }
+      }
       guide.color = const Color(0xFF7C4DFF);
       final axisStep = projection.type == ProjectionType.perspective
           ? dart_math.min(1.0, screen.z.abs() * 0.5).toDouble()
