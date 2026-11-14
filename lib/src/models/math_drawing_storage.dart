@@ -30,6 +30,7 @@ class MathDrawingStorage {
     MathDrawingDocument document, {
     bool overwrite = false,
   }) async {
+    document.validate();
     await _ensureLegacyDocumentsMigrated();
     await backend.saveDocument(document, overwrite: overwrite);
   }

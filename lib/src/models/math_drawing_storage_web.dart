@@ -60,6 +60,7 @@ Future<void> saveDocument(
   MathDrawingDocument document, {
   required bool overwrite,
 }) async {
+  final source = document.encode();
   final database = await _open();
   try {
     final transaction = database.transaction(_storeName, idbModeReadWrite);
@@ -69,7 +70,7 @@ Future<void> saveDocument(
       transaction.abort();
       throw DuplicateDrawingException(document.name);
     }
-    await store.put(document.encode(), document.name);
+    await store.put(source, document.name);
     await transaction.completed;
   } finally {
     database.close();
