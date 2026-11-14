@@ -725,14 +725,16 @@ class SurfaceMesh {
 
     final stepX = (xMax - xMin) / gridX;
     final stepY = (yMax - yMin) / gridY;
+    double xAt(int ix) => ix == gridX ? xMax : xMin + ix * stepX;
+    double yAt(int iy) => iy == gridY ? yMax : yMin + iy * stepY;
 
     // Evaluate f at each grid point
     final zValues = <List<double?>>[];
     for (int ix = 0; ix < cols; ix++) {
       final row = <double?>[];
       for (int iy = 0; iy < rows; iy++) {
-        final x = xMin + ix * stepX;
-        final y = yMin + iy * stepY;
+        final x = xAt(ix);
+        final y = yAt(iy);
         try {
           final z = f(x, y);
           row.add(z.isFinite ? z : null);
@@ -753,8 +755,8 @@ class SurfaceMesh {
       for (int ix = 0; ix < cols; ix++) {
         final z = zValues[ix][iy];
         if (z == null) continue;
-        final x = xMin + ix * stepX;
-        final y = yMin + iy * stepY;
+        final x = xAt(ix);
+        final y = yAt(iy);
         gridVertexIndices[ix][iy] = vertices.length;
         vertices.add(Point3D(x, y, z));
       }

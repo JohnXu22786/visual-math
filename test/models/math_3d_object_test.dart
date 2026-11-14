@@ -285,5 +285,23 @@ void main() {
       expect(mesh.boundingBoxMin.y, closeTo(-3, 1e-10));
       expect(mesh.boundingBoxMax.y, closeTo(3, 1e-10));
     });
+
+    test('samples declared endpoints when a grid step underflows', () {
+      final endpoint = double.minPositive;
+      final mesh = SurfaceMesh.fromFunction(
+        xMin: 0,
+        xMax: endpoint,
+        yMin: 0,
+        yMax: endpoint,
+        gridX: 2,
+        gridY: 2,
+        f: (x, y) => 0,
+      );
+
+      expect(mesh.vertices.map((vertex) => vertex.x), contains(endpoint));
+      expect(mesh.vertices.map((vertex) => vertex.y), contains(endpoint));
+      expect(mesh.boundingBoxMax.x, endpoint);
+      expect(mesh.boundingBoxMax.y, endpoint);
+    });
   });
 }
