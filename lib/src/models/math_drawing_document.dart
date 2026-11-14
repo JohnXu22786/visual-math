@@ -86,11 +86,33 @@ class MathDrawingDocument {
   }
 }
 
+String _fallbackId(List<String> ids, int index, String prefix) {
+  if (ids[index].isNotEmpty) return ids[index];
+  final used = ids.where((id) => id.isNotEmpty).toSet();
+  for (var i = 0; i < index; i++) {
+    if (ids[i].isEmpty) _addUniqueFallback('$prefix-$i', used);
+  }
+  return _addUniqueFallback('$prefix-$index', used);
+}
+
+String _addUniqueFallback(String base, Set<String> used) {
+  var candidate = base;
+  for (var suffix = 1; used.contains(candidate); suffix++) {
+    candidate = '$base-$suffix';
+  }
+  used.add(candidate);
+  return candidate;
+}
+
 Map<String, dynamic> _snapshotToJson(MathDrawingSnapshot s) => {
   'formulas': [
     for (var i = 0; i < s.formulas.length; i++)
       {
-        'id': s.formulas[i].id.isEmpty ? 'formula-$i' : s.formulas[i].id,
+        'id': _fallbackId(
+          s.formulas.map((formula) => formula.id).toList(),
+          i,
+          'formula',
+        ),
         'source': s.formulas[i].rawExpression,
         'color': s.formulas[i].color.toARGB32(),
         'colorMode': s.formulas[i].autoColor ? 'auto' : 'custom',
@@ -139,9 +161,11 @@ Map<String, dynamic> _snapshotToJson(MathDrawingSnapshot s) => {
       for (var i = 0; i < s.scene3D.length; i++)
         _objectToJson(
           s.scene3D[i],
-          s.scene3D[i].documentId.isEmpty
-              ? 'object-$i'
-              : s.scene3D[i].documentId,
+          _fallbackId(
+            s.scene3D.map((object) => object.documentId).toList(),
+            i,
+            'object',
+          ),
         ),
     ],
     'pointAttachments': [
