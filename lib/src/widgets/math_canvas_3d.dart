@@ -5096,8 +5096,13 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     final surfaceCandidates = <Point3D>[];
     final parallelSphereHits = Set<Point3D>.identity();
     final segmentCandidates = Set<Point3D>.identity();
+    final occlusionSensitiveSegmentCandidates = Set<Point3D>.identity();
 
-    void addSegmentCandidate(Point3D a, Point3D b) {
+    void addSegmentCandidate(
+      Point3D a,
+      Point3D b, {
+      bool excludeOccluded = false,
+    }) {
       if (projection.type == ProjectionType.perspective) {
         final depthA = worldToScreen(a, camera, projection).z;
         final depthB = worldToScreen(b, camera, projection).z;
@@ -5141,6 +5146,9 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       );
       candidates.add(candidate);
       segmentCandidates.add(candidate);
+      if (excludeOccluded) {
+        occlusionSensitiveSegmentCandidates.add(candidate);
+      }
     }
 
     final ray = _screenRay(screenX, screenY);
@@ -5214,6 +5222,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
                 addSegmentCandidate(
                   object.vertices[first],
                   object.vertices[second],
+                  excludeOccluded: true,
                 );
               }
             }
@@ -5327,6 +5336,11 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         final pixelDistance = parallelSphereHits.contains(candidate)
             ? 0.0
             : dart_math.sqrt(dx * dx + dy * dy);
+        if (pixelDistance < 14.0 &&
+            occlusionSensitiveSegmentCandidates.contains(candidate) &&
+            _isPointOccludedByOpaqueSurface(candidate)) {
+          continue;
+        }
         if (pixelDistance < 14.0 &&
             (pixelDistance < nearestDistance - (resolveDepth ? 1e-7 : 0) ||
                 (resolveDepth &&

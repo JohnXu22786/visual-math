@@ -1620,6 +1620,85 @@ void main() {
     );
   });
 
+  testWidgets('polyhedron snapping skips creases hidden behind opaque faces', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    state.setCamera(const Camera3D(theta: 0, phi: 0));
+    const frontFace = Object3D.surface(
+      vertices: [
+        Point3D(-2, 0, -2),
+        Point3D(2, 0, -2),
+        Point3D(2, 0, 2),
+        Point3D(-2, 0, 2),
+      ],
+      indices: [0, 1, 2, 0, 2, 3],
+    );
+    const rearSolid = Object3D.polyhedron(
+      vertices: [
+        Point3D(-1, -1, -1),
+        Point3D(1, -1, -1),
+        Point3D(1, -1, 1),
+        Point3D(-1, -1, 1),
+        Point3D(-1, -3, -1),
+        Point3D(1, -3, -1),
+        Point3D(1, -3, 1),
+        Point3D(-1, -3, 1),
+      ],
+      indices: [
+        0,
+        1,
+        2,
+        0,
+        2,
+        3,
+        4,
+        6,
+        5,
+        4,
+        7,
+        6,
+        1,
+        5,
+        6,
+        1,
+        6,
+        2,
+        0,
+        3,
+        7,
+        0,
+        7,
+        4,
+        3,
+        2,
+        6,
+        3,
+        6,
+        7,
+        0,
+        4,
+        5,
+        0,
+        5,
+        1,
+      ],
+    );
+    state.setObjects([frontFace, rearSolid]);
+    state.setTool(ConstructionTool.segment);
+    await tester.pump();
+
+    const hiddenRearCreaseMidpoint = Point3D(1, -3, 0);
+    await tester.tapAt(screen(state, hiddenRearCreaseMidpoint));
+    await tester.pump();
+
+    expect(
+      state.constructionState!.points.single.y,
+      closeTo(0, 1e-8),
+      reason: 'the opaque face at y=0 hides the rear crease at y=-3',
+    );
+  });
+
   testWidgets('clipped perspective points cannot intercept selection', (
     tester,
   ) async {
