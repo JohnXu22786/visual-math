@@ -101,6 +101,7 @@ void main() {
     WidgetTester tester, {
     VoidCallback? onSceneChanged,
     ValueChanged<Object3D?>? onSelectionChanged,
+    ValueChanged<String>? onToolInstruction,
     void Function(MathCanvas3DState)? captureScene,
   }) async {
     final key = GlobalKey<MathCanvas3DState>();
@@ -111,6 +112,7 @@ void main() {
             key: key,
             currentTool: ConstructionTool.point,
             onSelectionChanged: onSelectionChanged,
+            onToolInstruction: onToolInstruction,
             onSceneChanged: () {
               onSceneChanged?.call();
               captureScene?.call(key.currentState!);
@@ -227,6 +229,93 @@ void main() {
     expect(
       arcPoints.single.point.distanceTo(Point3D.origin + direction),
       lessThan(1e-8),
+    );
+  });
+
+  testWidgets('near-parallel circles with a shared center intersect twice', (
+    tester,
+  ) async {
+    final instructions = <String>[];
+    final state = await setup(tester, onToolInstruction: instructions.add);
+    const tilt = 5e-10;
+    final firstCircle = Object3D.curve(
+      points: [
+        for (var i = 0; i <= 32; i++)
+          Point3D(
+            math.cos(2 * math.pi * i / 32),
+            math.sin(2 * math.pi * i / 32),
+            0,
+          ),
+      ],
+      conic: const Conic3D(
+        origin: Point3D.origin,
+        axisU: Vector3D.unitX,
+        axisV: Vector3D.unitY,
+        quadraticX: 1,
+        quadraticXY: 0,
+        quadraticY: 1,
+        linearX: 0,
+        linearY: 0,
+        constant: -1,
+      ),
+    );
+    final tiltedCircle = Object3D.curve(
+      points: [
+        for (var i = 0; i <= 6; i++)
+          Point3D(
+            math.cos(2 * math.pi * i / 6),
+            math.sin(2 * math.pi * i / 6) * math.cos(tilt),
+            math.sin(2 * math.pi * i / 6) * math.sin(tilt),
+          ),
+      ],
+      conic: Conic3D(
+        origin: Point3D.origin,
+        axisU: Vector3D.unitX,
+        axisV: Vector3D(0, math.cos(tilt), math.sin(tilt)),
+        quadraticX: 1,
+        quadraticXY: 0,
+        quadraticY: 1,
+        linearX: 0,
+        linearY: 0,
+        constant: -1,
+      ),
+    );
+    Object3D plot() => Object3D.surface(
+      vertices: const [],
+      indices: const [],
+    ).copyWith(documentId: 'plot', formulaRowId: 'row');
+    state.setObjects([firstCircle, tiltedCircle, plot()]);
+    state.setTool(ConstructionTool.intersectionPoint);
+    await tester.pump();
+
+    final firstAngle = 2 * math.pi / 32;
+    await tester.tapAt(
+      screen(state, Point3D(math.cos(firstAngle), math.sin(firstAngle), 0)),
+    );
+    await tester.pump();
+    final secondAngle = 2 * math.pi / 6;
+    await tester.tapAt(
+      screen(state, Point3D(math.cos(secondAngle), math.sin(secondAngle), 0)),
+    );
+    await tester.pump();
+    expect(instructions, contains('再点击第二个相交对象'));
+
+    final intersections = state.objects
+        .where((object) => object.type == Object3DType.point)
+        .map((object) => object.point)
+        .toList();
+    expect(intersections, hasLength(2));
+    expect(
+      intersections.any(
+        (point) => point.distanceTo(const Point3D(1, 0, 0)) < 1e-8,
+      ),
+      isTrue,
+    );
+    expect(
+      intersections.any(
+        (point) => point.distanceTo(const Point3D(-1, 0, 0)) < 1e-8,
+      ),
+      isTrue,
     );
   });
 
