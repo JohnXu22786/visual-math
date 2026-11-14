@@ -809,7 +809,10 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       supportsStructuredEditing: editor?.supportsStructuredEditing ?? false,
       activeFormulaLabel: _activeFormula == null
           ? null
-          : '公式 ${_formulas.indexOf(_activeFormula!) + 1}',
+          : widget.options.presentation.labels.withIndex(
+              widget.options.presentation.labels.formulaLabel,
+              _formulas.indexOf(_activeFormula!) + 1,
+            ),
       editorLocation:
           editor?.location ?? (_fallbackEditorAvailable ? '公式' : null),
       select3DTool: _select3DTool,

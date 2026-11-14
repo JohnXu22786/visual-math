@@ -99,6 +99,38 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('custom formula editor receives the configured active label', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          initialMathematicalMode: true,
+          initialShowWebView: false,
+          options: MathWorkspaceOptions(
+            presentation: const MathWorkspacePresentation(
+              labels: MathWorkspaceLabels(formulaLabel: 'Equation {index}'),
+            ),
+            formulaEditorBuilder: (_, _, actions) => Column(
+              children: [
+                Text(actions.activeFormulaLabel ?? ''),
+                TextButton(
+                  onPressed: () => actions.activateFormula(0),
+                  child: const Text('Activate formula'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.text('Activate formula'));
+    await tester.pump();
+
+    expect(find.text('Equation 1'), findsOneWidget);
+  });
+
   testWidgets('namespaced editor preference does not overwrite legacy key', (
     tester,
   ) async {
