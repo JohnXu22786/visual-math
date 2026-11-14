@@ -2679,16 +2679,32 @@ class ConstructionState {
     }).toList();
     final normalizedCoefficients = _nullSpaceVector(matrix);
     if (normalizedCoefficients == null) return null;
-    final scaleSquared = coordinateScale * coordinateScale;
     final coefficients = [
-      normalizedCoefficients[0] / scaleSquared,
-      normalizedCoefficients[1] / scaleSquared,
-      normalizedCoefficients[2] / scaleSquared,
+      for (var index = 0; index < 3; index++)
+        (normalizedCoefficients[index] / coordinateScale) / coordinateScale,
       normalizedCoefficients[3] / coordinateScale,
       normalizedCoefficients[4] / coordinateScale,
       normalizedCoefficients[5],
     ];
-    if (coefficients.any((coefficient) => !coefficient.isFinite)) return null;
+    // Match the null-space solver precision so only resolved terms are required.
+    const quadraticFitPrecision = 1e-10;
+    final quadraticCoefficientScale = normalizedCoefficients
+        .take(3)
+        .fold<double>(
+          0,
+          (maximum, coefficient) =>
+              dart_math.max(maximum, coefficient.abs()).toDouble(),
+        );
+    final lostQuadraticTerm = List.generate(3, (index) => index).any(
+      (index) =>
+          normalizedCoefficients[index].abs() >
+              quadraticCoefficientScale * quadraticFitPrecision &&
+          coefficients[index] == 0,
+    );
+    if (coefficients.any((coefficient) => !coefficient.isFinite) ||
+        lostQuadraticTerm) {
+      return null;
+    }
     final a = normalizedCoefficients[0];
     final b = normalizedCoefficients[1];
     final c = normalizedCoefficients[2];

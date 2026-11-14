@@ -3,6 +3,83 @@ import 'package:visual_math/visual_math.dart';
 
 void main() {
   group('3D construction geometry', () {
+    test('rejects conics whose world coefficients lose quadratic terms', () {
+      final ordinary = ConstructionState(tool: ConstructionTool.conic);
+      for (final point in const [
+        Point3D(10, 0, 0),
+        Point3D(0, 10, 0),
+        Point3D(-10, 0, 0),
+        Point3D(0, -10, 0),
+      ]) {
+        ordinary.addPoint(point);
+      }
+      expect(
+        ordinary.addPoint(
+          const Point3D(7.071067811865476, 7.071067811865476, 0),
+        ),
+        ConstructionAction.complete,
+      );
+      expect(ordinary.result, isNotNull);
+      expect(
+        ordinary.result!.conic!.quadraticX.abs() +
+            ordinary.result!.conic!.quadraticXY.abs() +
+            ordinary.result!.conic!.quadraticY.abs(),
+        greaterThan(0),
+      );
+
+      for (final (radius, expectedAction) in [
+        (1e155, ConstructionAction.complete),
+        (1e200, ConstructionAction.awaitInput),
+      ]) {
+        final huge = ConstructionState(tool: ConstructionTool.conic);
+        for (final point in [
+          Point3D(radius, 0, 0),
+          Point3D(0, radius, 0),
+          Point3D(-radius, 0, 0),
+          Point3D(0, -radius, 0),
+        ]) {
+          huge.addPoint(point);
+        }
+        expect(
+          huge.addPoint(
+            Point3D(
+              7.071067811865476e199 * (radius / 1e200),
+              7.071067811865476e199 * (radius / 1e200),
+              0,
+            ),
+          ),
+          expectedAction,
+        );
+        if (expectedAction == ConstructionAction.complete) {
+          final conic = huge.result!.conic!;
+          expect(
+            conic.quadraticX.abs() +
+                conic.quadraticXY.abs() +
+                conic.quadraticY.abs(),
+            greaterThan(0),
+          );
+        } else {
+          expect(huge.result, isNull);
+        }
+      }
+
+      final partialUnderflow = ConstructionState(tool: ConstructionTool.conic);
+      for (final point in const [
+        Point3D(1e162, 0, 0),
+        Point3D(-1e162, 0, 0),
+        Point3D(0, 1e160, 0),
+        Point3D(0, -1e160, 0),
+      ]) {
+        partialUnderflow.addPoint(point);
+      }
+      expect(
+        partialUnderflow.addPoint(
+          const Point3D(7.071067811865476e161, 7.071067811865476e159, 0),
+        ),
+        ConstructionAction.awaitInput,
+      );
+      expect(partialUnderflow.result, isNull);
+    });
     test('parabola does not connect its divergent path to the vertex', () {
       final construction = ConstructionState(tool: ConstructionTool.conic);
       for (final point in const [
