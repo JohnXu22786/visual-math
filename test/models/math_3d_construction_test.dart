@@ -285,6 +285,18 @@ void main() {
     expect(largeButRepresentable.result!.conic!.quadraticY, greaterThan(0));
   });
 
+  test('ordinary ellipse keeps both axis terms in its conic', () {
+    final state = ConstructionState(tool: ConstructionTool.ellipse);
+    state.addPoint(Point3D.origin);
+    state.addPoint(const Point3D(3, 0, 0));
+
+    expect(state.addPoint(const Point3D(0, 2, 0)), ConstructionAction.complete);
+
+    final conic = state.result!.conic!;
+    expect(conic.quadraticX, closeTo(1 / 9, 1e-12));
+    expect(conic.quadraticY, closeTo(1 / 4, 1e-12));
+  });
+
   test('hyperbola rejects axes whose implicit coefficients underflow', () {
     final oversized = ConstructionState(tool: ConstructionTool.hyperbola);
 
