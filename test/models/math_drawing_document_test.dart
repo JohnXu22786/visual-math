@@ -130,6 +130,83 @@ void main() {
     });
   });
 
+  test('remaps point attachment references to fallback object IDs', () {
+    final drawing = snapshot(
+      scene: [
+        Object3D.point(const Point3D(0, 0, 0)),
+        Object3D.sphere(
+          center: const Point3D(1, 1, 1),
+          radius: 2,
+        ).copyWith(documentId: 'sphere-id'),
+      ],
+      attachments: const [PointAttachment(pointId: '', targetId: 'sphere-id')],
+      dependencies: const [],
+    );
+
+    final encoded = MathDrawingDocument(
+      name: 'attachment',
+      drawing: drawing,
+    ).toJson();
+    final view3D =
+        ((encoded['drawing'] as Map<String, dynamic>)['view3D']
+            as Map<String, dynamic>);
+    expect((view3D['pointAttachments'] as List<dynamic>).single, {
+      'pointId': 'object-0',
+      'targetId': 'sphere-id',
+    });
+
+    final decoded = MathDrawingDocument.decode(jsonEncode(encoded)).drawing;
+    expect(decoded.scene3D.first.documentId, 'object-0');
+    expect(decoded.pointAttachments3D.single.pointId, 'object-0');
+    expect(decoded.pointAttachments3D.single.targetId, 'sphere-id');
+  });
+
+  test('remaps construction dependency references to fallback object IDs', () {
+    final drawing = snapshot(
+      scene: [
+        Object3D.polyhedron(
+          vertices: const [
+            Point3D(0, 0, 0),
+            Point3D(1, 0, 0),
+            Point3D(0, 1, 0),
+          ],
+          indices: const [0, 1, 2],
+        ),
+      ],
+      attachments: const [],
+      dependencies: [
+        ConstructionDependency(
+          objectId: '',
+          tool: ConstructionTool.polygon,
+          inputPoints: const [
+            Point3D(0, 0, 0),
+            Point3D(1, 0, 0),
+            Point3D(0, 1, 0),
+          ],
+          sourcePointIds: const [null, null, null],
+          workingPlaneNormal: Vector3D.unitZ,
+          polygonSides: 3,
+        ),
+      ],
+    );
+
+    final encoded = MathDrawingDocument(
+      name: 'construction',
+      drawing: drawing,
+    ).toJson();
+    final view3D =
+        ((encoded['drawing'] as Map<String, dynamic>)['view3D']
+            as Map<String, dynamic>);
+    expect(
+      (view3D['constructionDependencies'] as List<dynamic>).single['objectId'],
+      'object-0',
+    );
+
+    final decoded = MathDrawingDocument.decode(jsonEncode(encoded)).drawing;
+    expect(decoded.scene3D.single.documentId, 'object-0');
+    expect(decoded.constructionDependencies3D.single.objectId, 'object-0');
+  });
+
   test('round trips editable 2D and 3D drawing state', () {
     final doc = MathDrawingDocument(
       name: 'study',

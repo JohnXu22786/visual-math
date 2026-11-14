@@ -104,6 +104,12 @@ String _addUniqueFallback(String base, Set<String> used) {
   return candidate;
 }
 
+String _remapObjectReference(List<Object3D> objects, String id) {
+  final ids = objects.map((object) => object.documentId).toList();
+  final index = ids.indexOf(id);
+  return index < 0 ? id : _fallbackId(ids, index, 'object');
+}
+
 Map<String, dynamic> _snapshotToJson(MathDrawingSnapshot s) => {
   'formulas': [
     for (var i = 0; i < s.formulas.length; i++)
@@ -170,15 +176,21 @@ Map<String, dynamic> _snapshotToJson(MathDrawingSnapshot s) => {
     ],
     'pointAttachments': [
       for (final relationship in s.pointAttachments3D)
-        {'pointId': relationship.pointId, 'targetId': relationship.targetId},
+        {
+          'pointId': _remapObjectReference(s.scene3D, relationship.pointId),
+          'targetId': _remapObjectReference(s.scene3D, relationship.targetId),
+        },
     ],
     'constructionDependencies': [
       for (final dependency in s.constructionDependencies3D)
         {
-          'objectId': dependency.objectId,
+          'objectId': _remapObjectReference(s.scene3D, dependency.objectId),
           'tool': dependency.tool.name,
           'inputPoints': [for (final p in dependency.inputPoints) _point(p)],
-          'sourcePointIds': dependency.sourcePointIds,
+          'sourcePointIds': [
+            for (final id in dependency.sourcePointIds)
+              id == null ? null : _remapObjectReference(s.scene3D, id),
+          ],
           'workingPlaneNormal': _vector(dependency.workingPlaneNormal),
           'polygonSides': dependency.polygonSides,
         },
