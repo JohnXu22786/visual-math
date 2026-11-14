@@ -1710,6 +1710,61 @@ void main() {
     );
   });
 
+  testWidgets('plane snapping respects opaque surface occlusion', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    state.setCamera(const Camera3D(theta: 0, phi: 0));
+    const frontFace = Object3D.surface(
+      vertices: [
+        Point3D(-2, 0, -2),
+        Point3D(2, 0, -2),
+        Point3D(2, 0, 2),
+        Point3D(-2, 0, 2),
+      ],
+      indices: [0, 1, 2, 0, 2, 3],
+    );
+    const rearPlane = Object3D.plane(b: 1, c: 0, d: -3);
+    const hidden = Point3D(-0.8, -3, 1.2);
+    const visible = Point3D(3, -3, 1.2);
+
+    state.setObjects([frontFace, rearPlane]);
+    state.setTool(ConstructionTool.segment);
+    await tester.pump();
+    await tester.tapAt(screen(state, hidden));
+    await tester.pump();
+    expect(
+      state.constructionState!.points.single.distanceTo(hidden),
+      greaterThan(0.1),
+      reason: 'the opaque face hides the plane candidate behind it',
+    );
+
+    state.setTool(ConstructionTool.move);
+    state.setTool(ConstructionTool.segment);
+    await tester.pump();
+    await tester.tapAt(screen(state, visible));
+    await tester.pump();
+    expect(
+      state.constructionState!.points.single.x,
+      closeTo(visible.x, 1e-8),
+      reason: 'plane candidates outside the opaque face remain snappable',
+    );
+    expect(state.constructionState!.points.single.z, closeTo(visible.z, 1e-8));
+
+    state.setObjects([frontFace.copyWith(opacity: 0.5), rearPlane]);
+    state.setTool(ConstructionTool.move);
+    state.setTool(ConstructionTool.segment);
+    await tester.pump();
+    await tester.tapAt(screen(state, hidden));
+    await tester.pump();
+    expect(
+      state.constructionState!.points.single.x,
+      closeTo(hidden.x, 1e-8),
+      reason: 'transparent surfaces do not occlude plane candidates',
+    );
+    expect(state.constructionState!.points.single.z, closeTo(hidden.z, 1e-8));
+  });
+
   testWidgets('clipped perspective points cannot intercept selection', (
     tester,
   ) async {
