@@ -221,10 +221,8 @@ class MathCanvasWebView extends StatefulWidget {
     // ==================================================================
 
     var lastViewportReport = 0;
-    board.on('boundingbox', function() {
-      var now = Date.now();
-      if (now - lastViewportReport < 300) return; // Throttle
-      lastViewportReport = now;
+    var viewportReportTimer = null;
+    function reportViewport() {
       try {
         var bbox = board.getBoundingBox();
         sendToFlutter({
@@ -235,6 +233,27 @@ class MathCanvasWebView extends StatefulWidget {
           yMax: bbox[1]
         });
       } catch(e) {}
+    }
+
+    board.on('boundingbox', function() {
+      var now = Date.now();
+      if (now - lastViewportReport >= 300) {
+        lastViewportReport = now;
+        if (viewportReportTimer !== null) {
+          clearTimeout(viewportReportTimer);
+          viewportReportTimer = null;
+        }
+        reportViewport();
+        return;
+      }
+
+      if (viewportReportTimer === null) {
+        viewportReportTimer = setTimeout(function() {
+          viewportReportTimer = null;
+          lastViewportReport = Date.now();
+          reportViewport();
+        }, 300 - (now - lastViewportReport));
+      }
     });
 
     // ==================================================================
