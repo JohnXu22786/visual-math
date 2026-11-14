@@ -5232,6 +5232,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           );
           if (hit != null && _withinRenderedPlaneGrid(object, hit)) {
             surfaceCandidates.add(hit);
+            occlusionSensitiveCandidates.add(hit);
           }
       }
     }
