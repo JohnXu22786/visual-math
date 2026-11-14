@@ -261,20 +261,52 @@ class MathCanvasState extends State<MathCanvas> {
 
     final aspectRatio = _canvasWidth / _canvasHeight;
     const padding = 1.1;
-    final xRange = dart_math
+    var xRange = dart_math
         .max(
           dart_math.max(xMax - xMin, (yMax - yMin) * aspectRatio) * padding,
           0.1,
         )
         .toDouble();
-    final yRange = xRange / aspectRatio;
     final centerX = (xMin + xMax) / 2;
     final centerY = (yMin + yMax) / 2;
+    // The requested range can be too small to move either bound away from a
+    // large center after floating-point rounding.
+    const precisionMargin = 7.105427357601002e-15;
+    final precisionScale = dart_math.max(
+      centerX.abs(),
+      centerY.abs() * aspectRatio,
+    );
+    if (precisionScale.isFinite) {
+      xRange = dart_math.max(xRange, precisionScale * precisionMargin);
+    }
+    var fittedXMin = centerX - xRange / 2;
+    var fittedXMax = centerX + xRange / 2;
+    var fittedYRange = xRange / aspectRatio;
+    var fittedYMin = centerY - fittedYRange / 2;
+    var fittedYMax = centerY + fittedYRange / 2;
+    while (!fittedXMin.isFinite ||
+        !fittedXMax.isFinite ||
+        fittedXMax <= fittedXMin ||
+        !fittedYMin.isFinite ||
+        !fittedYMax.isFinite ||
+        fittedYMax <= fittedYMin) {
+      final expandedRange = xRange * 2;
+      if (!expandedRange.isFinite || expandedRange <= xRange) {
+        await resetView();
+        return;
+      }
+      xRange = expandedRange;
+      fittedXMin = centerX - xRange / 2;
+      fittedXMax = centerX + xRange / 2;
+      fittedYRange = xRange / aspectRatio;
+      fittedYMin = centerY - fittedYRange / 2;
+      fittedYMax = centerY + fittedYRange / 2;
+    }
     setState(() {
-      _xMin = centerX - xRange / 2;
-      _yMin = centerY - yRange / 2;
-      _xMax = centerX + xRange / 2;
-      _yMax = centerY + yRange / 2;
+      _xMin = fittedXMin;
+      _yMin = fittedYMin;
+      _xMax = fittedXMax;
+      _yMax = fittedYMax;
       _formulaCurves
         ..clear()
         ..addAll(fittedCurves);
