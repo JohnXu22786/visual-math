@@ -943,6 +943,60 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     source.dispose();
   });
+
+  testWidgets('native editor ignores stale submit messages', (tester) async {
+    await _withTargetPlatformOverride(TargetPlatform.android, () async {
+      final originalPlatform = InAppWebViewPlatform.instance;
+      final platform = _EditorPlatform();
+      InAppWebViewPlatform.instance = platform;
+      addTearDown(
+        () => InAppWebViewPlatform.instance =
+            originalPlatform ?? _EditorPlatform(),
+      );
+      final source = TextEditingController(text: 'x');
+      final key = GlobalKey<MathFormulaFieldState>();
+      var submissions = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MathFormulaField(
+              key: key,
+              controller: source,
+              mathematical: true,
+              onModeChanged: (_) {},
+              onActivate: () {},
+              onChanged: () {},
+              onSubmitted: () => submissions++,
+              label: 'formula',
+            ),
+          ),
+        ),
+      );
+      final native = platform.editor!;
+      final controller = native.controllerFromPlatform<InAppWebViewController>(
+        native.controller,
+      );
+      native.params.onWebViewCreated!(controller);
+      native.params.onLoadStop!(controller, null);
+      await tester.pumpAndSettle();
+
+      final staleRevision = key.currentState!.revision;
+      source.text = 'x+1';
+      await tester.pump();
+      native.controller.handler!([
+        {'type': 'submit', 'revision': staleRevision},
+      ]);
+      expect(submissions, 0);
+
+      native.controller.handler!([
+        {'type': 'submit', 'revision': key.currentState!.revision},
+      ]);
+      expect(submissions, 1);
+      await tester.pumpWidget(const SizedBox.shrink());
+      source.dispose();
+    });
+  });
 }
 
 String _css(Color color) =>
@@ -974,6 +1028,7 @@ class _NativeEditor extends PlatformInAppWebViewWidget {
 
 class _EditorController extends PlatformInAppWebViewController {
   final scripts = <String>[];
+  JavaScriptHandlerCallback? handler;
   String? cutSelectionResponse;
   Completer<dynamic>? commandResult;
   Future<void>? snapshotBlock;
@@ -1000,7 +1055,7 @@ class _EditorController extends PlatformInAppWebViewController {
   void addJavaScriptHandler({
     required String handlerName,
     required JavaScriptHandlerCallback callback,
-  }) {}
+  }) => handler = callback;
 
   @override
   void dispose({bool isKeepAlive = false}) {}

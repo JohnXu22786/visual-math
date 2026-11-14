@@ -731,7 +731,8 @@ class MathFormulaFieldState extends State<MathFormulaField>
                                           widget.mathematical) {
                                         widget.onActivate();
                                       }
-                                      if (message['type'] == 'submit')
+                                      if (message['revision'] == _revision &&
+                                          message['type'] == 'submit')
                                         widget.onSubmitted();
                                       return null;
                                     },
