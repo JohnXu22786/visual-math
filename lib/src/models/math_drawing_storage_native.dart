@@ -72,10 +72,12 @@ Future<void> _migrateFileNames(Directory directory) async {
     if (entity is! File || _legacyName(entity.uri.pathSegments.last) == null) {
       continue;
     }
+    final List<int> sourceBytes;
     final String source;
     final String name;
     try {
-      source = utf8.decode(await entity.readAsBytes());
+      sourceBytes = await entity.readAsBytes();
+      source = utf8.decode(sourceBytes);
       name = MathDrawingDocument.decode(source).name;
     } on FormatException {
       // Keep malformed files under their reversible legacy names.
@@ -89,8 +91,7 @@ Future<void> _migrateFileNames(Directory directory) async {
       await entity.rename(target.path);
       continue;
     }
-    if (base64Encode(await target.readAsBytes()) ==
-        base64Encode(utf8.encode(source))) {
+    if (base64Encode(await target.readAsBytes()) == base64Encode(sourceBytes)) {
       await entity.delete();
       continue;
     }
@@ -101,12 +102,10 @@ Future<void> _migrateFileNames(Directory directory) async {
       final recovered = File(
         '${directory.path}${Platform.pathSeparator}${_fileName(recoveredName)}',
       );
-      final json = jsonDecode(source) as Map<String, dynamic>;
-      json['name'] = recoveredName;
-      final contents = jsonEncode(json);
       if (await recovered.exists()) {
         if (base64Encode(await recovered.readAsBytes()) ==
-            base64Encode(utf8.encode(contents))) {
+            base64Encode(sourceBytes)) {
+          await _nameFile(recovered).writeAsString(recoveredName, flush: true);
           await entity.delete();
           break;
         }
@@ -114,7 +113,7 @@ Future<void> _migrateFileNames(Directory directory) async {
         final temp = File('${recovered.path}.migration.tmp');
         await _nameFile(recovered).writeAsString(recoveredName, flush: true);
         try {
-          await temp.writeAsString(contents, flush: true);
+          await temp.writeAsBytes(sourceBytes, flush: true);
           await temp.rename(recovered.path);
           await entity.delete();
         } finally {
