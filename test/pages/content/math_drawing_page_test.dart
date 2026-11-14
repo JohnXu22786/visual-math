@@ -1230,6 +1230,17 @@ void main() {
       expect(tf.controller?.text, equals('sin(x)'));
     });
   });
+
+  test('delayed editor cleanup does not replace a null original platform', () {
+    final original = InAppWebViewPlatform.instance;
+    final platform = _DelayedEditorPlatform();
+    InAppWebViewPlatform.instance = platform;
+    addTearDown(() => InAppWebViewPlatform.instance = original ?? platform);
+
+    _delayedEditorPlatformRestoration(null)();
+
+    expect(InAppWebViewPlatform.instance, same(platform));
+  });
 }
 
 // Editing snapshots are asynchronous on native WebViews. Exercise the page
@@ -1475,9 +1486,7 @@ Future<_DelayedEditorPlatform> _delayedEditors(
   final original = InAppWebViewPlatform.instance;
   final platform = _DelayedEditorPlatform();
   InAppWebViewPlatform.instance = platform;
-  addTearDown(
-    () => InAppWebViewPlatform.instance = original ?? _DelayedEditorPlatform(),
-  );
+  addTearDown(_delayedEditorPlatformRestoration(original));
   await tester.pumpWidget(
     const MaterialApp(home: MathDrawingPage(initialMathematicalMode: true)),
   );
@@ -1498,6 +1507,14 @@ Future<_DelayedEditorPlatform> _delayedEditors(
   await tester.pumpAndSettle();
   return platform;
 }
+
+VoidCallback _delayedEditorPlatformRestoration(
+  InAppWebViewPlatform? original,
+) => () {
+  // The platform interface rejects null assignments; don't create a fresh
+  // fixture platform when no platform was registered before this test.
+  if (original != null) InAppWebViewPlatform.instance = original;
+};
 
 class _DelayedEditorPlatform extends InAppWebViewPlatform {
   final editors = <_DelayedEditor>[];
