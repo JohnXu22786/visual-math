@@ -161,13 +161,18 @@ class MathCanvasWebView extends StatefulWidget {
     // ==================================================================
 
     function sendToFlutter(message) {
+      var payload = JSON.stringify(message);
       try {
-        if (window.flutter_inappwebview) {
-          window.flutter_inappwebview.callHandler('MathCanvasChannel', JSON.stringify(message));
+        if (window.flutter_inappwebview &&
+            typeof window.flutter_inappwebview.callHandler === 'function') {
+          window.flutter_inappwebview.callHandler('MathCanvasChannel', payload);
+          return;
         }
       } catch(e) {
         console.error('Flutter bridge error:', e);
       }
+      // The web implementation forwards same-origin iframe console messages.
+      console.log('MATH_CANVAS_MESSAGE:' + payload);
     }
 
     // ==================================================================
@@ -742,6 +747,18 @@ class MathCanvasWebViewState extends State<MathCanvasWebView> {
             supportZoom: false,
           ),
           onWebViewCreated: _onWebViewCreated,
+          onConsoleMessage: (ctrl, consoleMessage) {
+            const prefix = 'MATH_CANVAS_MESSAGE:';
+            if (!consoleMessage.message.startsWith(prefix)) return;
+            try {
+              final message = jsonDecode(
+                consoleMessage.message.substring(prefix.length),
+              ) as Map<String, dynamic>;
+              _handleWebViewMessage(message);
+            } catch (e) {
+              debugPrint('[MathCanvas] Failed to parse WebView message: $e');
+            }
+          },
           onLoadStop: (ctrl, url) async {
             if (_loadFinished || ctrl.platform != _webViewController?.platform)
               return;

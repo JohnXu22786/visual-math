@@ -62,6 +62,53 @@ void main() {
     expect(errors, isEmpty);
   });
 
+  testWidgets('web console bridge dispatches canvas callbacks', (tester) async {
+    final previous = InAppWebViewPlatform.instance;
+    final platform = _CanvasPlatform()..initialized = true;
+    InAppWebViewPlatform.instance = platform;
+    addTearDown(
+      () => InAppWebViewPlatform.instance = previous ?? _CanvasPlatform(),
+    );
+    List<Map<String, dynamic>>? points;
+    List<double>? viewport;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathCanvasWebView(
+          onCoordinateUpdate: (value) => points = value,
+          onViewportChange: (xMin, yMin, xMax, yMax) =>
+              viewport = [xMin, yMin, xMax, yMax],
+        ),
+      ),
+    );
+    final view = platform.view!;
+    final controller = view.controllerFromPlatform<InAppWebViewController>(
+      view.controller,
+    );
+    view.params.onWebViewCreated!(controller);
+
+    final html = MathCanvasWebView.buildMathHtml('x');
+    expect(html, contains("console.log('MATH_CANVAS_MESSAGE:' + payload)"));
+    final onConsoleMessage = view.params.onConsoleMessage;
+    expect(onConsoleMessage, isNotNull);
+    onConsoleMessage!(
+      controller,
+      ConsoleMessage(
+        message: 'MATH_CANVAS_MESSAGE:{"type":"coordinateUpdate","points":[{"x":1,"y":2}]}',
+      ),
+    );
+    onConsoleMessage(
+      controller,
+      ConsoleMessage(
+        message: 'MATH_CANVAS_MESSAGE:{"type":"viewportChange","xMin":-2,"yMin":-3,"xMax":4,"yMax":5}',
+      ),
+    );
+
+    expect(points, [
+      {'x': 1, 'y': 2},
+    ]);
+    expect(viewport, [-2, -3, 4, 5]);
+  });
+
   testWidgets('startup commands are replayed in order after initialization', (
     tester,
   ) async {
