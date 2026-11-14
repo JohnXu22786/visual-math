@@ -76,6 +76,27 @@ void main() {
     expect(sceneChanges, beforeAction + 1);
   });
 
+  testWidgets('tool commands notify only when scene state changes', (
+    tester,
+  ) async {
+    var sceneChanges = 0;
+    final state = await setup(tester, onSceneChanged: () => sceneChanges++);
+    final beforeAction = sceneChanges;
+
+    state.performToolCommand(ConstructionTool.viewDirection);
+    await tester.pumpAndSettle();
+    Navigator.of(tester.element(find.byType(SimpleDialog))).pop();
+    await tester.pumpAndSettle();
+
+    expect(sceneChanges, beforeAction);
+
+    state.performToolCommand(ConstructionTool.showHideLabels);
+    await tester.pump();
+
+    expect(state.showLabels, isFalse);
+    expect(sceneChanges, beforeAction + 1);
+  });
+
   testWidgets(
     'created intersections rely on the object callback notification',
     (tester) async {
