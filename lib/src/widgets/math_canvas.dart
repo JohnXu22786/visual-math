@@ -1590,7 +1590,7 @@ class GraphPainter extends CustomPainter {
   static String _formatNumber(double value, double step) {
     if (value == 0) return '0';
     if (value == value.roundToDouble()) {
-      return value.toInt().toString();
+      return value.toStringAsFixed(0);
     }
 
     final decimalPlaces = (-dart_math.log(step) / dart_math.ln10).ceil();

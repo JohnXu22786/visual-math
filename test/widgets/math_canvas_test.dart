@@ -101,6 +101,32 @@ void main() {
     expect(labels[0].$2, isNot(labels[1].$2));
   });
 
+  test('large integral grid labels do not overflow through int conversion', () {
+    final canvas = TestRecordingCanvas();
+    const GraphPainter(
+      xMin: 1e20,
+      xMax: 1e20 + 2e16,
+      yMin: -1e15,
+      yMax: 1e15,
+    ).paint(canvas, const Size(400, 400));
+
+    final expectedLabel = TextPainter(
+      text: const TextSpan(
+        text: '100000000000000000000',
+        style: TextStyle(fontSize: 10),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final labelWidths = canvas.invocations
+        .where((record) => record.invocation.memberName == #drawParagraph)
+        .map(
+          (record) => (record.invocation.positionalArguments[0] as ui.Paragraph)
+              .longestLine,
+        );
+
+    expect(labelWidths, contains(expectedLabel.width));
+  });
+
   test('zero grid lines remain visible when axes are hidden', () {
     for (final showAxes in [false, true]) {
       for (final showGrid in [false, true]) {
