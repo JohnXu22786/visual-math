@@ -2,6 +2,82 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:visual_math/visual_math.dart';
 
 void main() {
+  test('large finite square can close a polygon with finite mesh vertices', () {
+    final state = ConstructionState(tool: ConstructionTool.polygon);
+
+    state.addPoint(Point3D.origin);
+    state.addPoint(const Point3D(1e200, 0, 0));
+    state.addPoint(const Point3D(1e200, 1e200, 0));
+    state.addPoint(const Point3D(0, 1e200, 0));
+    final action = state.addPoint(Point3D.origin);
+
+    expect(action, ConstructionAction.complete);
+    expect(state.result?.type, Object3DType.polyhedron);
+    expect(
+      state.result?.vertices.every(
+        (point) => point.x.isFinite && point.y.isFinite && point.z.isFinite,
+      ),
+      isTrue,
+    );
+  });
+
+  test(
+    'opposite-sign extreme square can close without non-finite vertices',
+    () {
+      final state = ConstructionState(tool: ConstructionTool.polygon);
+
+      state.addPoint(const Point3D(-1e308, -1e308, 0));
+      state.addPoint(const Point3D(1e308, -1e308, 0));
+      state.addPoint(const Point3D(1e308, 1e308, 0));
+      state.addPoint(const Point3D(-1e308, 1e308, 0));
+      final action = state.addPoint(const Point3D(-1e308, -1e308, 0));
+
+      expect(action, ConstructionAction.complete);
+      expect(state.result?.type, Object3DType.polyhedron);
+      expect(
+        state.result?.vertices.every(
+          (point) => point.x.isFinite && point.y.isFinite && point.z.isFinite,
+        ),
+        isTrue,
+      );
+    },
+  );
+
+  test(
+    'large finite square can complete filled area with finite coordinates',
+    () {
+      final state = ConstructionState(tool: ConstructionTool.area);
+
+      state.addPoint(Point3D.origin);
+      state.addPoint(const Point3D(1e200, 0, 0));
+      state.addPoint(const Point3D(1e200, 1e200, 0));
+      state.addPoint(const Point3D(0, 1e200, 0));
+      final action = state.addPoint(Point3D.origin);
+
+      expect(action, ConstructionAction.complete);
+      expect(state.result?.type, Object3DType.point);
+      expect(state.result?.point.x.isFinite, isTrue);
+      expect(state.result?.point.y.isFinite, isTrue);
+      expect(state.result?.point.z.isFinite, isTrue);
+      expect(state.result?.label, isNot(contains('Infinity')));
+      expect(state.result?.label, isNot(contains('NaN')));
+      expect(state.result?.label, contains('e'));
+    },
+  );
+
+  test('large collinear polygon remains rejected', () {
+    final state = ConstructionState(tool: ConstructionTool.polygon);
+
+    state.addPoint(Point3D.origin);
+    state.addPoint(const Point3D(1e200, 0, 0));
+    state.addPoint(const Point3D(2e200, 0, 0));
+    state.addPoint(const Point3D(3e200, 0, 0));
+    final action = state.addPoint(Point3D.origin);
+
+    expect(action, ConstructionAction.awaitInput);
+    expect(state.result, isNull);
+  });
+
   test('angle measurement remains accurate for large finite vectors', () {
     final state = ConstructionState(tool: ConstructionTool.angle);
 

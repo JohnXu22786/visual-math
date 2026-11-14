@@ -788,12 +788,12 @@ class ConstructionState {
             return ConstructionAction.awaitInput;
           }
           if (hasArea) {
-            final area = _polygonArea(_points);
+            final area = _formatPolygonArea(_points);
             final center = _polygonInteriorPoint(_points);
             _result = Object3D.point(
               center,
               color: 0xFF1565C0,
-              label: '面积 ${area.toStringAsFixed(3)}',
+              label: '面积 $area',
             );
           } else {
             _validationMessage = '顶点不能共线，请继续选择顶点';
@@ -1342,12 +1342,39 @@ class ConstructionState {
   }
 
   static bool _hasArea(List<Point3D> vertices) {
+    var coordinateScale = 0.0;
+    for (final vertex in vertices) {
+      coordinateScale = dart_math
+          .max(
+            coordinateScale,
+            dart_math.max(
+              vertex.x.abs(),
+              dart_math.max(vertex.y.abs(), vertex.z.abs()),
+            ),
+          )
+          .toDouble();
+    }
+    if (coordinateScale == 0 || !coordinateScale.isFinite) return false;
+
     final origin = vertices.first;
+    final originX = origin.x / coordinateScale;
+    final originY = origin.y / coordinateScale;
+    final originZ = origin.z / coordinateScale;
     var area = Vector3D.zero;
     var scaleSquared = 0.0;
     for (var i = 1; i < vertices.length - 1; i++) {
-      final first = vertices[i] - origin;
-      final second = vertices[i + 1] - origin;
+      final firstVertex = vertices[i];
+      final secondVertex = vertices[i + 1];
+      final first = Vector3D(
+        firstVertex.x / coordinateScale - originX,
+        firstVertex.y / coordinateScale - originY,
+        firstVertex.z / coordinateScale - originZ,
+      );
+      final second = Vector3D(
+        secondVertex.x / coordinateScale - originX,
+        secondVertex.y / coordinateScale - originY,
+        secondVertex.z / coordinateScale - originZ,
+      );
       area = area + first.cross(second);
       scaleSquared = dart_math
           .max(
@@ -2527,29 +2554,6 @@ class ConstructionState {
   _conicPlane(List<Point3D> points) {
     if (points.length < 3) return null;
     final anchor = points.first;
-    var u = Vector3D.zero;
-    var normal = Vector3D.zero;
-    for (var i = 1; i < points.length && normal.magnitude < 1e-9; i++) {
-      final firstEdge = points[i] - anchor;
-      final firstDirection = firstEdge.normalized();
-      if (firstDirection.magnitude < 1e-9) continue;
-      for (var j = i + 1; j < points.length; j++) {
-        final secondDirection = (points[j] - anchor).normalized();
-        if (secondDirection.magnitude < 1e-9) continue;
-        final candidate = firstDirection.cross(secondDirection);
-        if (candidate.magnitude >= 1e-9) {
-          u = firstDirection;
-          normal = candidate.normalized();
-          break;
-        }
-      }
-    }
-    if (normal.magnitude < 1e-9) return null;
-    final extent = points.fold<double>(
-      0,
-      (maximum, point) =>
-          dart_math.max(maximum, anchor.distanceTo(point)).toDouble(),
-    );
     final coordinateScale = points.fold<double>(0, (maximum, point) {
       return dart_math
           .max(
@@ -2561,16 +2565,50 @@ class ConstructionState {
           )
           .toDouble();
     });
+    if (coordinateScale == 0 || !coordinateScale.isFinite) return null;
+
+    final anchorX = anchor.x / coordinateScale;
+    final anchorY = anchor.y / coordinateScale;
+    final anchorZ = anchor.z / coordinateScale;
+    final offsets = points
+        .map(
+          (point) => Vector3D(
+            point.x / coordinateScale - anchorX,
+            point.y / coordinateScale - anchorY,
+            point.z / coordinateScale - anchorZ,
+          ),
+        )
+        .toList();
+    var u = Vector3D.zero;
+    var normal = Vector3D.zero;
+    for (var i = 1; i < points.length && normal.magnitude < 1e-9; i++) {
+      final firstEdge = offsets[i];
+      final firstDirection = firstEdge.normalized();
+      if (firstDirection.magnitude < 1e-9) continue;
+      for (var j = i + 1; j < points.length; j++) {
+        final secondDirection = offsets[j].normalized();
+        if (secondDirection.magnitude < 1e-9) continue;
+        final candidate = firstDirection.cross(secondDirection);
+        if (candidate.magnitude >= 1e-9) {
+          u = firstDirection;
+          normal = candidate.normalized();
+          break;
+        }
+      }
+    }
+    if (normal.magnitude < 1e-9) return null;
+    final extent = offsets.fold<double>(
+      0,
+      (maximum, offset) => dart_math.max(maximum, offset.magnitude).toDouble(),
+    );
     const machineEpsilon = 2.220446049250313e-16;
-    final floatingPointTolerance = coordinateScale * machineEpsilon * 8;
+    final floatingPointTolerance = machineEpsilon * 8;
     // Reject inputs whose coordinate precision cannot resolve the local plane.
-    if (!extent.isFinite ||
-        !floatingPointTolerance.isFinite ||
-        floatingPointTolerance > extent * 1e-4) {
+    if (!extent.isFinite || floatingPointTolerance > extent * 1e-4) {
       return null;
     }
     final tolerance = dart_math.max(extent * 1e-7, floatingPointTolerance);
-    if (points.any((point) => (point - anchor).dot(normal).abs() > tolerance)) {
+    if (offsets.any((offset) => offset.dot(normal).abs() > tolerance)) {
       return null;
     }
     final v = normal.cross(u).normalized();
@@ -3178,15 +3216,52 @@ class ConstructionState {
     );
   }
 
-  static double _polygonArea(List<Point3D> points) {
-    final origin = points.first.toVector();
+  static String _formatPolygonArea(List<Point3D> points) {
+    var coordinateScale = 0.0;
+    for (final point in points) {
+      coordinateScale = dart_math
+          .max(
+            coordinateScale,
+            dart_math.max(
+              point.x.abs(),
+              dart_math.max(point.y.abs(), point.z.abs()),
+            ),
+          )
+          .toDouble();
+    }
+    if (coordinateScale == 0 || !coordinateScale.isFinite) return '0.000';
+
+    final origin = points.first;
+    final originX = origin.x / coordinateScale;
+    final originY = origin.y / coordinateScale;
+    final originZ = origin.z / coordinateScale;
     var sum = Vector3D.zero;
     for (var i = 0; i < points.length; i++) {
-      final start = points[i].toVector() - origin;
-      final end = points[(i + 1) % points.length].toVector() - origin;
+      final startPoint = points[i];
+      final endPoint = points[(i + 1) % points.length];
+      final start = Vector3D(
+        startPoint.x / coordinateScale - originX,
+        startPoint.y / coordinateScale - originY,
+        startPoint.z / coordinateScale - originZ,
+      );
+      final end = Vector3D(
+        endPoint.x / coordinateScale - originX,
+        endPoint.y / coordinateScale - originY,
+        endPoint.z / coordinateScale - originZ,
+      );
       sum = sum + start.cross(end);
     }
-    return sum.magnitude / 2;
+    final normalizedArea = sum.magnitude / 2;
+    final area = normalizedArea * coordinateScale * coordinateScale;
+    if (area.isFinite) return area.toStringAsFixed(3);
+    if (normalizedArea == 0 || !normalizedArea.isFinite) return '0.000';
+
+    final log10Area =
+        (dart_math.log(normalizedArea) + 2 * dart_math.log(coordinateScale)) /
+        dart_math.log(10);
+    final exponent = log10Area.floor();
+    final mantissa = dart_math.pow(10, log10Area - exponent).toDouble();
+    return '${mantissa.toStringAsFixed(3)}e$exponent';
   }
 
   double _closureTolerance() => 1e-9;
@@ -3204,19 +3279,34 @@ class ConstructionState {
 
   static Point3D _centroid(List<Point3D> points) {
     if (points.isEmpty) return Point3D.origin;
-    final anchor = points.first;
+    var coordinateScale = 0.0;
+    for (final point in points) {
+      coordinateScale = dart_math
+          .max(
+            coordinateScale,
+            dart_math.max(
+              point.x.abs(),
+              dart_math.max(point.y.abs(), point.z.abs()),
+            ),
+          )
+          .toDouble();
+    }
+    if (coordinateScale == 0 || !coordinateScale.isFinite) {
+      return points.first;
+    }
+
     var x = 0.0;
     var y = 0.0;
     var z = 0.0;
     for (final point in points) {
-      x += point.x - anchor.x;
-      y += point.y - anchor.y;
-      z += point.z - anchor.z;
+      x += point.x / coordinateScale;
+      y += point.y / coordinateScale;
+      z += point.z / coordinateScale;
     }
     return Point3D(
-      anchor.x + x / points.length,
-      anchor.y + y / points.length,
-      anchor.z + z / points.length,
+      x / points.length * coordinateScale,
+      y / points.length * coordinateScale,
+      z / points.length * coordinateScale,
     );
   }
 
