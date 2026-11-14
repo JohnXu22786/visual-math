@@ -411,14 +411,12 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   }
 
   void _setActiveTool(ConstructionTool tool) {
-    if (tool == _current3DTool) {
-      _canvas3DKey.currentState?.setTool(tool);
-    }
     setState(() {
       _current3DTool = tool;
       _toolInstruction = '';
     });
     _syncController();
+    _canvas3DKey.currentState?.setTool(tool);
     widget.controller?.onToolChanged?.call(tool);
   }
 

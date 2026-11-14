@@ -1201,7 +1201,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   @override
   void didUpdateWidget(MathCanvas3D oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.currentTool != oldWidget.currentTool) {
+    if (_currentTool != widget.currentTool) {
       setTool(widget.currentTool, notifyInstruction: false);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
