@@ -238,6 +238,61 @@ void main() {
     },
   );
 
+  testWidgets('category order reloads when its namespace changes', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({
+      'visual_math.first.math_keyboard_category_order_v1': ['函数'],
+      'visual_math.second.math_keyboard_category_order_v1': ['字母'],
+    });
+    final commands = <String>[];
+
+    List<String> chipOrder() => tester
+        .widgetList<ChoiceChip>(find.byType(ChoiceChip))
+        .map((chip) => (chip.label as Text).data!)
+        .toList();
+    List<String> dialogOrder() => tester
+        .widgetList<ListTile>(
+          find.descendant(
+            of: find.byType(AlertDialog),
+            matching: find.byType(ListTile),
+          ),
+        )
+        .map((tile) => (tile.title as Text).data!)
+        .toList();
+
+    await _pumpKeyboard(tester, commands, preferenceNamespace: 'first');
+    await tester.pumpAndSettle();
+    expect(chipOrder().first, '函数');
+
+    await tester.tap(find.byTooltip('全部符号分类'));
+    await tester.pumpAndSettle();
+    expect(dialogOrder().first, '函数');
+
+    await _pumpKeyboard(tester, commands, preferenceNamespace: 'second');
+    await tester.pumpAndSettle();
+    expect(dialogOrder().first, '字母');
+    await tester.drag(
+      find.byKey(const ValueKey('category-order-handle-字母')),
+      const Offset(0, 120),
+    );
+    await tester.pumpAndSettle();
+
+    final preferences = await SharedPreferences.getInstance();
+    expect(
+      preferences.getStringList(
+        'visual_math.first.math_keyboard_category_order_v1',
+      ),
+      ['函数'],
+    );
+    final secondOrder = preferences.getStringList(
+      'visual_math.second.math_keyboard_category_order_v1',
+    )!;
+    expect(secondOrder, hasLength(14));
+    expect(secondOrder.first, isNot('函数'));
+    expect(secondOrder.first, isNot('字母'));
+  });
+
   testWidgets('reordering keeps the selected category visible in the strip', (
     tester,
   ) async {
