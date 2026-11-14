@@ -97,6 +97,97 @@ MathDrawingSnapshot snapshot({
 );
 
 void main() {
+  test('remaps duplicate nonempty IDs and their document references', () {
+    final drawing = snapshot(
+      formulas: [
+        FormulaEntry(id: 'row', rawExpression: ''),
+        FormulaEntry(
+          id: 'row',
+          rawExpression: 'x',
+          hiddenPlot3D: Object3D.point(Point3D(0, 0, 0))
+              .copyWith(documentId: 'shared', formulaRowId: 'row'),
+        ),
+        FormulaEntry(
+          id: 'row',
+          rawExpression: 'y',
+          hiddenPlot3D: Object3D.point(Point3D(0, 1, 0))
+              .copyWith(documentId: 'shared', formulaRowId: 'row'),
+        ),
+      ],
+      scene: [
+        Object3D.point(const Point3D(0, 0, 0)).copyWith(documentId: 'point'),
+        Object3D.point(const Point3D(0, 1, 0)).copyWith(documentId: 'point'),
+        Object3D.sphere(
+          center: const Point3D(1, 1, 1),
+          radius: 2,
+          label: ' ',
+        ).copyWith(documentId: 'shared', formulaRowId: 'row'),
+        Object3D.sphere(
+          center: const Point3D(2, 2, 2),
+          radius: 3,
+        ).copyWith(documentId: 'shared', formulaRowId: 'row'),
+        Object3D.sphere(
+          center: const Point3D(3, 3, 3),
+          radius: 4,
+        ).copyWith(documentId: 'source'),
+        Object3D.point(const Point3D(0, 2, 0)).copyWith(documentId: 'source'),
+      ],
+      attachments: const [
+        PointAttachment(pointId: 'source', targetId: 'shared'),
+      ],
+      dependencies: [
+        ConstructionDependency(
+          objectId: 'shared',
+          tool: ConstructionTool.sphere,
+          inputPoints: const [Point3D(1, 1, 1)],
+          sourcePointIds: const ['source'],
+          workingPlaneNormal: Vector3D.unitZ,
+          polygonSides: 5,
+        ),
+      ],
+    );
+
+    final decoded = MathDrawingDocument.decode(
+      MathDrawingDocument(name: 'duplicate IDs', drawing: drawing).encode(),
+    ).drawing;
+
+    expect(decoded.formulas.map((formula) => formula.id), [
+      'row',
+      'row-1',
+      'row-2',
+    ]);
+    expect(
+      decoded.formulas
+          .where((formula) => formula.hiddenPlot3D != null)
+          .map((formula) => formula.hiddenPlot3D!.formulaRowId),
+      ['row-1', 'row-2'],
+    );
+    expect(
+      decoded.formulas
+          .where((formula) => formula.hiddenPlot3D != null)
+          .map((formula) => formula.hiddenPlot3D!.documentId),
+      ['shared-2', 'shared-3'],
+    );
+    expect(decoded.scene3D.map((object) => object.documentId), [
+      'point',
+      'point-1',
+      'shared',
+      'shared-1',
+      'source',
+      'source-1',
+    ]);
+    expect(
+      decoded.scene3D.skip(2).take(2).map((object) => object.formulaRowId),
+      ['row-1', 'row-2'],
+    );
+    expect(decoded.pointAttachments3D.single.pointId, 'source-1');
+    expect(decoded.pointAttachments3D.single.targetId, 'shared');
+    expect(decoded.constructionDependencies3D.single.objectId, 'shared');
+    expect(decoded.constructionDependencies3D.single.sourcePointIds, [
+      'source-1',
+    ]);
+  });
+
   test('assigns unique fallback IDs when saved IDs collide', () {
     final drawing = snapshot(
       formulas: const [
