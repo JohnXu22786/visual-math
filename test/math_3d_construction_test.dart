@@ -636,6 +636,40 @@ void main() {
       expect(construction.result, isNull);
     });
 
+    test('regular polygon and tetrahedron reject unrepresentable edges', () {
+      for (final tool in [
+        ConstructionTool.regularPolygon,
+        ConstructionTool.tetrahedron,
+      ]) {
+        final construction = ConstructionState(tool: tool);
+        construction.addPoint(Point3D.origin);
+        final preview = construction.previewObject;
+
+        expect(
+          construction.addPoint(const Point3D(1.4e308, 1.4e308, 0)),
+          ConstructionAction.awaitInput,
+          reason: '$tool',
+        );
+        expect(construction.points, [Point3D.origin], reason: '$tool');
+        expect(construction.stepIndex, 1, reason: '$tool');
+        expect(construction.previewObject, same(preview), reason: '$tool');
+        expect(construction.result, isNull, reason: '$tool');
+
+        expect(
+          construction.addPoint(const Point3D(2, 0, 0)),
+          ConstructionAction.complete,
+          reason: '$tool valid control',
+        );
+        expect(
+          construction.result!.vertices.every(
+            (point) => point.x.isFinite && point.y.isFinite && point.z.isFinite,
+          ),
+          isTrue,
+          reason: '$tool valid control',
+        );
+      }
+    });
+
     test('circle vertices stay in the active working plane', () {
       final construction = ConstructionState(tool: ConstructionTool.circle);
       construction.addPoint(Point3D.origin, workingPlaneNormal: Vector3D.unitZ);
