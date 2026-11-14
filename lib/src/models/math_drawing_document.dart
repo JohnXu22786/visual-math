@@ -24,14 +24,23 @@ class MathDrawingDocument {
     this.extensions = const {},
   });
 
-  Map<String, dynamic> toJson() => {
-    'format': 'visual-math-drawing',
-    'version': formatVersion,
-    'name': name,
-    'drawing': _snapshotToJson(drawing),
-    'requiredFeatures': const <String>[],
-    if (extensions.isNotEmpty) 'extensions': extensions,
-  };
+  void validate() {
+    if (name.trim().isEmpty) {
+      throw const FormatException('Document name is missing.');
+    }
+  }
+
+  Map<String, dynamic> toJson() {
+    validate();
+    return {
+      'format': 'visual-math-drawing',
+      'version': formatVersion,
+      'name': name,
+      'drawing': _snapshotToJson(drawing),
+      'requiredFeatures': const <String>[],
+      if (extensions.isNotEmpty) 'extensions': extensions,
+    };
+  }
 
   String encode() => const JsonEncoder.withIndent('  ').convert(toJson());
 

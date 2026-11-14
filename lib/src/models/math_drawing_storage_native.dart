@@ -259,6 +259,7 @@ Future<void> _saveDocument(
   MathDrawingDocument document, {
   required bool overwrite,
 }) async {
+  final source = document.encode();
   final target = await _fileFor(document.name);
   final legacy = await _legacyFiles(target.parent, document.name);
   if ((await target.exists() || legacy.isNotEmpty) && !overwrite) {
@@ -268,7 +269,7 @@ Future<void> _saveDocument(
     '${target.path}.${pid}.${DateTime.now().microsecondsSinceEpoch}.tmp',
   );
   await _nameFile(target).writeAsString(document.name, flush: true);
-  await temp.writeAsString(document.encode(), flush: true);
+  await temp.writeAsString(source, flush: true);
   try {
     await temp.rename(target.path);
   } catch (_) {

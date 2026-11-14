@@ -377,6 +377,15 @@ void main() {
     );
   });
 
+  test('cannot serialize a document with a blank name', () {
+    for (final name in ['', ' \t\n ']) {
+      final document = MathDrawingDocument(name: name, drawing: snapshot());
+
+      expect(() => document.toJson(), throwsFormatException);
+      expect(() => document.encode(), throwsFormatException);
+    }
+  });
+
   test('rejects dangling construction references', () {
     final json = MathDrawingDocument(name: 'x', drawing: snapshot()).toJson();
     final drawing = json['drawing'] as Map<String, dynamic>;

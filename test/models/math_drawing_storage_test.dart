@@ -265,4 +265,38 @@ void main() {
       expect(concurrentResults.whereType<StateError>(), hasLength(1));
     },
   );
+
+  test('rejects blank document names before touching storage', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'visual-math-invalid-name-',
+    );
+    const channel = MethodChannel('plugins.flutter.io/path_provider');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async => directory.path);
+    SharedPreferences.setMockInitialValues({});
+    addTearDown(() async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+      if (await directory.exists()) await directory.delete(recursive: true);
+    });
+
+    const storage = MathDrawingStorage();
+    final drawing = MathDrawingSnapshot(
+      formulas: const [],
+      parameters: const {},
+      activeView: ViewMode.mode2D,
+      activeTool: ConstructionTool.move,
+      viewport2D: Viewport.defaultViewport(),
+      camera3D: const Camera3D(),
+      projection3D: ProjectionType.parallel,
+      scene3D: const [],
+    );
+    for (final name in ['', '   ']) {
+      await expectLater(
+        storage.save(MathDrawingDocument(name: name, drawing: drawing)),
+        throwsFormatException,
+      );
+    }
+    expect(Directory('${directory.path}/visual_math').existsSync(), isFalse);
+  });
 }
