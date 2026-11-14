@@ -350,6 +350,14 @@ class ConstructionState {
           majorLength + dart_math.max(1e-12, majorLength * 1e-9)) {
         return _reject('短轴长度不能超过长轴，请重新选择短轴端点');
       }
+      final quadraticMajor = (1 / majorLength) / majorLength;
+      final quadraticMinor = (1 / minorRadius) / minorRadius;
+      if (!quadraticMajor.isFinite ||
+          quadraticMajor == 0 ||
+          !quadraticMinor.isFinite ||
+          quadraticMinor == 0) {
+        return _reject('椭圆半轴过大或过小，无法表示圆锥方程，请重新选择');
+      }
     }
     if (tool == ConstructionTool.parabola && _points.length == 2) {
       final directrix = point - _points[1];
@@ -2543,9 +2551,9 @@ class ConstructionState {
         origin: center,
         axisU: majorUnit,
         axisV: minorUnit,
-        quadraticX: 1 / (major.magnitude * major.magnitude),
+        quadraticX: (1 / major.magnitude) / major.magnitude,
         quadraticXY: 0,
-        quadraticY: 1 / (b * b),
+        quadraticY: (1 / b) / b,
         linearX: 0,
         linearY: 0,
         constant: -1,

@@ -260,6 +260,31 @@ void main() {
     expect(state.points, hasLength(1));
   });
 
+  test('ellipse rejects unrepresentable conic coefficients', () {
+    final oversized = ConstructionState(tool: ConstructionTool.ellipse);
+    oversized.addPoint(Point3D.origin);
+    oversized.addPoint(const Point3D(1e200, 0, 0));
+
+    expect(
+      oversized.addPoint(const Point3D(0, 1, 0)),
+      ConstructionAction.awaitInput,
+    );
+    expect(oversized.result, isNull);
+    expect(oversized.points, hasLength(2));
+
+    final largeButRepresentable = ConstructionState(
+      tool: ConstructionTool.ellipse,
+    );
+    largeButRepresentable.addPoint(Point3D.origin);
+    largeButRepresentable.addPoint(const Point3D(1e155, 0, 0));
+    expect(
+      largeButRepresentable.addPoint(const Point3D(0, 1e155, 0)),
+      ConstructionAction.complete,
+    );
+    expect(largeButRepresentable.result!.conic!.quadraticX, greaterThan(0));
+    expect(largeButRepresentable.result!.conic!.quadraticY, greaterThan(0));
+  });
+
   test('hyperbola rejects axes whose implicit coefficients underflow', () {
     final oversized = ConstructionState(tool: ConstructionTool.hyperbola);
 
