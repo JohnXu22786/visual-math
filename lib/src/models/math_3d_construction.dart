@@ -990,10 +990,21 @@ class ConstructionState {
         _updatePreview();
         return ConstructionAction.complete;
       case ConstructionTool.hyperbola:
-        return finishWhenReady(
-          3,
-          () => _createHyperbola(_points[0], _points[1], _points[2]),
-        );
+        if (count < 3) {
+          _updatePreview();
+          return ConstructionAction.advanceStep;
+        }
+        final hyperbola = _createHyperbola(_points[0], _points[1], _points[2]);
+        if (hyperbola == null) {
+          _points.removeLast();
+          _stepIndex = _points.length;
+          _validationMessage = '双曲线轴长超出可表示范围，请重新选择共轭轴点';
+          _updatePreview();
+          return ConstructionAction.awaitInput;
+        }
+        _result = hyperbola;
+        _updatePreview();
+        return ConstructionAction.complete;
       case ConstructionTool.locus:
         return finishOpenCurve(filled: false);
       case ConstructionTool.polyline:
@@ -3053,7 +3064,7 @@ class ConstructionState {
     );
   }
 
-  Object3D _createHyperbola(
+  Object3D? _createHyperbola(
     Point3D center,
     Point3D realPoint,
     Point3D otherPoint,
@@ -3064,6 +3075,16 @@ class ConstructionState {
     final transverse = other - realUnit * other.dot(realUnit);
     final a = real.magnitude;
     final b = transverse.magnitude;
+    final quadraticX = (1 / a) / a;
+    final quadraticY = -((1 / b) / b);
+    if (!a.isFinite ||
+        !b.isFinite ||
+        !quadraticX.isFinite ||
+        quadraticX == 0 ||
+        !quadraticY.isFinite ||
+        quadraticY == 0) {
+      return null;
+    }
     final transverseUnit = transverse.normalized();
     final samples = <Point3D>[];
     final curveStarts = <int>[];
@@ -3083,6 +3104,7 @@ class ConstructionState {
         );
       }
     }
+    if (!samples.every(_isFinitePoint)) return null;
     return Object3D.curve(
       points: samples,
       curveStarts: curveStarts,
@@ -3090,9 +3112,9 @@ class ConstructionState {
         origin: center,
         axisU: realUnit,
         axisV: transverseUnit,
-        quadraticX: 1 / (a * a),
+        quadraticX: quadraticX,
         quadraticXY: 0,
-        quadraticY: -1 / (b * b),
+        quadraticY: quadraticY,
         linearX: 0,
         linearY: 0,
         constant: -1,
