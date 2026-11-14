@@ -100,6 +100,16 @@ class ConstructionState {
     if (!_isFinitePoint(point)) {
       return _reject('无法放置无效坐标，请重新选择位置');
     }
+    if (_points.isNotEmpty &&
+        (tool == ConstructionTool.regularPolygon ||
+            tool == ConstructionTool.tetrahedron)) {
+      final candidate = tool == ConstructionTool.regularPolygon
+          ? _createRegularPolygon(_points.first, point)
+          : _createTetrahedron(_points.first, point);
+      if (!candidate.vertices.every(_isFinitePoint)) {
+        return _reject('边长过大，无法表示构造结果，请重新选择端点');
+      }
+    }
     if (const {
           ConstructionTool.sphere,
           ConstructionTool.sphereByRadius,
