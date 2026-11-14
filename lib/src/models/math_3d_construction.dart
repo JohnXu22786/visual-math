@@ -718,7 +718,9 @@ class ConstructionState {
           if (!_hasRoundSolidGeometry(_points[0], _points[1], _points[2])) {
             return _rejectLastRoundSolidPoint();
           }
-          _result = _createCone(_points[0], _points[1], _points[2]);
+          final cone = _createCone(_points[0], _points[1], _points[2]);
+          if (!_hasFiniteVertices(cone)) return _rejectLastRoundSolidPoint();
+          _result = cone;
           _updatePreview();
           return ConstructionAction.complete;
         }
@@ -729,7 +731,11 @@ class ConstructionState {
           if (!_hasRoundSolidGeometry(_points[0], _points[1], _points[2])) {
             return _rejectLastRoundSolidPoint();
           }
-          _result = _createCylinder(_points[0], _points[1], _points[2]);
+          final cylinder = _createCylinder(_points[0], _points[1], _points[2]);
+          if (!_hasFiniteVertices(cylinder)) {
+            return _rejectLastRoundSolidPoint();
+          }
+          _result = cylinder;
           _updatePreview();
           return ConstructionAction.complete;
         }
@@ -872,10 +878,15 @@ class ConstructionState {
             !_hasRoundSolidGeometry(_points[0], _points[1], _points[2])) {
           return _rejectLastRoundSolidPoint();
         }
-        return finishWhenReady(
-          3,
-          () => _createCone(_points[0], _points[1], _points[2]),
-        );
+        if (count < 3) {
+          _updatePreview();
+          return ConstructionAction.advanceStep;
+        }
+        final cone = _createCone(_points[0], _points[1], _points[2]);
+        if (!_hasFiniteVertices(cone)) return _rejectLastRoundSolidPoint();
+        _result = cone;
+        _updatePreview();
+        return ConstructionAction.complete;
       case ConstructionTool.surfaceOfRevolution:
         return finishWhenReady(
           4,
@@ -1277,7 +1288,10 @@ class ConstructionState {
       case ConstructionTool.extrudeCone:
         if (_points.length >= 2 &&
             _hasRoundSolidGeometry(_points[0], _points[1], point)) {
-          _previewObject = _createCone(_points[0], _points[1], point);
+          final cone = _createCone(_points[0], _points[1], point);
+          _previewObject = _hasFiniteVertices(cone)
+              ? cone
+              : Object3D.line(start, point, color: 0x60808080);
         } else {
           _previewObject = Object3D.line(start, point, color: 0x60808080);
         }
@@ -1285,7 +1299,10 @@ class ConstructionState {
       case ConstructionTool.cylinder:
         if (_points.length >= 2 &&
             _hasRoundSolidGeometry(_points[0], _points[1], point)) {
-          _previewObject = _createCylinder(_points[0], _points[1], point);
+          final cylinder = _createCylinder(_points[0], _points[1], point);
+          _previewObject = _hasFiniteVertices(cylinder)
+              ? cylinder
+              : Object3D.line(start, point, color: 0x60808080);
         } else {
           _previewObject = Object3D.line(start, point, color: 0x60808080);
         }
@@ -2095,8 +2112,13 @@ class ConstructionState {
     if (axis.magnitude < 1e-9) return false;
     final axisUnit = axis.normalized();
     final radial = radiusPoint - center;
-    return (radial - axisUnit * radial.dot(axisUnit)).magnitude >= 1e-9;
+    final radius = (radial - axisUnit * radial.dot(axisUnit)).magnitude;
+    return radius.isFinite && radius >= 1e-9;
   }
+
+  static bool _hasFiniteVertices(Object3D object) => object.vertices.every(
+    (point) => point.x.isFinite && point.y.isFinite && point.z.isFinite,
+  );
 
   static Object3D _createPlaneFromNormal(Point3D point, Vector3D normal) {
     final unit = _stableNormalize(normal);
