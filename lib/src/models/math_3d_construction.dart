@@ -772,6 +772,9 @@ class ConstructionState {
       }
       final result = create();
       if (result == null) return _rejectLastPlanePoint();
+      if (!_hasFiniteGeometry(result)) {
+        return _rejectLastConstructionPoint('构造结果坐标过大，无法表示，请重新选择点');
+      }
       _result = result;
       _updatePreview();
       return ConstructionAction.complete;
@@ -2133,6 +2136,48 @@ class ConstructionState {
     (point) => point.x.isFinite && point.y.isFinite && point.z.isFinite,
   );
 
+  static bool _hasFiniteGeometry(Object3D object) {
+    bool finitePoint(Point3D point) =>
+        point.x.isFinite && point.y.isFinite && point.z.isFinite;
+    bool finiteVector(Vector3D vector) =>
+        vector.x.isFinite && vector.y.isFinite && vector.z.isFinite;
+    bool finiteConic(Conic3D conic) =>
+        finitePoint(conic.origin) &&
+        finiteVector(conic.axisU) &&
+        finiteVector(conic.axisV) &&
+        [
+          conic.quadraticX,
+          conic.quadraticXY,
+          conic.quadraticY,
+          conic.linearX,
+          conic.linearY,
+          conic.constant,
+        ].every((value) => value.isFinite);
+
+    final finite = switch (object.type) {
+      Object3DType.point => finitePoint(object.point),
+      Object3DType.line =>
+        finitePoint(object.pointA) && finitePoint(object.pointB),
+      Object3DType.plane => [
+        object.planeA,
+        object.planeB,
+        object.planeC,
+        object.planeD,
+      ].every((value) => value.isFinite),
+      Object3DType.surface || Object3DType.polyhedron =>
+        object.vertices.every(finitePoint) &&
+            object.normals.every(finiteVector),
+      Object3DType.sphere =>
+        finitePoint(object.sphereCenter) && object.sphereRadius.isFinite,
+      Object3DType.vector =>
+        finitePoint(object.point) && finiteVector(object.vector),
+      Object3DType.curve =>
+        object.vertices.every(finitePoint) &&
+            (object.conic == null || finiteConic(object.conic!)),
+    };
+    return finite;
+  }
+
   static Object3D? _createPlaneFromNormal(Point3D point, Vector3D normal) {
     final unit = _stableNormalize(normal);
     if (unit.magnitude < 1e-9) return Object3D.point(point);
@@ -3483,6 +3528,13 @@ class ConstructionState {
     _stepIndex = _points.length < totalSteps ? _points.length : totalSteps - 1;
     _updatePreview();
     return _reject('无法表示平面坐标，请重新选择点');
+  }
+
+  ConstructionAction _rejectLastConstructionPoint(String message) {
+    _points.removeLast();
+    _stepIndex = _points.length < totalSteps ? _points.length : totalSteps - 1;
+    _updatePreview();
+    return _reject(message);
   }
 
   ConstructionAction _rejectLastRoundSolidPoint() {
