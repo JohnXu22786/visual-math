@@ -2419,6 +2419,49 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('cancelling before point drag threshold does not publish scene', (
+    tester,
+  ) async {
+    var sceneChanges = 0;
+    final state = await setup(tester, onSceneChanged: () => sceneChanges++);
+    await tester.tapAt(const Offset(340, 330));
+    await tester.pump();
+    final beforeCancel = sceneChanges;
+
+    final pointer = await tester.startGesture(
+      screen(state, state.objects.single.point),
+    );
+    await pointer.moveBy(const Offset(3, 0));
+    await tester.pump();
+    await pointer.cancel();
+    await tester.pump();
+
+    expect(state.objects, hasLength(1));
+    expect(sceneChanges, beforeCancel);
+  });
+
+  testWidgets('changing tool before point drag threshold does not publish', (
+    tester,
+  ) async {
+    var sceneChanges = 0;
+    final state = await setup(tester, onSceneChanged: () => sceneChanges++);
+    await tester.tapAt(const Offset(340, 330));
+    await tester.pump();
+    final initial = state.objects.single;
+    final beforeToolChange = sceneChanges;
+
+    final pointer = await tester.startGesture(screen(state, initial.point));
+    await pointer.moveBy(const Offset(3, 0));
+    await tester.pump();
+    state.setTool(ConstructionTool.move);
+    await tester.pump();
+
+    expect(state.objects, [initial]);
+    expect(sceneChanges, beforeToolChange);
+    await pointer.cancel();
+    await tester.pump();
+  });
+
   testWidgets(
     'planar drag arrows follow projected axes in parallel and perspective views',
     (tester) async {
