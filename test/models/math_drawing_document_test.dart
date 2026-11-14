@@ -5,11 +5,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:visual_math/visual_math.dart';
 
 MathDrawingSnapshot snapshot({
+  List<FormulaEntry>? formulas,
   List<Object3D>? scene,
   List<ConstructionDependency>? dependencies,
   List<PointAttachment>? attachments,
 }) => MathDrawingSnapshot(
-  formulas: [
+  formulas: formulas ?? [
     FormulaEntry(
       id: 'f-17',
       rawExpression: r' x^2 + a ',
@@ -94,6 +95,40 @@ MathDrawingSnapshot snapshot({
 );
 
 void main() {
+  test('assigns unique fallback IDs when saved IDs collide', () {
+    final drawing = snapshot(
+      formulas: const [
+        FormulaEntry(rawExpression: 'x'),
+        FormulaEntry(id: 'formula-0', rawExpression: 'y'),
+        FormulaEntry(id: 'formula-0-1', rawExpression: 'z'),
+      ],
+      scene: [
+        Object3D.point(const Point3D(0, 0, 0)),
+        Object3D.point(const Point3D(1, 0, 0)).copyWith(documentId: 'object-0'),
+        Object3D.point(const Point3D(2, 0, 0)).copyWith(
+          documentId: 'object-0-1',
+        ),
+      ],
+      attachments: const [],
+      dependencies: const [],
+    );
+
+    final decoded = MathDrawingDocument.decode(
+      MathDrawingDocument(name: 'colliding IDs', drawing: drawing).encode(),
+    );
+
+    expect(decoded.drawing.formulas.map((formula) => formula.id).toSet(), {
+      'formula-0',
+      'formula-0-1',
+      'formula-0-2',
+    });
+    expect(decoded.drawing.scene3D.map((object) => object.documentId).toSet(), {
+      'object-0',
+      'object-0-1',
+      'object-0-2',
+    });
+  });
+
   test('round trips editable 2D and 3D drawing state', () {
     final doc = MathDrawingDocument(
       name: 'study',
