@@ -366,7 +366,7 @@ class ConstructionState {
       return _reject('母线长度必须大于 0，请重新选择母线终点');
     }
     if (tool == ConstructionTool.surfaceOfRevolution && _points.length == 3) {
-      final axis = (_points[1] - _points[0]).normalized();
+      final axis = _unitDirectionBetweenPoints(_points[0], _points[1]);
       final start = _points[2] - _points[0];
       final end = point - _points[0];
       final startRadius = (start - axis * start.dot(axis)).magnitude;
@@ -3130,7 +3130,7 @@ class ConstructionState {
     Point3D profileStart,
     Point3D profileEnd,
   ) {
-    final axis = (axisEnd - axisStart).normalized();
+    final axis = _unitDirectionBetweenPoints(axisStart, axisEnd);
     if (axis.magnitude < 1e-9) {
       return Object3D.curve(points: [profileStart, profileEnd]);
     }
@@ -3164,6 +3164,11 @@ class ConstructionState {
         final d = (ring + 1) * segments + segment;
         indices.addAll([a, b, c, a, c, d]);
       }
+    }
+    if (!vertices.every(_isFinitePoint)) {
+      return Object3D.curve(
+        points: [profileStart, profileEnd].where(_isFinitePoint).toList(),
+      );
     }
     return Object3D.surface(
       vertices: vertices,
