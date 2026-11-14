@@ -13,7 +13,7 @@ Add the package to your app's `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  visual_math: ^0.1.0
+  visual_math: ^0.2.0
 ```
 
 Then resolve dependencies with `flutter pub get`. Import the public library:
