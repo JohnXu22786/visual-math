@@ -10,26 +10,28 @@ MathDrawingSnapshot snapshot({
   List<ConstructionDependency>? dependencies,
   List<PointAttachment>? attachments,
 }) => MathDrawingSnapshot(
-  formulas: formulas ?? [
-    FormulaEntry(
-      id: 'f-17',
-      rawExpression: r' x^2 + a ',
-      color: const Color(0xFF123456),
-      autoColor: false,
-      visible: false,
-      domainStartExpression: r'-2\pi',
-      domainEndExpression: 'a + 1',
-      includeDomainStart: false,
-      includeDomainEnd: true,
-      parameterValues: const {'a': 2.5},
-    ),
-    FormulaEntry(
-      id: 'f-auto',
-      rawExpression: r'\sin(x)',
-      color: const Color(0xFF0088CC),
-      autoColor: true,
-    ),
-  ],
+  formulas:
+      formulas ??
+      [
+        FormulaEntry(
+          id: 'f-17',
+          rawExpression: r' x^2 + a ',
+          color: const Color(0xFF123456),
+          autoColor: false,
+          visible: false,
+          domainStartExpression: r'-2\pi',
+          domainEndExpression: 'a + 1',
+          includeDomainStart: false,
+          includeDomainEnd: true,
+          parameterValues: const {'a': 2.5},
+        ),
+        FormulaEntry(
+          id: 'f-auto',
+          rawExpression: r'\sin(x)',
+          color: const Color(0xFF0088CC),
+          autoColor: true,
+        ),
+      ],
   parameters: {'a': MathParameter(value: 2.5, min: -4, max: 8, step: 0.5)},
   activeView: ViewMode.mode3D,
   activeTool: ConstructionTool.point,
@@ -105,9 +107,8 @@ void main() {
       scene: [
         Object3D.point(const Point3D(0, 0, 0)),
         Object3D.point(const Point3D(1, 0, 0)).copyWith(documentId: 'object-0'),
-        Object3D.point(const Point3D(2, 0, 0)).copyWith(
-          documentId: 'object-0-1',
-        ),
+        Object3D.point(const Point3D(2, 0, 0))
+            .copyWith(documentId: 'object-0-1'),
       ],
       attachments: const [],
       dependencies: const [],
