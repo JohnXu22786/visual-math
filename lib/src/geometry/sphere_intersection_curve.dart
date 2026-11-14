@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import '../models/math_3d_object.dart';
 
@@ -87,21 +88,6 @@ Object3D? spherePlaneIntersectionCurve(Object3D sphere, Object3D plane) {
       _sumIsExact(projectedCenter, -planeOffset) &&
       (smallerProjection == 0 || smallerProjection >= largerProjection / 2);
   if (exactAxisAlignedComparison && distance > radius) return null;
-  final exactDistanceEvaluation =
-      _productIsExact(equation.normal.x, center.x) &&
-      _productIsExact(equation.normal.y, center.y) &&
-      _productIsExact(equation.normal.z, center.z) &&
-      _sumIsExact(equation.normal.x * center.x, equation.normal.y * center.y) &&
-      _sumIsExact(
-        equation.normal.x * center.x + equation.normal.y * center.y,
-        equation.normal.z * center.z,
-      ) &&
-      _productIsExact(normalLength, normalLength) &&
-      normalLength * normalLength == equation.normalSquared &&
-      projectedCenter * normalLength == directCenterDot &&
-      _sumIsExact(projectedCenter, -planeOffset) &&
-      (equation.d == 0 ||
-          planeOffset * equation.coefficientScale * normalLength == equation.d);
   final coordinateTolerance = exactAxisAlignedComparison
       ? 0.0
       : centerScale *
@@ -111,24 +97,21 @@ Object3D? spherePlaneIntersectionCurve(Object3D sphere, Object3D plane) {
     coordinateTolerance,
     geometryScale * _separationRoundoffFactor,
   );
-  final exactSpherePlaneTangent =
-      (distance - radius).abs() <= tangentRoundoff &&
-      _isExactSpherePlaneTangent(sphere, plane, radius);
-  if (geometryScale != 0 && coordinateTolerance >= geometryScale) {
-    return null;
-  }
-  if (distance == radius &&
-      coordinateTolerance > 0 &&
-      !exactDistanceEvaluation &&
-      !exactSpherePlaneTangent) {
+  final exactSeparation = (distance - radius).abs() <= tangentRoundoff
+      ? _exactSpherePlaneSeparation(sphere, plane, radius)
+      : null;
+  if (exactSeparation != null && exactSeparation > 0) return null;
+  if (geometryScale != 0 &&
+      coordinateTolerance >= geometryScale &&
+      exactSeparation == null) {
     return null;
   }
   if (distance > radius &&
       distance - radius <= coordinateTolerance &&
-      !exactSpherePlaneTangent) {
+      exactSeparation == null) {
     return null;
   }
-  final tolerance = exactSpherePlaneTangent
+  final tolerance = exactSeparation != null && exactSeparation <= 0
       ? math.max(coordinateTolerance, (distance - radius).abs())
       : coordinateTolerance;
   final comparisonScale = math.max(radius, distance);
@@ -217,10 +200,26 @@ Object3D? sphereSphereIntersectionCurve(Object3D first, Object3D second) {
         ? 0.0
         : coordinateScale / scale * _separationRoundoffFactor,
   );
-  if (scaledGeometry != 0 && coordinateTolerance >= scaledGeometry) {
+  final scaledTolerance = coordinateTolerance;
+  final outerBoundary = scaledFirstRadius + scaledSecondRadius;
+  final innerBoundary = (scaledFirstRadius - scaledSecondRadius).abs();
+  final nearBoundary =
+      (distanceRatio - outerBoundary).abs() <= scaledTolerance ||
+      (distanceRatio - innerBoundary).abs() <= scaledTolerance;
+  if (nearBoundary &&
+      _isExactlyDisjointSpherePair(
+        firstCenter,
+        secondCenter,
+        firstRadius,
+        secondRadius,
+      )) {
     return null;
   }
-  final scaledTolerance = coordinateTolerance;
+  if (scaledGeometry != 0 &&
+      coordinateTolerance >= scaledGeometry &&
+      !nearBoundary) {
+    return null;
+  }
   if (distanceRatio >
           scaledFirstRadius + scaledSecondRadius + scaledTolerance ||
       distanceRatio <
@@ -362,92 +361,100 @@ double _scaledMagnitude(Vector3D vector) {
   return scale * math.sqrt(x * x + y * y + z * z);
 }
 
-bool _productIsExact(double first, double second) {
-  const splitter = 134217729.0;
-  final product = first * second;
-  if (!product.isFinite) return false;
-  final firstSplit = splitter * first;
-  final secondSplit = splitter * second;
-  if (!firstSplit.isFinite || !secondSplit.isFinite) return false;
-  final firstHigh = firstSplit - (firstSplit - first);
-  final firstLow = first - firstHigh;
-  final secondHigh = secondSplit - (secondSplit - second);
-  final secondLow = second - secondHigh;
-  final error =
-      ((firstHigh * secondHigh - product) + firstHigh * secondLow) +
-      firstLow * secondHigh +
-      firstLow * secondLow;
-  return error == 0;
-}
-
-bool _isExactSpherePlaneTangent(
+int _exactSpherePlaneSeparation(
   Object3D sphere,
   Object3D plane,
   double radius,
 ) {
-  const minNormal = 2.2250738585072014e-308;
-  final a = plane.planeA;
-  final b = plane.planeB;
-  final c = plane.planeC;
-  final d = plane.planeD;
   final center = sphere.sphereCenter;
-  final ax = a * center.x;
-  final by = b * center.y;
-  final cz = c * center.z;
-  final axBy = ax + by;
-  final dot = axBy + cz;
-  final numerator = dot + d;
-  final aSquared = a * a;
-  final bSquared = b * b;
-  final cSquared = c * c;
-  final aSquaredBy = aSquared + bSquared;
-  final normalSquared = aSquaredBy + cSquared;
-  final numeratorSquared = numerator * numerator;
-  final radiusSquared = radius * radius;
-  final tangentSquared = radiusSquared * normalSquared;
-  final products = [
-    ax,
-    by,
-    cz,
-    aSquared,
-    bSquared,
-    cSquared,
-    numeratorSquared,
-    radiusSquared,
-    normalSquared,
-    tangentSquared,
-  ];
-  return [a, b, c, d, radius, center.x, center.y, center.z]
-          .every((value) => value.isFinite) &&
-      [axBy, dot, numerator, aSquaredBy, normalSquared]
-          .every((value) => value.isFinite) &&
-      tangentSquared.isFinite &&
-      products.every(
-        (value) => value.isFinite && (value == 0 || value.abs() >= minNormal),
-      ) &&
-      !(a != 0 && center.x != 0 && ax == 0) &&
-      !(b != 0 && center.y != 0 && by == 0) &&
-      !(c != 0 && center.z != 0 && cz == 0) &&
-      !(a != 0 && aSquared == 0) &&
-      !(b != 0 && bSquared == 0) &&
-      !(c != 0 && cSquared == 0) &&
-      !(radius != 0 && radiusSquared == 0) &&
-      !(radiusSquared != 0 && normalSquared != 0 && tangentSquared == 0) &&
-      _productIsExact(a, center.x) &&
-      _productIsExact(b, center.y) &&
-      _productIsExact(c, center.z) &&
-      _sumIsExact(ax, by) &&
-      _sumIsExact(axBy, cz) &&
-      _sumIsExact(dot, d) &&
-      _productIsExact(a, a) &&
-      _productIsExact(b, b) &&
-      _productIsExact(c, c) &&
-      _sumIsExact(aSquared, bSquared) &&
-      _sumIsExact(aSquaredBy, cSquared) &&
-      _productIsExact(numerator, numerator) &&
-      _productIsExact(radius, radius) &&
-      _productIsExact(radiusSquared, normalSquared) &&
-      numeratorSquared == tangentSquared;
+  final a = _ExactDyadic.fromDouble(plane.planeA);
+  final b = _ExactDyadic.fromDouble(plane.planeB);
+  final c = _ExactDyadic.fromDouble(plane.planeC);
+  final d = _ExactDyadic.fromDouble(plane.planeD);
+  final x = _ExactDyadic.fromDouble(center.x);
+  final y = _ExactDyadic.fromDouble(center.y);
+  final z = _ExactDyadic.fromDouble(center.z);
+  final exactRadius = _ExactDyadic.fromDouble(radius);
+  final numerator = a * x + b * y + c * z + (-d);
+  final normalSquared = a * a + b * b + c * c;
+  return (numerator * numerator).compareTo(
+    exactRadius * exactRadius * normalSquared,
+  );
+}
+
+bool _isExactlyDisjointSpherePair(
+  Point3D firstCenter,
+  Point3D secondCenter,
+  double firstRadius,
+  double secondRadius,
+) {
+  final dx =
+      _ExactDyadic.fromDouble(secondCenter.x) -
+      _ExactDyadic.fromDouble(firstCenter.x);
+  final dy =
+      _ExactDyadic.fromDouble(secondCenter.y) -
+      _ExactDyadic.fromDouble(firstCenter.y);
+  final dz =
+      _ExactDyadic.fromDouble(secondCenter.z) -
+      _ExactDyadic.fromDouble(firstCenter.z);
+  final first = _ExactDyadic.fromDouble(firstRadius);
+  final second = _ExactDyadic.fromDouble(secondRadius);
+  final distanceSquared = dx * dx + dy * dy + dz * dz;
+  final outerRadius = first + second;
+  final radiusDifference = (first + (-second)).abs();
+  final outerSquared = outerRadius * outerRadius;
+  final innerSquared = radiusDifference * radiusDifference;
+  return distanceSquared.compareTo(outerSquared) > 0 ||
+      distanceSquared.compareTo(innerSquared) < 0;
+}
+
+class _ExactDyadic {
+  const _ExactDyadic(this.significand, this.exponent);
+
+  final BigInt significand;
+  final int exponent;
+
+  static _ExactDyadic fromDouble(double value) {
+    final bytes = ByteData(8)..setFloat64(0, value, Endian.big);
+    final bits = bytes.getUint64(0, Endian.big);
+    final exponentBits = (bits >> 52) & 0x7ff;
+    final fractionBits = bits & 0x000fffffffffffff;
+    if (exponentBits == 0 && fractionBits == 0) {
+      return _ExactDyadic(BigInt.zero, 0);
+    }
+
+    final significand = exponentBits == 0
+        ? BigInt.from(fractionBits)
+        : (BigInt.one << 52) | BigInt.from(fractionBits);
+    final signedSignificand = (bits >> 63) == 0 ? significand : -significand;
+    final exponent = exponentBits == 0 ? -1074 : exponentBits - 1023 - 52;
+    return _ExactDyadic(signedSignificand, exponent);
+  }
+
+  _ExactDyadic operator +(_ExactDyadic other) {
+    final commonExponent = math.min(exponent, other.exponent);
+    return _ExactDyadic(
+      (significand << (exponent - commonExponent)) +
+          (other.significand << (other.exponent - commonExponent)),
+      commonExponent,
+    );
+  }
+
+  _ExactDyadic operator -(_ExactDyadic other) => this + (-other);
+
+  _ExactDyadic abs() => significand.isNegative ? -this : this;
+
+  _ExactDyadic operator *(_ExactDyadic other) =>
+      _ExactDyadic(significand * other.significand, exponent + other.exponent);
+
+  _ExactDyadic operator -() => _ExactDyadic(-significand, exponent);
+
+  int compareTo(_ExactDyadic other) {
+    final commonExponent = math.min(exponent, other.exponent);
+    return (significand << (exponent - commonExponent)).compareTo(
+      other.significand << (other.exponent - commonExponent),
+    );
+  }
 }
 
 bool _sumIsExact(double first, double second) {

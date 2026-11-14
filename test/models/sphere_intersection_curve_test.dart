@@ -184,7 +184,7 @@ void main() {
         );
         expect(roundedTangentMiss, isNull);
 
-        final roundedEqualityMiss = spherePlaneIntersectionCurve(
+        final roundedEqualityIntersection = spherePlaneIntersectionCurve(
           const Object3D.sphere(
             center: Point3D(2419547362792.136, 5553949237801.048, 0),
             radius: 6055285271199.418,
@@ -196,7 +196,7 @@ void main() {
             d: 0,
           ),
         );
-        expect(roundedEqualityMiss, isNull);
+        expect(roundedEqualityIntersection, isNotNull);
 
         final translatedTangent = spherePlaneIntersectionCurve(
           const Object3D.sphere(center: Point3D(1e12, 0, 0), radius: 0.125),
@@ -210,11 +210,11 @@ void main() {
         );
         expect(exactObliqueTangent?.type, Object3DType.point);
 
-        final roundedSubtractionMiss = spherePlaneIntersectionCurve(
+        final roundedSubtractionIntersection = spherePlaneIntersectionCurve(
           const Object3D.sphere(center: Point3D(1e16, 0, 0), radius: 1e16),
           const Object3D.plane(a: 1, c: 0, d: 1),
         );
-        expect(roundedSubtractionMiss, isNull);
+        expect(roundedSubtractionIntersection, isNotNull);
       },
     );
 
@@ -255,10 +255,7 @@ void main() {
     test('rejects oblique disjoint pairs within the relative tolerance', () {
       final sphereSphereMiss = sphereSphereIntersectionCurve(
         const Object3D.sphere(radius: 1),
-        const Object3D.sphere(
-          center: Point3D(1.2 + 1e-12, 1.6, 0),
-          radius: 1,
-        ),
+        const Object3D.sphere(center: Point3D(1.2 + 1e-12, 1.6, 0), radius: 1),
       );
       final spherePlaneMiss = spherePlaneIntersectionCurve(
         const Object3D.sphere(
@@ -268,6 +265,10 @@ void main() {
         const Object3D.plane(a: 0.6, b: 0.8, c: 0),
       );
       final sphereSphereTangent = sphereSphereIntersectionCurve(
+        const Object3D.sphere(radius: 5),
+        const Object3D.sphere(center: Point3D(6, 8, 0), radius: 5),
+      );
+      final sphereSphereRoundedTangentMiss = sphereSphereIntersectionCurve(
         const Object3D.sphere(radius: 1),
         const Object3D.sphere(center: Point3D(1.2, 1.6, 0), radius: 1),
       );
@@ -298,16 +299,30 @@ void main() {
         const Object3D.sphere(center: Point3D(5, 12, 0), radius: 13),
         const Object3D.plane(a: 5, b: 12, c: 0),
       );
+      final largeTranslatedPlaneIntersection = spherePlaneIntersectionCurve(
+        const Object3D.sphere(center: Point3D(1e16, 1e16, 0), radius: 1),
+        const Object3D.plane(a: 1, b: -1, c: 0),
+      );
+      final largeTranslatedSphereTangent = sphereSphereIntersectionCurve(
+        const Object3D.sphere(center: Point3D(1e16, 1e16, 0), radius: 5),
+        const Object3D.sphere(
+          center: Point3D(1e16 + 6, 1e16 + 8, 0),
+          radius: 5,
+        ),
+      );
 
       expect(sphereSphereMiss, isNull);
       expect(spherePlaneMiss, isNull);
       expect(sphereSphereTangent?.type, Object3DType.point);
+      expect(sphereSphereRoundedTangentMiss, isNull);
       expect(spherePlaneTangent?.type, Object3DType.point);
       expect(shallowSpherePlaneIntersection, isNotNull);
       expect(obliqueOriginTangent?.type, Object3DType.point);
       expect(underflowedProductsMiss, isNull);
       expect(subnormalProductsMiss, isNull);
       expect(obliquePythagoreanTangent?.type, Object3DType.point);
+      expect(largeTranslatedPlaneIntersection, isNotNull);
+      expect(largeTranslatedSphereTangent?.type, Object3DType.point);
     });
 
     test('representably disjoint sphere pair has no intersection', () {
