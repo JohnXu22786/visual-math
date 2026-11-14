@@ -641,7 +641,9 @@ class ConstructionState {
             _updatePreview();
             return ConstructionAction.awaitInput;
           }
-          _result = _createPlane(_points[0], _points[1], _points[2]);
+          final plane = _createPlane(_points[0], _points[1], _points[2]);
+          if (plane == null) return _rejectLastPlanePoint();
+          _result = plane;
           _updatePreview();
           return ConstructionAction.complete;
         }
@@ -762,13 +764,15 @@ class ConstructionState {
 
     ConstructionAction finishWhenReady(
       int required,
-      Object3D Function() create,
+      Object3D? Function() create,
     ) {
       if (count < required) {
         _updatePreview();
         return ConstructionAction.advanceStep;
       }
-      _result = create();
+      final result = create();
+      if (result == null) return _rejectLastPlanePoint();
+      _result = result;
       _updatePreview();
       return ConstructionAction.complete;
     }
@@ -1832,11 +1836,12 @@ class ConstructionState {
   }
 
   /// Create a plane through three points.
-  static Object3D _createPlane(Point3D a, Point3D b, Point3D c) {
+  static Object3D? _createPlane(Point3D a, Point3D b, Point3D c) {
     final normal = _triangleUnitNormal(a, b, c);
 
     // Plane equation: normal · (x, y, z) = normal · a
     final d = normal.x * a.x + normal.y * a.y + normal.z * a.z;
+    if (!d.isFinite) return null;
 
     return Object3D.plane(
       a: normal.x,
@@ -2128,14 +2133,16 @@ class ConstructionState {
     (point) => point.x.isFinite && point.y.isFinite && point.z.isFinite,
   );
 
-  static Object3D _createPlaneFromNormal(Point3D point, Vector3D normal) {
+  static Object3D? _createPlaneFromNormal(Point3D point, Vector3D normal) {
     final unit = _stableNormalize(normal);
     if (unit.magnitude < 1e-9) return Object3D.point(point);
+    final d = unit.dot(point.toVector());
+    if (!d.isFinite) return null;
     return Object3D.plane(
       a: unit.x,
       b: unit.y,
       c: unit.z,
-      d: unit.dot(point.toVector()),
+      d: d,
       color: 0x402196F3,
       label: 'Plane',
     );
@@ -3453,6 +3460,13 @@ class ConstructionState {
   ConstructionAction _reject(String message) {
     _validationMessage = message;
     return ConstructionAction.awaitInput;
+  }
+
+  ConstructionAction _rejectLastPlanePoint() {
+    _points.removeLast();
+    _stepIndex = _points.length < totalSteps ? _points.length : totalSteps - 1;
+    _updatePreview();
+    return _reject('无法表示平面坐标，请重新选择点');
   }
 
   ConstructionAction _rejectLastRoundSolidPoint() {

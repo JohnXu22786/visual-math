@@ -626,6 +626,57 @@ void main() {
       expect(construction.result?.planeC, closeTo(1, 1e-9));
     });
 
+    test('three-point plane rejects an overflowing finite offset', () {
+      const a = Point3D(1.3e308, 1.3e308, 0);
+      final construction = ConstructionState(tool: ConstructionTool.plane);
+      construction.addPoint(a);
+      construction.addPoint(const Point3D(1.3e308, 1.3e308, 1));
+
+      expect(
+        construction.addPoint(
+          const Point3D(1.300000000000002e308, 1.299999999999998e308, 0),
+        ),
+        ConstructionAction.awaitInput,
+      );
+      expect(construction.result, isNull);
+      expect(construction.points, hasLength(2));
+    });
+
+    test('normal-defined planes reject overflowing offsets and keep ordinary ones valid', () {
+      const largePoint = Point3D(1.3e308, 1.3e308, 0);
+      final large = ConstructionState(tool: ConstructionTool.generalPlane);
+      large.addPoint(largePoint);
+      expect(
+        large.addPoint(
+          const Point3D(1.300000000000002e308, 1.300000000000002e308, 0),
+        ),
+        ConstructionAction.awaitInput,
+      );
+      expect(large.result, isNull);
+      expect(large.points, [largePoint]);
+
+      final ordinary = ConstructionState(tool: ConstructionTool.generalPlane);
+      ordinary.addPoint(const Point3D(1, 2, 3));
+      expect(
+        ordinary.addPoint(const Point3D(2, 3, 3)),
+        ConstructionAction.complete,
+      );
+      final plane = ordinary.result!;
+      expect(
+        [
+          plane.planeA,
+          plane.planeB,
+          plane.planeC,
+          plane.planeD,
+        ].every((coefficient) => coefficient.isFinite),
+        isTrue,
+      );
+      expect(
+        plane.planeA * 1 + plane.planeB * 2 + plane.planeC * 3,
+        closeTo(plane.planeD, 1e-12),
+      );
+    });
+
     test('line rejects duplicate endpoints', () {
       final construction = ConstructionState(tool: ConstructionTool.line);
       const point = Point3D(2, -1, 4);
