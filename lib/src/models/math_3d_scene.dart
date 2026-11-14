@@ -864,16 +864,85 @@ List<Point3D> clipLineToView(
   Camera3D camera,
   Projection3D projection,
 ) {
+  final pointA = object.pointA;
+  final pointB = object.pointB;
+  if (!pointA.x.isFinite ||
+      !pointA.y.isFinite ||
+      !pointA.z.isFinite ||
+      !pointB.x.isFinite ||
+      !pointB.y.isFinite ||
+      !pointB.z.isFinite) {
+    return const [];
+  }
   final view = camera.viewMatrix();
-  final a = _transformPoint(view, object.pointA);
-  final edge = object.pointB - object.pointA;
-  final edgeScale = dart_math.max(
+  final edge = pointB - pointA;
+  var clipOrigin = pointA;
+  var centeredSegment = false;
+  var edgeScale = dart_math.max(
     edge.x.abs(),
     dart_math.max(edge.y.abs(), edge.z.abs()),
   );
-  final unitEdge = edgeScale == 0
-      ? edge
-      : Vector3D(edge.x / edgeScale, edge.y / edgeScale, edge.z / edgeScale);
+  Vector3D unitEdge;
+  if (edgeScale.isFinite) {
+    unitEdge = edgeScale == 0
+        ? edge
+        : Vector3D(edge.x / edgeScale, edge.y / edgeScale, edge.z / edgeScale);
+  } else {
+    // Subtracting finite endpoints can overflow when they lie on opposite
+    // sides of the number range. Scale before subtracting to preserve the
+    // direction; the true segment extent is then beyond any finite parameter.
+    if (object.lineKind == Line3DKind.segment) {
+      // Center the parameterization so intersections near the middle of an
+      // extreme segment don't require subtracting nearly equal max doubles.
+      clipOrigin = Point3D(
+        pointA.x / 2 + pointB.x / 2,
+        pointA.y / 2 + pointB.y / 2,
+        pointA.z / 2 + pointB.z / 2,
+      );
+      centeredSegment = true;
+      final halfEdge = Vector3D(
+        pointB.x / 2 - pointA.x / 2,
+        pointB.y / 2 - pointA.y / 2,
+        pointB.z / 2 - pointA.z / 2,
+      );
+      edgeScale = dart_math.max(
+        halfEdge.x.abs(),
+        dart_math.max(halfEdge.y.abs(), halfEdge.z.abs()),
+      );
+      if (edgeScale == 0 || !edgeScale.isFinite) return const [];
+      unitEdge = Vector3D(
+        halfEdge.x / edgeScale,
+        halfEdge.y / edgeScale,
+        halfEdge.z / edgeScale,
+      );
+    } else {
+      final pointScale = dart_math.max(
+        dart_math.max(pointA.x.abs(), pointB.x.abs()),
+        dart_math.max(
+          dart_math.max(pointA.y.abs(), pointB.y.abs()),
+          dart_math.max(pointA.z.abs(), pointB.z.abs()),
+        ),
+      );
+      final scaledEdge = Vector3D(
+        pointB.x / pointScale - pointA.x / pointScale,
+        pointB.y / pointScale - pointA.y / pointScale,
+        pointB.z / pointScale - pointA.z / pointScale,
+      );
+      final scaledEdgeScale = dart_math.max(
+        scaledEdge.x.abs(),
+        dart_math.max(scaledEdge.y.abs(), scaledEdge.z.abs()),
+      );
+      if (scaledEdgeScale == 0 || !scaledEdgeScale.isFinite) return const [];
+      unitEdge = Vector3D(
+        scaledEdge.x / scaledEdgeScale,
+        scaledEdge.y / scaledEdgeScale,
+        scaledEdge.z / scaledEdgeScale,
+      );
+      edgeScale = double.infinity;
+    }
+  }
+  final a = _transformPoint(view, clipOrigin);
+  if (!a.x.isFinite || !a.y.isFinite || !a.z.isFinite) return const [];
   // Directions must not include the view translation: subtracting transformed
   // points can lose a short edge when it is added to the camera position.
   final direction = Point3D(
@@ -881,16 +950,29 @@ List<Point3D> clipLineToView(
     view[1] * unitEdge.x + view[5] * unitEdge.y + view[9] * unitEdge.z,
     view[2] * unitEdge.x + view[6] * unitEdge.y + view[10] * unitEdge.z,
   );
+  if (!direction.x.isFinite || !direction.y.isFinite || !direction.z.isFinite) {
+    return const [];
+  }
   var lower = object.lineKind == Line3DKind.line
       ? double.negativeInfinity
+      : centeredSegment
+      ? -edgeScale
       : 0.0;
   var upper = object.lineKind == Line3DKind.segment
       ? edgeScale
       : double.infinity;
 
   bool clip(double value, double slope) {
+    if (!value.isFinite || !slope.isFinite) return false;
     if (slope == 0) return value >= 0;
-    final bound = -value / slope;
+    final rawBound = -value / slope;
+    // A crossing can be just beyond the largest representable parameter even
+    // when its clipped world coordinate is finite (for example, a segment
+    // spanning both signs of double.maxFinite). Saturate that bound so later
+    // clipping planes can still narrow it to the visible interval.
+    final bound = rawBound.isInfinite
+        ? (rawBound.isNegative ? -double.maxFinite : double.maxFinite)
+        : rawBound;
     if (slope > 0) {
       lower = dart_math.max(lower, bound);
     } else {
@@ -922,5 +1004,5 @@ List<Point3D> clipLineToView(
       return const [];
   }
   if (!lower.isFinite || !upper.isFinite) return const [];
-  return [object.pointA + unitEdge * lower, object.pointA + unitEdge * upper];
+  return [clipOrigin + unitEdge * lower, clipOrigin + unitEdge * upper];
 }

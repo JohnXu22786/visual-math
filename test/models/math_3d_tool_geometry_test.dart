@@ -117,6 +117,26 @@ void main() {
     }
   });
 
+  test('finite extreme segments clip to finite visible endpoints', () {
+    const camera = Camera3D(theta: math.pi / 2, phi: 0, distance: 10);
+    final projection = Projection3D.perspective();
+    final clipped = clipLineToView(
+      const Object3D.line(
+        Point3D(-double.maxFinite, 0, 0),
+        Point3D(double.maxFinite, 0, 0),
+      ),
+      camera,
+      projection,
+    );
+
+    expect(clipped, hasLength(2));
+    for (final point in clipped) {
+      expect(point.x.isFinite && point.y.isFinite && point.z.isFinite, isTrue);
+      final screen = worldToScreen(point, camera, projection);
+      expect(screen.x.isFinite && screen.y.isFinite, isTrue);
+    }
+  });
+
   test('two-point tools keep their geometry and reject zero-length input', () {
     for (final tool in [
       ConstructionTool.segment,
