@@ -189,6 +189,44 @@ void main() {
       expect(pts.length, 50);
     });
 
+    test('splits branches when a pole falls between default samples', () {
+      final expr = Expression3D.parametricCurve(
+        '(1/t, 0, t)',
+        tMin: -1,
+        tMax: 1,
+      );
+
+      final segments = expr.sampleCurveSegments();
+
+      expect(segments, hasLength(2));
+      expect(segments.first.last.x, lessThan(0));
+      expect(segments.last.first.x, greaterThan(0));
+    });
+
+    test('splits branches when a pole is close to a default sample', () {
+      final expr = Expression3D.parametricCurve(
+        '(1/(t+0.010001), 0, t)',
+        tMin: -1,
+        tMax: 1,
+      );
+
+      final segments = expr.sampleCurveSegments();
+
+      expect(segments, hasLength(2));
+      expect(segments.first.last.x, lessThan(0));
+      expect(segments.last.first.x, greaterThan(0));
+    });
+
+    test('keeps a smooth large peak in one curve segment', () {
+      final expr = Expression3D.parametricCurve(
+        '(100-990000*t^2, t, 0)',
+        tMin: -1,
+        tMax: 1,
+      );
+
+      expect(expr.sampleCurveSegments(), hasLength(1));
+    });
+
     test('returns empty points for invalid curve', () {
       final expr = Expression3D.parametricCurve('invalid');
       expect(expr.isValid, isFalse);

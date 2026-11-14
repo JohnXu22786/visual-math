@@ -269,6 +269,9 @@ class Expression3D {
           .toList();
 
   /// Sample the curve into finite, contiguous paths separated at invalid values.
+  ///
+  /// Midpoints are checked between samples so poles that fall between them do
+  /// not connect otherwise finite points from separate branches.
   List<List<Point3D>> sampleCurveSegments({int numSamples = 100}) {
     if (!isValid || _curveX == null || numSamples < 2) return [];
 
@@ -285,17 +288,53 @@ class Expression3D {
       final t = tMin + i * step;
       try {
         final point = evaluateCurve(t);
-        if (point.x.isFinite && point.y.isFinite && point.z.isFinite) {
-          current.add(point);
-        } else {
+        if (!point.x.isFinite || !point.y.isFinite || !point.z.isFinite) {
           endSegment();
+          continue;
         }
+
+        if (current.isNotEmpty && i > 0) {
+          final midpoint = (tMin + (i - 1) * step + t) / 2;
+          final midpointPoint = evaluateCurve(midpoint);
+          if (!midpointPoint.x.isFinite ||
+              !midpointPoint.y.isFinite ||
+              !midpointPoint.z.isFinite ||
+              _isCurveMidpointDiscontinuous(
+                current.last,
+                midpointPoint,
+                point,
+              )) {
+            endSegment();
+          }
+        }
+        current.add(point);
       } catch (_) {
         endSegment();
       }
     }
     endSegment();
     return segments;
+  }
+
+  bool _isCurveMidpointDiscontinuous(
+    Point3D start,
+    Point3D midpoint,
+    Point3D end,
+  ) {
+    return _isCurveComponentDiscontinuous(start.x, midpoint.x, end.x) ||
+        _isCurveComponentDiscontinuous(start.y, midpoint.y, end.y) ||
+        _isCurveComponentDiscontinuous(start.z, midpoint.z, end.z);
+  }
+
+  bool _isCurveComponentDiscontinuous(
+    double start,
+    double midpoint,
+    double end,
+  ) {
+    final deviation = (midpoint - (start + end) / 2).abs();
+    final span = (end - start).abs();
+    final crossesZero = (start < 0 && end > 0) || (start > 0 && end < 0);
+    return crossesZero && deviation > span * 0.4;
   }
 
   // ==================================================================
