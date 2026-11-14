@@ -699,6 +699,34 @@ void main() {
   });
 
   group('MathCanvas - viewport', () {
+    testWidgets('fitToView centers finite constants near double max', (
+      tester,
+    ) async {
+      final key = GlobalKey<MathCanvasState>();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Center(
+            child: SizedBox(
+              width: 400,
+              height: 200,
+              child: MathCanvas(key: key),
+            ),
+          ),
+        ),
+      );
+      await key.currentState!.setExpression('1e308', null);
+      await key.currentState!.fitToView();
+
+      final (_, yMin, _, yMax) = key.currentState!.viewport;
+      expect(yMin.isFinite, isTrue);
+      expect(yMax.isFinite, isTrue);
+      expect(yMin, greaterThan(0));
+      expect(yMax, greaterThan(yMin));
+      expect(yMin, lessThan(1e308));
+      expect(yMax, greaterThan(1e308));
+      expect(yMax - yMin, greaterThanOrEqualTo(1e308 * 7.105427357601002e-15));
+    });
+
     testWidgets('fitToView keeps large constant bounds distinct', (
       tester,
     ) async {
