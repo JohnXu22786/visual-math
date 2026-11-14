@@ -233,42 +233,76 @@ bool _pointInTriangle3D(Point3D point, Point3D a, Point3D b, Point3D c) {
   final ab = b - a;
   final ac = c - a;
   final ap = point - a;
-  final abLength = ab.magnitude;
-  final acLength = ac.magnitude;
-  if (!abLength.isFinite ||
-      !acLength.isFinite ||
-      abLength == 0 ||
-      acLength == 0) {
-    return false;
-  }
-  final unitAb = ab * (1 / abLength);
-  final unitAc = ac * (1 / acLength);
+  final abEdge = _scaledTriangleEdge(ab);
+  final acEdge = _scaledTriangleEdge(ac);
+  if (abEdge == null || acEdge == null) return false;
+  final (unitAb, abLength) = abEdge;
+  final (unitAc, acLength) = acEdge;
   final sine = unitAb.cross(unitAc).magnitude;
   if (!sine.isFinite || sine < 1e-9) return false;
   final dot01 = unitAb.dot(unitAc);
   final dot20 = ap.dot(unitAb);
   final dot21 = ap.dot(unitAc);
+  if (!dot20.isFinite || !dot21.isFinite) return false;
   final denominator = sine * sine;
   final u = (dot20 - dot01 * dot21) / (denominator * abLength);
   final v = (dot21 - dot01 * dot20) / (denominator * acLength);
+  if (!u.isFinite || !v.isFinite) return false;
   return u >= -1e-8 && v >= -1e-8 && u + v <= 1 + 1e-8;
 }
 
 Vector3D? _normalizedTriangleNormal(Point3D a, Point3D b, Point3D c) {
   final ab = b - a;
   final ac = c - a;
-  final abLength = ab.magnitude;
-  final acLength = ac.magnitude;
-  if (!abLength.isFinite ||
-      !acLength.isFinite ||
-      abLength == 0 ||
-      acLength == 0) {
-    return null;
-  }
-  final cross = (ab * (1 / abLength)).cross(ac * (1 / acLength));
+  final scaledAb = _scaledTriangleUnit(ab);
+  final scaledAc = _scaledTriangleUnit(ac);
+  if (scaledAb == null || scaledAc == null) return null;
+  final cross = scaledAb.cross(scaledAc);
   final sine = cross.magnitude;
   if (!sine.isFinite || sine < 1e-9) return null;
   return cross * (1 / sine);
+}
+
+double? _triangleVectorScale(
+  Vector3D first, [
+  Vector3D? second,
+  Vector3D? third,
+]) {
+  var scale = 0.0;
+  for (final vector in [
+    first,
+    if (second != null) second,
+    if (third != null) third,
+  ]) {
+    if (!vector.x.isFinite || !vector.y.isFinite || !vector.z.isFinite) {
+      return null;
+    }
+    scale = dart_math.max(
+      scale,
+      dart_math.max(
+        vector.x.abs(),
+        dart_math.max(vector.y.abs(), vector.z.abs()),
+      ),
+    );
+  }
+  return scale == 0 ? null : scale;
+}
+
+Vector3D _scaleTriangleVector(Vector3D vector, double scale) =>
+    Vector3D(vector.x / scale, vector.y / scale, vector.z / scale);
+
+Vector3D? _scaledTriangleUnit(Vector3D vector) {
+  return _scaledTriangleEdge(vector)?.$1;
+}
+
+(Vector3D, double)? _scaledTriangleEdge(Vector3D vector) {
+  final scale = _triangleVectorScale(vector);
+  if (scale == null) return null;
+  final scaled = _scaleTriangleVector(vector, scale);
+  final scaledLength = scaled.magnitude;
+  final length = scale * scaledLength;
+  if (!length.isFinite || length == 0) return null;
+  return (scaled * (1 / scaledLength), length);
 }
 
 enum PointDragMode { plane, height }
