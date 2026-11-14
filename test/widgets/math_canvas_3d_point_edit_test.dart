@@ -2440,6 +2440,77 @@ void main() {
     expect(sceneChanges, beforeCancel);
   });
 
+  testWidgets(
+    'cancelling a rejected perspective height drag does not publish scene',
+    (tester) async {
+      var sceneChanges = 0;
+      final state = await setup(tester, onSceneChanged: () => sceneChanges++);
+      state.setProjectionType(ProjectionType.perspective);
+      while (state.camera.distance > 0.25) {
+        state.zoomIn();
+      }
+      state.setCamera(
+        Camera3D(
+          target: state.camera.target,
+          distance: state.camera.distance,
+          theta: state.camera.theta,
+          phi: -math.pi / 6,
+        ),
+      );
+      final forward = (state.camera.target - state.camera.position)
+          .normalized();
+      final initial = state.camera.position + forward * 0.12;
+      state.setObjects([Object3D.point(initial)]);
+      await tester.pump();
+      await tester.tapAt(screen(state, initial));
+      await tester.pump();
+      await tester.tapAt(screen(state, initial));
+      await tester.pump();
+      expect(state.pointDragMode, PointDragMode.height);
+      final beforeDrag = sceneChanges;
+
+      final pointer = await tester.startGesture(screen(state, initial));
+      await pointer.moveBy(const Offset(0, -500000));
+      await tester.pump();
+      expect(state.objects.single.point, initial);
+      await pointer.cancel();
+      await tester.pump();
+
+      expect(state.objects.single.point, initial);
+      expect(sceneChanges, beforeDrag);
+    },
+  );
+
+  testWidgets('cancelling a constrained no-op point drag does not publish', (
+    tester,
+  ) async {
+    var sceneChanges = 0;
+    final state = await setup(tester, onSceneChanged: () => sceneChanges++);
+    const location = Point3D(1, 1, 0);
+    state.setObjects([
+      Object3D.point(location).copyWith(documentId: 'target'),
+      Object3D.point(location).copyWith(documentId: 'attached'),
+    ]);
+    state.restoreDocumentRelationships(
+      pointAttachments: const [
+        PointAttachment(pointId: 'attached', targetId: 'target'),
+      ],
+      constructionDependencies: const [],
+    );
+    await tester.pump();
+    final beforeDrag = sceneChanges;
+
+    final pointer = await tester.startGesture(screen(state, location));
+    await pointer.moveBy(const Offset(70, 20));
+    await tester.pump();
+    expect(state.objects[1].point, location);
+    await pointer.cancel();
+    await tester.pump();
+
+    expect(state.objects[1].point, location);
+    expect(sceneChanges, beforeDrag);
+  });
+
   testWidgets('changing tool before point drag threshold does not publish', (
     tester,
   ) async {

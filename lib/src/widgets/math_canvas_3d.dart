@@ -516,6 +516,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   Offset? _pointerDownPosition;
   bool _pointWasSelected = false;
   bool _pointMoved = false;
+  bool _pointDragApplied = false;
   bool _objectActionGestureMoved = false;
   bool _suppressScale = false;
   bool _multiTouch = false;
@@ -4489,7 +4490,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
 
   bool _cancelPointDrag() {
     var rolledBack = false;
-    if (_pointMoved &&
+    if (_pointDragApplied &&
         _pointBeforeDrag != null &&
         _selectedPointIndex != null) {
       _objects[_selectedPointIndex!] = _pointBeforeDrag!;
@@ -4500,6 +4501,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     _pointBeforeDrag = null;
     _pointEditPointer = null;
     _pointMoved = false;
+    _pointDragApplied = false;
     return rolledBack;
   }
 
@@ -4544,6 +4546,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           _pointEditPointer = event.pointer;
           _pointBeforeDrag = _objects[hit];
           _pointMoved = false;
+          _pointDragApplied = false;
           _suppressScale = true;
         }
         if (objectHit != null) _suppressScale = true;
@@ -4652,6 +4655,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         _objects[selectedIndex] = _pointBeforeDrag!.copyWith(point: position);
         _propagateConstructionAndAttachmentMoves(selectedIndex);
         _objectsVersion++;
+        if (position != start) _pointDragApplied = true;
       });
       return;
     }
@@ -4672,6 +4676,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   void _onPointerUp(PointerEvent event) {
     _activePointers.remove(event.pointer);
     if (event.pointer == _pointEditPointer) {
+      final sceneChanged = _pointDragApplied;
       setState(() {
         if (!_pointMoved && _pointWasSelected) {
           _pointDragMode = _pointDragMode == PointDragMode.plane
@@ -4680,8 +4685,9 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         }
         _pointBeforeDrag = null;
         _pointEditPointer = null;
+        _pointDragApplied = false;
       });
-      if (_pointMoved) widget.onSceneChanged?.call();
+      if (sceneChanged) widget.onSceneChanged?.call();
       widget.onViewportChange?.call();
     }
     if (event.pointer != _mousePointer) return;
