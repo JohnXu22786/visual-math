@@ -342,6 +342,9 @@ class Projection3D {
     final aspect = width / height;
     final fovRad = fov * dart_math.pi / 180;
     final f = 1 / dart_math.tan(fovRad / 2);
+    final depthScale = dart_math.max(far.abs(), near.abs());
+    final normalizedFar = far / depthScale;
+    final normalizedNear = near / depthScale;
     return [
       f / aspect,
       0,
@@ -353,11 +356,11 @@ class Projection3D {
       0,
       0,
       0,
-      (far + near) / (near - far),
+      (normalizedFar + normalizedNear) / (normalizedNear - normalizedFar),
       -1,
       0,
       0,
-      2 * far * near / (near - far),
+      2 * near * (far / (near - far)),
       0,
     ];
   }
@@ -529,18 +532,44 @@ class Scene3D {
 
     if (!minX.isFinite) return projection;
 
+    double midpoint(double min, double max) {
+      // Subtracting is safe for same-sign values; splitting the operands avoids
+      // overflowing their sum when they have opposite signs.
+      return min.sign == max.sign ? min + (max - min) / 2 : min / 2 + max / 2;
+    }
+
+    double finiteExtent(double min, double max) {
+      final extent = max - min;
+      return extent.isFinite ? extent : double.maxFinite;
+    }
+
     final center = Point3D(
-      (minX + maxX) / 2,
-      (minY + maxY) / 2,
-      (minZ + maxZ) / 2,
+      midpoint(minX, maxX),
+      midpoint(minY, maxY),
+      midpoint(minZ, maxZ),
     );
-    final maxExtent = dart_math.max(
-      dart_math.max(maxX - minX, maxY - minY),
-      maxZ - minZ,
-    );
+    final extentX = finiteExtent(minX, maxX);
+    final extentY = finiteExtent(minY, maxY);
+    final extentZ = finiteExtent(minZ, maxZ);
+    final maxExtent = dart_math.max(dart_math.max(extentX, extentY), extentZ);
     camera = camera.copyWith(target: center);
     var fittedProjection = projection;
-    var fittedDistance = dart_math.max(4, maxExtent * 1.35).toDouble();
+    final maxScalableExtent = double.maxFinite / 1.35;
+    var fittedDistance = maxExtent > maxScalableExtent
+        ? double.maxFinite
+        : dart_math.max(4, maxExtent * 1.35).toDouble();
+    if (projection?.type == ProjectionType.perspective &&
+        maxExtent > double.maxFinite / 1.35) {
+      // Put the camera along the least-extended axis so an unrepresentably
+      // wide span contributes to screen size instead of far-plane depth.
+      final theta = extentY <= extentX && extentY <= extentZ
+          ? 0.0
+          : dart_math.pi / 2;
+      final phi = extentZ < extentX && extentZ < extentY
+          ? dart_math.pi * 0.49
+          : 0.0;
+      camera = camera.copyWith(theta: theta, phi: phi);
+    }
     if (projection?.type == ProjectionType.parallel) {
       final aspect = projection!.width / projection.height;
       final viewMatrix = camera.viewMatrix();
@@ -585,6 +614,11 @@ class Scene3D {
           -viewMatrix[10],
         );
         final focalScale = 1 / tangent;
+        double finiteProduct(double left, double right) {
+          final product = left * right;
+          return product.isFinite ? product : double.maxFinite;
+        }
+
         var requiredDistance = 0.0;
         var farthestDepthOffset = double.negativeInfinity;
         for (final point in points) {
@@ -593,30 +627,151 @@ class Scene3D {
           farthestDepthOffset = dart_math.max(farthestDepthOffset, depthOffset);
           final minimumDepth = dart_math.max(
             dart_math.max(
-              offset.dot(right).abs() * focalScale / aspect,
-              offset.dot(up).abs() * focalScale,
+              finiteProduct(offset.dot(right).abs() / aspect, focalScale),
+              finiteProduct(offset.dot(up).abs(), focalScale),
             ),
             projection.near,
           );
+          final pointDistance = minimumDepth - depthOffset;
           requiredDistance = dart_math.max(
             requiredDistance,
-            minimumDepth - depthOffset,
+            pointDistance.isFinite ? pointDistance : double.maxFinite,
           );
         }
         if (requiredDistance.isFinite) {
-          fittedDistance = dart_math.max(4, requiredDistance * 1.1).toDouble();
-          final requiredFar = (fittedDistance + farthestDepthOffset) * 1.1;
+          final scaledDistance = requiredDistance > double.maxFinite / 1.1
+              ? double.maxFinite
+              : requiredDistance * 1.1;
+          fittedDistance = dart_math.max(4, scaledDistance).toDouble();
+          final depthSum = fittedDistance + farthestDepthOffset;
+          final maxFar = double.maxFinite;
+          final requiredFar = !depthSum.isFinite
+              ? (depthSum.isNegative ? -maxFar : maxFar)
+              : depthSum > maxFar / 1.1
+              ? maxFar
+              : depthSum < -maxFar / 1.1
+              ? -maxFar
+              : depthSum * 1.1;
+          final farPlane = dart_math
+              .min(maxFar, dart_math.max(projection.far, requiredFar))
+              .toDouble();
+          final fittedNear = dart_math
+              .min(projection.near, farPlane * 0.1)
+              .toDouble();
           fittedProjection = Projection3D.perspective(
             width: projection.width,
             height: projection.height,
             fov: projection.fov,
-            near: projection.near,
-            far: dart_math.max(projection.far, requiredFar).toDouble(),
+            near: fittedNear,
+            far: farPlane,
           );
         }
       }
     }
-    camera = camera.copyWith(target: center, distance: fittedDistance);
+
+    var theta = camera.theta;
+    var phi = camera.phi.clamp(-dart_math.pi * 0.49, dart_math.pi * 0.49);
+    double maxPositionSafeDistance(double coordinate, double direction) {
+      if (direction == 0) return double.infinity;
+      final headroom = direction > 0
+          ? (coordinate > 0 ? double.maxFinite - coordinate : double.maxFinite)
+          : (coordinate < 0 ? double.maxFinite + coordinate : double.maxFinite);
+      final distance = headroom / direction.abs();
+      return distance.isFinite ? distance : double.maxFinite;
+    }
+
+    double distanceToMoveCoordinate(double coordinate, double direction) {
+      if (direction == 0) return double.infinity;
+      if (coordinate == 0) return 0;
+      // Several ULPs ensure adding the camera offset changes a large target.
+      return coordinate.abs() * 8.881784197001252e-16 / direction.abs();
+    }
+
+    double minDistinctDistance(double theta, double phi) {
+      final cosPhi = dart_math.cos(phi);
+      return dart_math.min(
+        dart_math.min(
+          distanceToMoveCoordinate(center.x, cosPhi * dart_math.sin(theta)),
+          distanceToMoveCoordinate(center.y, cosPhi * dart_math.cos(theta)),
+        ),
+        distanceToMoveCoordinate(center.z, dart_math.sin(phi)),
+      );
+    }
+
+    double positionSafeDistance(double theta, double phi) {
+      final cosPhi = dart_math.cos(phi);
+      return dart_math.min(
+        dart_math.min(
+          maxPositionSafeDistance(center.x, cosPhi * dart_math.sin(theta)),
+          maxPositionSafeDistance(center.y, cosPhi * dart_math.cos(theta)),
+        ),
+        maxPositionSafeDistance(center.z, dart_math.sin(phi)),
+      );
+    }
+
+    var maxPositionSafeDistanceForTarget = positionSafeDistance(theta, phi);
+    var distinctDistance = minDistinctDistance(theta, phi);
+    final needsInwardDirection =
+        maxPositionSafeDistanceForTarget < dart_math.max(4, distinctDistance);
+    if (needsInwardDirection) {
+      final cosPhi = dart_math.cos(phi);
+      final directionX = cosPhi * dart_math.sin(theta);
+      final directionY = cosPhi * dart_math.cos(theta);
+      var inwardX = center.x > 0
+          ? -directionX.abs()
+          : center.x < 0
+          ? directionX.abs()
+          : directionX;
+      var inwardY = center.y > 0
+          ? -directionY.abs()
+          : center.y < 0
+          ? directionY.abs()
+          : directionY;
+      final directionZ = dart_math.sin(phi);
+      var inwardZ = center.z > 0
+          ? -directionZ.abs()
+          : center.z < 0
+          ? directionZ.abs()
+          : directionZ;
+      final centerScale = dart_math.max(
+        dart_math.max(center.x.abs(), center.y.abs()),
+        center.z.abs(),
+      );
+      if (centerScale > 0) {
+        final normalizedCenterX = center.x / centerScale;
+        final normalizedCenterY = center.y / centerScale;
+        final normalizedCenterZ = center.z / centerScale;
+        final centerLengthRatio = dart_math.sqrt(
+          normalizedCenterX * normalizedCenterX +
+              normalizedCenterY * normalizedCenterY +
+              normalizedCenterZ * normalizedCenterZ,
+        );
+        if (centerLengthRatio > double.maxFinite / centerScale) {
+          // The absolute camera translation also needs to remain representable.
+          // Moving back along the target vector keeps its magnitude finite.
+          inwardX = -normalizedCenterX / centerLengthRatio;
+          inwardY = -normalizedCenterY / centerLengthRatio;
+          inwardZ = -normalizedCenterZ / centerLengthRatio;
+          fittedDistance = double.maxFinite;
+        }
+      }
+      theta = dart_math.atan2(inwardX, inwardY);
+      phi = dart_math.asin(inwardZ.clamp(-1.0, 1.0));
+      maxPositionSafeDistanceForTarget = positionSafeDistance(theta, phi);
+      distinctDistance = minDistinctDistance(theta, phi);
+    }
+    fittedDistance = dart_math
+        .min(
+          dart_math.max(fittedDistance, distinctDistance),
+          maxPositionSafeDistanceForTarget,
+        )
+        .toDouble();
+    camera = camera.copyWith(
+      target: center,
+      distance: fittedDistance,
+      theta: theta,
+      phi: phi,
+    );
     return fittedProjection;
   }
 }
