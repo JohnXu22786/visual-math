@@ -301,6 +301,10 @@ MathDrawingSnapshot _snapshotFromJson(Map<String, dynamic> j) {
   }
   for (final dependency in dependencies) {
     if (!ids.contains(dependency.objectId) ||
+        !_dependencyMatchesObjectType(
+          dependency,
+          objectsById[dependency.objectId],
+        ) ||
         dependency.polygonSides < 3 ||
         dependency.polygonSides > 12 ||
         dependency.sourcePointIds.any(
@@ -310,7 +314,7 @@ MathDrawingSnapshot _snapshotFromJson(Map<String, dynamic> j) {
                   objectsById[id]?.type != Object3DType.point),
         )) {
       throw const FormatException(
-        'Construction dependency references an unknown object ID.',
+        'Construction dependency references an invalid object.',
       );
     }
   }
@@ -340,6 +344,76 @@ MathDrawingSnapshot _snapshotFromJson(Map<String, dynamic> j) {
     pointAttachments3D: attachments,
     constructionDependencies3D: dependencies,
   );
+}
+
+bool _dependencyMatchesObjectType(
+  ConstructionDependency dependency,
+  Object3D? object,
+) {
+  if (object == null) return false;
+  final allowedTypes = switch (dependency.tool) {
+    ConstructionTool.point ||
+    ConstructionTool.midpoint ||
+    ConstructionTool.pointOnObject ||
+    ConstructionTool.reflectionInPlane ||
+    ConstructionTool.centralSymmetry ||
+    ConstructionTool.rotation ||
+    ConstructionTool.translation ||
+    ConstructionTool.dilation ||
+    ConstructionTool.axialSymmetry ||
+    ConstructionTool.angle ||
+    ConstructionTool.distance ||
+    ConstructionTool.area ||
+    ConstructionTool.text => const {Object3DType.point},
+    ConstructionTool.vector ||
+    ConstructionTool.equalVector => const {Object3DType.vector},
+    ConstructionTool.line ||
+    ConstructionTool.segment ||
+    ConstructionTool.ray ||
+    ConstructionTool.fixedLengthSegment ||
+    ConstructionTool.perpendicularLine ||
+    ConstructionTool.parallelLine ||
+    ConstructionTool.angleBisector => const {Object3DType.line},
+    ConstructionTool.plane => const {Object3DType.plane},
+    ConstructionTool.generalPlane ||
+    ConstructionTool.parallelPlane ||
+    ConstructionTool.perpendicularPlane => const {
+      Object3DType.plane,
+      Object3DType.point,
+    },
+    ConstructionTool.sphere ||
+    ConstructionTool.sphereByRadius => const {Object3DType.sphere},
+    ConstructionTool.cube ||
+    ConstructionTool.pyramid ||
+    ConstructionTool.prism ||
+    ConstructionTool.tetrahedron ||
+    ConstructionTool.cone ||
+    ConstructionTool.cylinder ||
+    ConstructionTool.extrudeCone ||
+    ConstructionTool.extrudePrism ||
+    ConstructionTool.polygon ||
+    ConstructionTool.regularPolygon ||
+    ConstructionTool.circularSector ||
+    ConstructionTool.circumcircleSector => const {Object3DType.polyhedron},
+    ConstructionTool.surfaceOfRevolution => const {
+      Object3DType.surface,
+      Object3DType.curve,
+    },
+    ConstructionTool.circle ||
+    ConstructionTool.circleAxisPoint ||
+    ConstructionTool.circleCenterNormalRadius ||
+    ConstructionTool.circleThreePoints ||
+    ConstructionTool.arc ||
+    ConstructionTool.circumcircleArc ||
+    ConstructionTool.ellipse ||
+    ConstructionTool.conic ||
+    ConstructionTool.parabola ||
+    ConstructionTool.hyperbola ||
+    ConstructionTool.locus ||
+    ConstructionTool.polyline => const {Object3DType.curve},
+    _ => null,
+  };
+  return allowedTypes != null && allowedTypes.contains(object.type);
 }
 
 T _required<T>(Map<String, dynamic> m, String k) {
