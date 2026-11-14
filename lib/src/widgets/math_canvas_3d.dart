@@ -3508,7 +3508,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         ];
       }
 
-      final lineDirection = normalCross * (1 / normalCrossMagnitude);
+      final lineDirection = normalCross.normalized();
       final firstPlaneOffset = firstCircle.normal.dot(
         firstCircle.center.toVector(),
       );

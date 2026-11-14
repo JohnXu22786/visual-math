@@ -237,7 +237,7 @@ void main() {
   ) async {
     final instructions = <String>[];
     final state = await setup(tester, onToolInstruction: instructions.add);
-    const tilt = 5e-10;
+    const tilt = 1e-320;
     final firstCircle = Object3D.curve(
       points: [
         for (var i = 0; i <= 32; i++)
