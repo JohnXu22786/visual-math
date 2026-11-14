@@ -140,6 +140,70 @@ void main() {
       expect(scene.sceneCenter, equals(Point3D(0, 0, 0)));
     });
 
+    test(
+      'scene center preserves averaging for non-finite object positions',
+      () {
+        final scene = Scene3D();
+        scene.add(const Object3D.point(Point3D(double.infinity, 0, 0)));
+        scene.add(const Object3D.point(Point3D(0, 0, 0)));
+
+        expect(scene.sceneCenter.x, double.infinity);
+      },
+    );
+
+    test('scene center rounds subnormal averages consistently', () {
+      final scene = Scene3D();
+      scene.add(const Object3D.point(Point3D(5e-324, 0, 0)));
+      scene.add(const Object3D.point(Point3D(0, 0, 0)));
+
+      expect(scene.sceneCenter.x, 0.0);
+    });
+
+    test('scene center includes the nearest-origin point on a plane', () {
+      final scene = Scene3D();
+      scene.add(const Object3D.plane(a: 1, b: 0, c: 0, d: 2));
+
+      expect(scene.sceneCenter, equals(Point3D(2, 0, 0)));
+    });
+
+    test('scene center keeps finite projections for large plane offsets', () {
+      final scene = Scene3D();
+      scene.add(const Object3D.plane(a: 0.5, b: 0.5, c: 0.5, d: 1.7e308));
+
+      final center = scene.sceneCenter;
+      expect(center.x, closeTo(1.1333333333333333e308, 1e293));
+      expect(center.y, closeTo(1.1333333333333333e308, 1e293));
+      expect(center.z, closeTo(1.1333333333333333e308, 1e293));
+    });
+
+    test('scene center averages plane positions with other objects', () {
+      final scene = Scene3D();
+      scene.add(const Object3D.point(Point3D(3, 0, 0)));
+      scene.add(const Object3D.plane(a: 2, b: 0, c: 0, d: 6));
+
+      expect(scene.sceneCenter, equals(Point3D(3, 0, 0)));
+    });
+
+    test('scene center averages large plane positions without overflow', () {
+      const point = Point3D(-1.7e308, 0, 0);
+      final scene = Scene3D();
+      scene.add(const Object3D.plane(a: 1, b: 0, c: 0, d: 1.7e308));
+      scene.add(const Object3D.point(point));
+
+      final center = scene.sceneCenter;
+      expect(center.x.isFinite, isTrue);
+      expect(center.x, closeTo(0, 1e293));
+    });
+
+    test('scene center ignores degenerate or non-finite planes', () {
+      final target = Point3D(7, 8, 9);
+      final scene = Scene3D(camera: Camera3D(target: target));
+      scene.add(const Object3D.plane(a: 0, b: 0, c: 0, d: 1));
+      scene.add(Object3D.plane(a: double.nan, d: 1));
+
+      expect(scene.sceneCenter, equals(target));
+    });
+
     test('parallel fit keeps asymmetric projected bounds in the viewport', () {
       final scene = Scene3D();
       const points = [Point3D(0, 0, 0), Point3D(10, 0, 0), Point3D(0, 10, 0)];

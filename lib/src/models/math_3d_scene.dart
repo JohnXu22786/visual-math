@@ -414,14 +414,63 @@ class Scene3D {
   /// The center of the scene (average of object positions).
   Point3D get sceneCenter {
     if (_objects.isEmpty) return camera.target;
+    var meanX = 0.0, meanY = 0.0, meanZ = 0.0;
     var sumX = 0.0, sumY = 0.0, sumZ = 0.0;
+    var hasNonFinitePoint = false;
     var count = 0;
 
+    double updateMean(double mean, double value) {
+      if (count == 1) return value;
+      return mean + (value / count - mean / count);
+    }
+
     void addPoint(Point3D p) {
+      count++;
       sumX += p.x;
       sumY += p.y;
       sumZ += p.z;
-      count++;
+      hasNonFinitePoint |= !p.x.isFinite || !p.y.isFinite || !p.z.isFinite;
+      meanX = updateMean(meanX, p.x);
+      meanY = updateMean(meanY, p.y);
+      meanZ = updateMean(meanZ, p.z);
+    }
+
+    void addPlaneOrigin(Object3D plane) {
+      final a = plane.planeA;
+      final b = plane.planeB;
+      final c = plane.planeC;
+      final d = plane.planeD;
+      if (![a, b, c, d].every((value) => value.isFinite)) return;
+
+      final scale = [
+        a.abs(),
+        b.abs(),
+        c.abs(),
+      ].reduce((first, second) => first > second ? first : second);
+      if (scale == 0) return;
+
+      final scaledA = a / scale;
+      final scaledB = b / scale;
+      final scaledC = c / scale;
+      final normalLengthSquared =
+          scaledA * scaledA + scaledB * scaledB + scaledC * scaledC;
+      final scaledOffset = d / scale;
+      double coordinate(double scaledCoefficient) {
+        if (scaledOffset.isFinite) {
+          return (scaledOffset / normalLengthSquared) * scaledCoefficient;
+        }
+        return ((d * scaledCoefficient) / normalLengthSquared) / scale;
+      }
+
+      final point = Point3D(
+        coordinate(scaledA),
+        coordinate(scaledB),
+        coordinate(scaledC),
+      );
+      if (![point.x, point.y, point.z].every((value) => value.isFinite)) {
+        return;
+      }
+      addPoint(point);
     }
 
     for (final obj in _objects) {
@@ -432,8 +481,8 @@ class Scene3D {
           addPoint(obj.pointA);
           addPoint(obj.pointB);
         case Object3DType.plane:
-          // Use plane origin on the plane closest to scene origin
-          break;
+          // Use the point on the plane closest to the scene origin.
+          addPlaneOrigin(obj);
         case Object3DType.surface:
         case Object3DType.polyhedron:
           for (final v in obj.vertices) {
@@ -452,7 +501,16 @@ class Scene3D {
     }
 
     if (count == 0) return camera.target;
-    return Point3D(sumX / count, sumY / count, sumZ / count);
+    if (hasNonFinitePoint) {
+      return Point3D(sumX / count, sumY / count, sumZ / count);
+    }
+    double average(double sum, double mean) =>
+        sum.isFinite ? sum / count : mean;
+    return Point3D(
+      average(sumX, meanX),
+      average(sumY, meanY),
+      average(sumZ, meanZ),
+    );
   }
 
   /// Add an object to the scene.
