@@ -2,6 +2,32 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:visual_math/visual_math.dart';
 
 void main() {
+  test('ellipse rejects a zero minor radius and remains recoverable', () {
+    final construction = ConstructionState(tool: ConstructionTool.ellipse);
+    construction.addPoint(Point3D.origin);
+    construction.addPoint(const Point3D(1, 0, 0));
+
+    expect(
+      construction.addPoint(const Point3D(2, 0, 0)),
+      ConstructionAction.awaitInput,
+    );
+    expect(construction.points, [Point3D.origin, const Point3D(1, 0, 0)]);
+    expect(construction.currentInstruction, contains('短轴长度必须大于 0'));
+    expect(construction.result, isNull);
+
+    expect(
+      construction.addPoint(const Point3D(0, 0.5, 0)),
+      ConstructionAction.complete,
+    );
+    expect(construction.result!.conic!.quadraticY, 4);
+    expect(
+      construction.result!.vertices.every(
+        (point) => point.x.isFinite && point.y.isFinite && point.z.isFinite,
+      ),
+      isTrue,
+    );
+  });
+
   test('angle measurement remains accurate for large finite vectors', () {
     final state = ConstructionState(tool: ConstructionTool.angle);
 
