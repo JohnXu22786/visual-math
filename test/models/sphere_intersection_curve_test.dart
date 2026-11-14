@@ -146,5 +146,85 @@ void main() {
         isTrue,
       );
     });
+
+    test(
+      'large translation does not admit a locally disjoint sphere-plane',
+      () {
+        final spherePlaneMiss = spherePlaneIntersectionCurve(
+          const Object3D.sphere(center: Point3D(1e12, 0, 0), radius: 0.1),
+          const Object3D.plane(a: 1, c: 0, d: 1e12 + 0.101),
+        );
+        expect(spherePlaneMiss, isNull);
+
+        final cancellationMiss = spherePlaneIntersectionCurve(
+          const Object3D.sphere(
+            center: Point3D(5555486306855.723, -15685294125593.885, 0),
+            radius: 0.01,
+          ),
+          const Object3D.plane(
+            a: 1.2828829657394891,
+            b: 0.4543771186180646,
+            c: 0,
+            d: 0,
+          ),
+        );
+        expect(cancellationMiss, isNull);
+
+        final roundedTangentMiss = spherePlaneIntersectionCurve(
+          const Object3D.sphere(
+            center: Point3D(2419547362792.136, 5553949237801.048, 0),
+            radius: 6055285271199.417,
+          ),
+          const Object3D.plane(
+            a: 0.6800216525596731,
+            b: 1.4394832013892558,
+            c: 0,
+            d: 0,
+          ),
+        );
+        expect(roundedTangentMiss, isNull);
+
+        final roundedEqualityMiss = spherePlaneIntersectionCurve(
+          const Object3D.sphere(
+            center: Point3D(2419547362792.136, 5553949237801.048, 0),
+            radius: 6055285271199.418,
+          ),
+          const Object3D.plane(
+            a: 0.6800216525596731,
+            b: 1.4394832013892558,
+            c: 0,
+            d: 0,
+          ),
+        );
+        expect(roundedEqualityMiss, isNull);
+
+        final translatedTangent = spherePlaneIntersectionCurve(
+          const Object3D.sphere(center: Point3D(1e12, 0, 0), radius: 0.125),
+          const Object3D.plane(a: 1, c: 0, d: 1e12 + 0.125),
+        );
+        expect(translatedTangent?.type, Object3DType.point);
+
+        final exactObliqueTangent = spherePlaneIntersectionCurve(
+          const Object3D.sphere(center: Point3D(3, 4, 0), radius: 5),
+          const Object3D.plane(a: 3, b: 4, c: 0, d: 0),
+        );
+        expect(exactObliqueTangent?.type, Object3DType.point);
+
+        final roundedSubtractionMiss = spherePlaneIntersectionCurve(
+          const Object3D.sphere(center: Point3D(1e16, 0, 0), radius: 1e16),
+          const Object3D.plane(a: 1, c: 0, d: 1),
+        );
+        expect(roundedSubtractionMiss, isNull);
+      },
+    );
+
+    test('large translation does not admit locally disjoint spheres', () {
+      final sphereSphereMiss = sphereSphereIntersectionCurve(
+        const Object3D.sphere(center: Point3D(1e12, 0, 0), radius: 0.5),
+        const Object3D.sphere(center: Point3D(1e12 + 1.001, 0, 0), radius: 0.5),
+      );
+
+      expect(sphereSphereMiss, isNull);
+    });
   });
 }
