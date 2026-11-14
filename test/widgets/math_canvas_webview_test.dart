@@ -109,6 +109,54 @@ void main() {
     expect(viewport, [-2, -3, 4, 5]);
   });
 
+  testWidgets('ignores web messages from a replaced WebView', (tester) async {
+    final previous = InAppWebViewPlatform.instance;
+    final platform = _CanvasPlatform()..initialized = true;
+    InAppWebViewPlatform.instance = platform;
+    addTearDown(
+      () => InAppWebViewPlatform.instance = previous ?? _CanvasPlatform(),
+    );
+    List<Map<String, dynamic>>? points;
+    Widget canvas(bool visible) => MaterialApp(
+      home: MathCanvasWebView(
+        initialShowWebView: visible,
+        onCoordinateUpdate: (value) => points = value,
+      ),
+    );
+
+    await tester.pumpWidget(canvas(true));
+    final oldView = platform.view!;
+    final oldController = oldView
+        .controllerFromPlatform<InAppWebViewController>(oldView.controller);
+    oldView.params.onWebViewCreated!(oldController);
+    final oldConsoleCallback = oldView.params.onConsoleMessage!;
+
+    await tester.pumpWidget(canvas(false));
+    await tester.pumpWidget(canvas(true));
+    final currentView = platform.view!;
+    final currentController = currentView
+        .controllerFromPlatform<InAppWebViewController>(currentView.controller);
+    currentView.params.onWebViewCreated!(currentController);
+
+    oldConsoleCallback(
+      oldController,
+      ConsoleMessage(
+        message: 'MATH_CANVAS_MESSAGE:{"type":"coordinateUpdate","points":[{"x":9,"y":9}]}',
+      ),
+    );
+    expect(points, isNull);
+
+    currentView.params.onConsoleMessage!(
+      currentController,
+      ConsoleMessage(
+        message: 'MATH_CANVAS_MESSAGE:{"type":"coordinateUpdate","points":[{"x":1,"y":2}]}',
+      ),
+    );
+    expect(points, [
+      {'x': 1, 'y': 2},
+    ]);
+  });
+
   testWidgets('startup commands are replayed in order after initialization', (
     tester,
   ) async {

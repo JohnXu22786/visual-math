@@ -748,6 +748,7 @@ class MathCanvasWebViewState extends State<MathCanvasWebView> {
           ),
           onWebViewCreated: _onWebViewCreated,
           onConsoleMessage: (ctrl, consoleMessage) {
+            if (ctrl.platform != _webViewController?.platform) return;
             const prefix = 'MATH_CANVAS_MESSAGE:';
             if (!consoleMessage.message.startsWith(prefix)) return;
             try {
