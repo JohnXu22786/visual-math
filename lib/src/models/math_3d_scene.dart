@@ -608,10 +608,10 @@ class Scene3D {
         final viewMatrix = camera.viewMatrix();
         final right = Vector3D(viewMatrix[0], viewMatrix[4], viewMatrix[8]);
         final up = Vector3D(viewMatrix[1], viewMatrix[5], viewMatrix[9]);
-        final forward = Vector3D(
-          -viewMatrix[2],
-          -viewMatrix[6],
-          -viewMatrix[10],
+        final viewZAxis = Vector3D(
+          viewMatrix[2],
+          viewMatrix[6],
+          viewMatrix[10],
         );
         final focalScale = 1 / tangent;
         double finiteProduct(double left, double right) {
@@ -620,11 +620,9 @@ class Scene3D {
         }
 
         var requiredDistance = 0.0;
-        var farthestDepthOffset = double.negativeInfinity;
         for (final point in points) {
           final offset = point - center;
-          final depthOffset = offset.dot(forward);
-          farthestDepthOffset = dart_math.max(farthestDepthOffset, depthOffset);
+          final depthOffset = offset.dot(viewZAxis);
           final minimumDepth = dart_math.max(
             dart_math.max(
               finiteProduct(offset.dot(right).abs() / aspect, focalScale),
@@ -632,7 +630,7 @@ class Scene3D {
             ),
             projection.near,
           );
-          final pointDistance = minimumDepth - depthOffset;
+          final pointDistance = minimumDepth + depthOffset;
           requiredDistance = dart_math.max(
             requiredDistance,
             pointDistance.isFinite ? pointDistance : double.maxFinite,
@@ -643,28 +641,6 @@ class Scene3D {
               ? double.maxFinite
               : requiredDistance * 1.1;
           fittedDistance = dart_math.max(4, scaledDistance).toDouble();
-          final depthSum = fittedDistance + farthestDepthOffset;
-          final maxFar = double.maxFinite;
-          final requiredFar = !depthSum.isFinite
-              ? (depthSum.isNegative ? -maxFar : maxFar)
-              : depthSum > maxFar / 1.1
-              ? maxFar
-              : depthSum < -maxFar / 1.1
-              ? -maxFar
-              : depthSum * 1.1;
-          final farPlane = dart_math
-              .min(maxFar, dart_math.max(projection.far, requiredFar))
-              .toDouble();
-          final fittedNear = dart_math
-              .min(projection.near, farPlane * 0.1)
-              .toDouble();
-          fittedProjection = Projection3D.perspective(
-            width: projection.width,
-            height: projection.height,
-            fov: projection.fov,
-            near: fittedNear,
-            far: farPlane,
-          );
         }
       }
     }
@@ -772,6 +748,37 @@ class Scene3D {
       theta: theta,
       phi: phi,
     );
+    if (projection?.type == ProjectionType.perspective &&
+        fittedProjection?.type == ProjectionType.perspective) {
+      final viewMatrix = camera.viewMatrix();
+      final viewZAxis = Vector3D(viewMatrix[2], viewMatrix[6], viewMatrix[10]);
+      var minimumDepthOffset = double.infinity;
+      for (final point in points) {
+        minimumDepthOffset = dart_math.min(
+          minimumDepthOffset,
+          (point - center).dot(viewZAxis),
+        );
+      }
+      final depthSum = fittedDistance - minimumDepthOffset;
+      final maxFar = double.maxFinite;
+      final requiredFar = !depthSum.isFinite
+          ? (depthSum.isNegative ? -maxFar : maxFar)
+          : depthSum > maxFar / 1.1
+          ? maxFar
+          : depthSum < -maxFar / 1.1
+          ? -maxFar
+          : depthSum * 1.1;
+      final farPlane = dart_math
+          .min(maxFar, dart_math.max(fittedProjection!.far, requiredFar))
+          .toDouble();
+      fittedProjection = Projection3D.perspective(
+        width: projection!.width,
+        height: projection.height,
+        fov: projection.fov,
+        near: dart_math.min(projection.near, farPlane * 0.1).toDouble(),
+        far: farPlane,
+      );
+    }
     return fittedProjection;
   }
 }
