@@ -650,7 +650,9 @@ class Scene3D {
           checkPoint(obj.point);
         case Object3DType.line:
           checkPoint(obj.pointA);
-          checkPoint(obj.pointB);
+          if (obj.lineKind == Line3DKind.segment) {
+            checkPoint(obj.pointB);
+          }
         case Object3DType.plane:
           break;
         case Object3DType.surface:

@@ -312,6 +312,42 @@ void main() {
     });
 
     test(
+      'fitToView uses anchors for rays and lines, endpoints for segments',
+      () {
+        const anchor = Point3D(2, 4, 6);
+        const directionPoint = Point3D(200, 400, 600);
+
+        for (final kind in [Line3DKind.ray, Line3DKind.line]) {
+          final scene = Scene3D()
+            ..add(Object3D.line(anchor, directionPoint, lineKind: kind));
+
+          scene.fitToView();
+
+          expect(scene.camera.target, anchor, reason: '$kind anchor');
+          expect(
+            scene.camera.distance,
+            4,
+            reason: '$kind direction is unbounded',
+          );
+        }
+
+        final segment = Scene3D()
+          ..add(
+            const Object3D.line(
+              anchor,
+              directionPoint,
+              lineKind: Line3DKind.segment,
+            ),
+          );
+
+        segment.fitToView();
+
+        expect(segment.camera.target, const Point3D(101, 202, 303));
+        expect(segment.camera.distance, closeTo(801.9, 1e-10));
+      },
+    );
+
+    test(
       'fitToView computes a finite center for large same-sign coordinates',
       () {
         final scene = Scene3D();
