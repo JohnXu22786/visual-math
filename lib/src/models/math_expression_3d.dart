@@ -691,9 +691,10 @@ class Expression3D {
     final matches = RegExp(r'\b([a-zA-Z]\w*)\b').allMatches(expr);
     for (final m in matches) {
       final name = m[1]!;
-      final normalizedName = name.toLowerCase();
       if (independentVariables.contains(name) ||
-          builtinConstants.contains(normalizedName)) {
+          builtinConstants.contains(name) ||
+          (name == name.toUpperCase() &&
+              builtinConstants.contains(name.toLowerCase()))) {
         continue;
       }
       if (knownFunctions.contains(name)) continue;
