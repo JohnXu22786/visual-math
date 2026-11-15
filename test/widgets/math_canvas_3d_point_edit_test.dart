@@ -2068,6 +2068,130 @@ void main() {
     );
   });
 
+  testWidgets('surface snapping respects opaque-face visibility', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    state.setCamera(const Camera3D(theta: 0, phi: 0));
+    const frontFace = Object3D.surface(
+      vertices: [
+        Point3D(-2, 0, -2),
+        Point3D(2, 0, -2),
+        Point3D(2, 0, 2),
+        Point3D(-2, 0, 2),
+      ],
+      indices: [0, 1, 2, 0, 2, 3],
+    );
+    const rearSurface = Object3D.surface(
+      vertices: [
+        Point3D(-1, -3, -1),
+        Point3D(1, -3, -1),
+        Point3D(1, -3, 1),
+        Point3D(-1, -3, 1),
+      ],
+      indices: [0, 1, 2, 0, 2, 3],
+    );
+    const hiddenVertex = Point3D(1, -3, 1);
+    const hiddenEdgeMidpoint = Point3D(0, -3, -1);
+
+    for (final hiddenFeature in [hiddenVertex, hiddenEdgeMidpoint]) {
+      state.setObjects([frontFace, rearSurface]);
+      state.setTool(ConstructionTool.segment);
+      await tester.pump();
+      await tester.tapAt(screen(state, hiddenFeature));
+      await tester.pump();
+      expect(
+        state.constructionState!.points.single.distanceTo(hiddenFeature),
+        greaterThan(0.1),
+        reason: 'the opaque face hides rear surface features',
+      );
+
+      state.setObjects([frontFace.copyWith(opacity: 0.5), rearSurface]);
+      state.setTool(ConstructionTool.move);
+      state.setTool(ConstructionTool.segment);
+      await tester.pump();
+      await tester.tapAt(screen(state, hiddenFeature));
+      await tester.pump();
+      expect(
+        state.constructionState!.points.single.distanceTo(hiddenFeature),
+        lessThan(1e-8),
+        reason: 'transparent faces do not occlude rear surface features',
+      );
+    }
+
+    for (final visibleFeature in [hiddenVertex, hiddenEdgeMidpoint]) {
+      state.setObjects([rearSurface]);
+      state.setTool(ConstructionTool.move);
+      state.setTool(ConstructionTool.segment);
+      await tester.pump();
+      await tester.tapAt(screen(state, visibleFeature));
+      await tester.pump();
+      expect(
+        state.constructionState!.points.single.distanceTo(visibleFeature),
+        lessThan(1e-8),
+        reason: 'visible surface features remain snappable',
+      );
+    }
+
+    const slopedSurface = Object3D.surface(
+      vertices: [
+        Point3D(2, -3, 2),
+        Point3D(1, -3, 2),
+        Point3D(2, -3, 1),
+        Point3D(3, 0, 3),
+        Point3D(3, 1, -2),
+        Point3D(-2, 2, 3),
+      ],
+      indices: [0, 1, 2, 3, 4, 5],
+    );
+    const slopedVertex = Point3D(2, -3, 2);
+    const offsetTap = Point3D(2.05, -3, 2.05);
+    state.setObjects([slopedSurface]);
+    state.setProjectionType(ProjectionType.parallel);
+    state.setTool(ConstructionTool.move);
+    state.setTool(ConstructionTool.segment);
+    await tester.pump();
+    await tester.tapAt(screen(state, offsetTap));
+    await tester.pump();
+    expect(
+      state.constructionState!.points.single.distanceTo(slopedVertex),
+      lessThan(0.01),
+      reason: 'a nearby tap on a sloped surface keeps its visible vertex selectable',
+    );
+  });
+
+  testWidgets('polyhedron snapping keeps its sloped vertex selectable', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    state.setCamera(const Camera3D(theta: 0, phi: 0));
+    state.setProjectionType(ProjectionType.parallel);
+    const foldedPolyhedron = Object3D.polyhedron(
+      vertices: [
+        Point3D(2, -3, 2),
+        Point3D(1, -3, 2),
+        Point3D(2, -3, 1),
+        Point3D(3, 0, 3),
+        Point3D(3, 1, -2),
+        Point3D(-2, 2, 3),
+      ],
+      indices: [0, 1, 2, 3, 4, 5],
+    );
+    const vertex = Point3D(2, -3, 2);
+    const offsetTap = Point3D(2.05, -3, 2.05);
+    state.setObjects([foldedPolyhedron]);
+    state.setTool(ConstructionTool.segment);
+    await tester.pump();
+    await tester.tapAt(screen(state, offsetTap));
+    await tester.pump();
+
+    expect(
+      state.constructionState!.points.single.distanceTo(vertex),
+      lessThan(0.01),
+      reason: 'a nearby tap does not let another face of the polyhedron hide its vertex',
+    );
+  });
+
   testWidgets('plane snapping respects opaque surface occlusion', (
     tester,
   ) async {
