@@ -379,6 +379,7 @@ class MathExpression {
     if (equationParts.length != 2) return result;
     final zeroResidual = '(${equationParts[0]})-(${equationParts[1]})';
     final expressionVariables = ['x', 'y', ...parameters];
+    var rejectedUnderflowZero = false;
 
     final stepX = (xMax - xMin) / gridX;
     final stepY = (yMax - yMin) / gridY;
@@ -412,29 +413,56 @@ class MathExpression {
     ) {
       if (a == 0) return 0;
       if (b == 0) return 1;
-      final scale = a.abs() > b.abs() ? a.abs() : b.abs();
-      final ratioA = a.abs() / scale;
-      final ratioB = b.abs() / scale;
-      final estimate = ratioA / (ratioA + ratioB);
-      try {
-        if (evaluator2D(x1 + (x2 - x1) * estimate, y1 + (y2 - y1) * estimate) ==
-            0) {
-          return estimate;
+      if (a.isFinite && b.isFinite) {
+        final scale = a.abs() > b.abs() ? a.abs() : b.abs();
+        final ratioA = a.abs() / scale;
+        final ratioB = b.abs() / scale;
+        final estimate = ratioA / (ratioA + ratioB);
+        try {
+          if (evaluator2D(
+                x1 + (x2 - x1) * estimate,
+                y1 + (y2 - y1) * estimate,
+              ) ==
+              0) {
+            return estimate;
+          }
+        } catch (_) {
+          // Continue with bracket refinement if interpolation is undefined.
         }
-      } catch (_) {
-        // Continue with bracket refinement if interpolation is undefined.
       }
       var lo = 0.0;
       var hi = 1.0;
       var left = a;
       var right = b;
-      final smaller = a.abs() < b.abs() ? a.abs() : b.abs();
-      final larger = a.abs() > b.abs() ? a.abs() : b.abs();
-      // Floating-point evaluation can leave a small residual at a real root.
-      final roundingAllowance = larger * 1e-14;
-      final threshold = roundingAllowance < smaller
-          ? smaller * 0.001 + roundingAllowance
-          : smaller;
+      var infiniteBracketScale = 0.0;
+      if (!a.isFinite && !b.isFinite) {
+        for (final position in [1 / 3, 2 / 3]) {
+          try {
+            final value = evaluator2D(
+              x1 + (x2 - x1) * position,
+              y1 + (y2 - y1) * position,
+            ).abs();
+            if (value.isFinite && value > infiniteBracketScale) {
+              infiniteBracketScale = value;
+            }
+          } catch (_) {
+            // Keep the finite scale from any other successful probe.
+          }
+        }
+      }
+      final threshold = a.isFinite && b.isFinite
+          ? () {
+              final smaller = a.abs() < b.abs() ? a.abs() : b.abs();
+              final larger = a.abs() > b.abs() ? a.abs() : b.abs();
+              // Floating-point evaluation can leave a small residual at a real root.
+              final roundingAllowance = larger * 1e-14;
+              return roundingAllowance < smaller
+                  ? smaller * 0.001 + roundingAllowance
+                  : smaller;
+            }()
+          : a.isFinite || b.isFinite
+          ? (a.isFinite ? a.abs() : b.abs()) * 1e-14
+          : infiniteBracketScale * 1e-12;
       for (var i = 0; i < 1100; i++) {
         final t = (lo + hi) / 2;
         if (t == lo || t == hi) break;
@@ -444,8 +472,41 @@ class MathExpression {
         } catch (_) {
           return null;
         }
-        if (!value.isFinite) return null;
-        if (value == 0) return t;
+        if (value.isNaN) return null;
+        if (value == 0) {
+          if (!a.isFinite || !b.isFinite) {
+            double probe(double position) {
+              try {
+                return evaluator2D(
+                  x1 + (x2 - x1) * position,
+                  y1 + (y2 - y1) * position,
+                );
+              } catch (_) {
+                return double.nan;
+              }
+            }
+
+            var bracketsFiniteRoot = false;
+            for (var divisor = 4; divisor <= 1024; divisor *= 2) {
+              final offset = (hi - lo) / divisor;
+              final before = probe(t - offset);
+              final after = probe(t + offset);
+              if (before.isFinite &&
+                  after.isFinite &&
+                  before != 0 &&
+                  after != 0 &&
+                  (before < 0) != (after < 0)) {
+                bracketsFiniteRoot = true;
+                break;
+              }
+            }
+            if (!bracketsFiniteRoot) {
+              rejectedUnderflowZero = true;
+              return null;
+            }
+          }
+          return t;
+        }
         if ((value < 0) == (left < 0)) {
           lo = t;
           left = value;
@@ -546,6 +607,7 @@ class MathExpression {
         final v10 = grid[ix + 1][iy];
         final v01 = grid[ix][iy + 1];
         final v11 = grid[ix + 1][iy + 1];
+        rejectedUnderflowZero = false;
 
         final x = xMin + ix * stepX;
         final y = yMin + iy * stepY;
@@ -670,7 +732,7 @@ class MathExpression {
           addZeroEdge(x + stepX, y, x + stepX, y + stepY);
         }
 
-        if (!v00.isFinite || !v10.isFinite || !v01.isFinite || !v11.isFinite) {
+        if (v00.isNaN || v10.isNaN || v01.isNaN || v11.isNaN) {
           result.addAll(zeroEdges);
           continue;
         }
@@ -704,6 +766,19 @@ class MathExpression {
         // Right edge (v10-v11)
         if ((s10 < 0) != (s11 < 0)) {
           rightT = crossing(x + stepX, y, x + stepX, y + stepY, v10, v11);
+        }
+
+        if (rejectedUnderflowZero &&
+            (!v00.isFinite ||
+                !v10.isFinite ||
+                !v01.isFinite ||
+                !v11.isFinite) &&
+            bottomT == null &&
+            topT == null &&
+            leftT == null &&
+            rightT == null) {
+          result.addAll(zeroEdges);
+          continue;
         }
 
         double? edgeTouch(
