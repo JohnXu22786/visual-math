@@ -248,6 +248,25 @@ void main() {
       }
     });
 
+    test('parallel fit keeps scale finite near the largest finite values', () {
+      const positivePoint = Point3D(1.4e308, 0.95e308, 0);
+      final scene = Scene3D(camera: const Camera3D(phi: 0))
+        ..add(Object3D.point(const Point3D(-1.4e308, -0.95e308, 0)))
+        ..add(Object3D.point(positivePoint));
+      final view = scene.camera.viewMatrix();
+      final right = Vector3D(view[0], view[4], view[8]);
+      final requiredScale = positivePoint.toVector().dot(right);
+
+      expect(requiredScale, greaterThan(double.maxFinite / 1.1));
+
+      final projection = scene.fitToView(
+        projection: Projection3D.parallel(width: 600, height: 600),
+      )!;
+
+      expect(projection.scale.isFinite, isTrue);
+      expect(projection.scale, double.maxFinite);
+    });
+
     test('perspective fit keeps asymmetric scene inside the far plane', () {
       final scene = Scene3D();
       const points = [
