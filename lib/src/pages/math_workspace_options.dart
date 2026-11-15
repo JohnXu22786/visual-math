@@ -186,9 +186,6 @@ class MathWorkspaceRegionActions {
   /// Whether the active editor is ready to receive commands.
   final bool editorReady;
 
-  /// Whether the active editor supports directional structural navigation.
-  final bool supportsStructuralNavigation;
-
   /// Whether the active editor supports structured editing commands.
   final bool supportsStructuredEditing;
 
@@ -266,7 +263,6 @@ class MathWorkspaceRegionActions {
     required this.toolInstruction,
     required this.parameters,
     required this.editorReady,
-    required this.supportsStructuralNavigation,
     required this.supportsStructuredEditing,
     required this.activeFormulaLabel,
     required this.editorLocation,

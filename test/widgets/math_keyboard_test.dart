@@ -408,8 +408,6 @@ void main() {
         await tester.tap(find.byTooltip('M'));
         await tester.tap(backspace);
         await tester.tap(find.byTooltip('3'));
-        await tester.tap(find.text('上一项'));
-        await tester.tap(find.text('下一项'));
         await _selectCategory(tester, '函数');
         await tester.tap(find.byTooltip('7'));
         await _selectCategory(tester, '字母');
@@ -425,8 +423,6 @@ void main() {
           'insert:M',
           'command:deleteBackward',
           'insert:3',
-          'previous:',
-          'next:',
           'insert:7',
           'insert:Q',
           r'insert:\Alpha',
@@ -690,20 +686,7 @@ void main() {
     },
   );
 
-  testWidgets('alphabet category keeps previous and next navigation usable', (
-    tester,
-  ) async {
-    final commands = <String>[];
-    await _pumpKeyboard(tester, commands);
-    await _selectCategory(tester, '字母');
-
-    await tester.tap(find.text('上一项'));
-    await tester.tap(find.text('下一项'));
-
-    expect(commands, ['previous:', 'next:']);
-  });
-
-  testWidgets('loading editor disables insertion and structural navigation', (
+  testWidgets('loading editor disables insertion', (
     tester,
   ) async {
     final commands = <String>[];
@@ -723,8 +706,6 @@ void main() {
       ),
     );
     await tester.tap(find.byTooltip('7'));
-    await tester.tap(find.text('上一项'));
-    await tester.tap(find.text('下一项'));
     await tester.tap(find.byTooltip('撤销'));
     expect(commands, isEmpty);
     await _selectCategory(tester, '字母');
@@ -735,7 +716,7 @@ void main() {
     expect(find.byTooltip('Q'), findsNothing);
     expect(commands, isEmpty);
   });
-  testWidgets('changing categories keeps numeric keys and navigation usable', (
+  testWidgets('changing categories keeps numeric keys usable', (
     tester,
   ) async {
     final commands = <String>[];
@@ -761,9 +742,8 @@ void main() {
     await tester.tap(seven);
     await _selectCategory(tester, '函数');
     expect(tester.getRect(seven), before);
-    await tester.tap(find.text('下一项'));
     await tester.tap(find.byTooltip('⌫'));
-    expect(commands, ['insert:7', 'next:', 'command:deleteBackward']);
+    expect(commands, ['insert:7', 'command:deleteBackward']);
     expect(tester.takeException(), isNull);
   });
 

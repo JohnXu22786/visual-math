@@ -560,8 +560,6 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                 _toolInstruction),
       parameters: {for (final name in parameterNames) name: _parameters[name]!},
       editorReady: editor?.ready ?? _fallbackEditorAvailable,
-      supportsStructuralNavigation:
-          editor?.supportsStructuralNavigation ?? false,
       supportsStructuredEditing: editor?.supportsStructuredEditing ?? false,
       activeFormulaLabel: _activeFormula == null
           ? null
@@ -1286,8 +1284,6 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     final editor = _activeEditor;
     return MathKeyboard(
       enabled: editor?.ready ?? _fallbackEditorAvailable,
-      supportsStructuralNavigation:
-          editor?.supportsStructuralNavigation ?? false,
       supportsStructuredEditing: editor?.supportsStructuredEditing ?? false,
       activeLabel: widget.options.presentation.labels.withIndex(
         widget.options.presentation.labels.formulaLabel,
@@ -2733,12 +2729,6 @@ class _DomainEditorDialogState extends State<_DomainEditorDialog> {
                                     ? _lowerEditorKey.currentState
                                     : _upperEditorKey.currentState)
                                 ?.ready ??
-                            false,
-                        supportsStructuralNavigation:
-                            (_editingLower
-                                    ? _lowerEditorKey.currentState
-                                    : _upperEditorKey.currentState)
-                                ?.supportsStructuralNavigation ??
                             false,
                         supportsStructuredEditing:
                             (_editingLower
