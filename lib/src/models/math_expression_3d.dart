@@ -336,8 +336,14 @@ class Expression3D {
       (end - midpoint).abs(),
       (end - start).abs(),
     ].reduce((a, b) => a > b ? a : b);
-    final deviation = (midpoint - (start + end) / 2).abs();
+    final deviation = (midpoint - _safeMidpoint(start, end)).abs();
     return variation > 0 && deviation > variation * 0.05;
+  }
+
+  double _safeMidpoint(double start, double end) {
+    return start.isNegative == end.isNegative
+        ? start / 2 + end / 2
+        : (start + end) / 2;
   }
 
   double _coordinateVariation(double start, double midpoint, double end) {
@@ -364,7 +370,7 @@ class Expression3D {
   }) {
     if (probeBudget[0] == 0) return false;
     probeBudget[0]--;
-    final midpointT = (startT + endT) / 2;
+    final midpointT = _safeMidpoint(startT, endT);
     final midpoint = evaluateCurve(midpointT);
     if (!midpoint.x.isFinite || !midpoint.y.isFinite || !midpoint.z.isFinite) {
       return true;
@@ -504,7 +510,8 @@ class Expression3D {
     final probeValue = coordinate(probe);
     return probeValue * smallerEndpoint > 0 &&
         largestEndpoint > probeValue.abs() * 1000 &&
-        (midpoint - (start + end) / 2).abs() > (end - start).abs() * 0.4;
+        (midpoint - _safeMidpoint(start, end)).abs() >
+            (end - start).abs() * 0.4;
   }
 
   double _maxDeviation(
