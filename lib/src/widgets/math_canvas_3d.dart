@@ -5487,7 +5487,10 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       final candidateDistance = dart_math.sqrt(
         candidateDx * candidateDx + candidateDy * candidateDy,
       );
-      if (pointDistance - candidateDistance <= 1e-7) return nearestPoint;
+      if (pointDistance - candidateDistance <= 1e-7 &&
+          (candidateScreen == null || pointScreen.z < candidateScreen.z)) {
+        return nearestPoint;
+      }
     }
     return nearestCandidate ?? nearestIn(surfaceCandidates, resolveDepth: true);
   }

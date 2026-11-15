@@ -87,6 +87,24 @@ void main() {
       expect(state.constructionState!.points, [nearer]);
     });
 
+    testWidgets('snapping origin over a farther point chooses the origin', (
+      tester,
+    ) async {
+      final state = await setupCanvas(tester, tool: ConstructionTool.segment);
+      state.setCamera(
+        const Camera3D(target: Point3D.origin, distance: 10, theta: 0, phi: 0),
+      );
+      state.setProjectionType(ProjectionType.perspective);
+      const farther = Point3D(0, -2, 0);
+      state.setObjects([Object3D.point(farther)]);
+      await tester.pump();
+
+      await tester.tapAt(tester.getCenter(find.byType(MathCanvas3D)));
+      await tester.pump();
+
+      expect(state.constructionState!.points, [Point3D.origin]);
+    });
+
     testWidgets('dragging right increases the orbit angle', (tester) async {
       final state = await setupCanvas(tester);
       final initialTheta = state.camera.theta;
