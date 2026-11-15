@@ -189,6 +189,28 @@ void main() {
       expect(pts.length, 50);
     });
 
+    test(
+      'keeps a continuous segment when parameter midpoint sums overflow',
+      () {
+        final expr = Expression3D.parametricCurve(
+          '(t, 0, 0)',
+          tMin: 1e308,
+          tMax: 1.7e308,
+        );
+
+        final segments = expr.sampleCurveSegments(numSamples: 3);
+
+        expect(segments, hasLength(1));
+        expect(segments.single, hasLength(3));
+        expect(
+          segments.single.every(
+            (point) => point.x.isFinite && point.y.isFinite && point.z.isFinite,
+          ),
+          isTrue,
+        );
+      },
+    );
+
     test('preserves finite samples when an interval probe throws', () {
       final expr = Expression3D.parametricCurve(
         '(fact(t), t, 0)',
