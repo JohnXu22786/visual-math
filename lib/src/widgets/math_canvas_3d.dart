@@ -1330,7 +1330,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   bool _isPointOccludedByOpaqueSurface(
     Point3D point, {
     Offset? screenPosition,
-    Object3D? candidateSurface,
+    Map<Object3D, Set<int>>? candidateSupportTriangles,
   }) {
     final projection = _currentProjection();
     final projectedPoint = worldToScreen(point, camera, projection);
@@ -1351,8 +1351,10 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           (((object.color >> 24) & 0xFF) / 255.0) * object.opacity < 0.999) {
         continue;
       }
-      if (identical(object, candidateSurface)) continue;
       for (var i = 0; i + 2 < object.indices.length; i += 3) {
+        if (candidateSupportTriangles?[object]?.contains(i) == true) {
+          continue;
+        }
         final ia = object.indices[i];
         final ib = object.indices[i + 1];
         final ic = object.indices[i + 2];
@@ -5118,13 +5120,15 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     final parallelSphereHits = Set<Point3D>.identity();
     final segmentCandidates = Set<Point3D>.identity();
     final occlusionSensitiveCandidates = Set<Point3D>.identity();
-    final occlusionCandidateSurfaces = Map<Point3D, Object3D>.identity();
+    final occlusionCandidateSupportTriangles =
+        Map<Point3D, Map<Object3D, Set<int>>>.identity();
 
     void addSegmentCandidate(
       Point3D a,
       Point3D b, {
       bool excludeOccluded = false,
       Object3D? occlusionSurface,
+      Set<int>? supportTriangles,
     }) {
       if (projection.type == ProjectionType.perspective) {
         final depthA = worldToScreen(a, camera, projection).z;
@@ -5172,7 +5176,10 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       if (excludeOccluded) {
         occlusionSensitiveCandidates.add(candidate);
         if (occlusionSurface != null) {
-          occlusionCandidateSurfaces[candidate] = occlusionSurface;
+          occlusionCandidateSupportTriangles
+              .putIfAbsent(candidate, () => Map<Object3D, Set<int>>.identity())
+              .putIfAbsent(occlusionSurface, () => <int>{})
+              .addAll(supportTriangles ?? const <int>{});
         }
       }
     }
@@ -5202,10 +5209,42 @@ class MathCanvas3DState extends State<MathCanvas3D> {
             );
         case Object3DType.surface:
         case Object3DType.polyhedron:
-          candidates.addAll(object.vertices);
-          occlusionSensitiveCandidates.addAll(object.vertices);
-          for (final vertex in object.vertices) {
-            occlusionCandidateSurfaces[vertex] = object;
+          final vertexSupportTriangles = List.generate(
+            object.vertices.length,
+            (_) => <int>{},
+          );
+          final edgeSupportTriangles = <(int, int), Set<int>>{};
+          (int, int) edgeKey(int first, int second) =>
+              first < second ? (first, second) : (second, first);
+          for (var i = 0; i + 2 < object.indices.length; i += 3) {
+            final a = object.indices[i];
+            final b = object.indices[i + 1];
+            final c = object.indices[i + 2];
+            if (a < 0 ||
+                a >= object.vertices.length ||
+                b < 0 ||
+                b >= object.vertices.length ||
+                c < 0 ||
+                c >= object.vertices.length) {
+              continue;
+            }
+            for (final vertex in [a, b, c]) {
+              vertexSupportTriangles[vertex].add(i);
+            }
+            for (final edge in [(a, b), (b, c), (c, a)]) {
+              edgeSupportTriangles
+                  .putIfAbsent(edgeKey(edge.$1, edge.$2), () => <int>{})
+                  .add(i);
+            }
+          }
+          for (var i = 0; i < object.vertices.length; i++) {
+            final vertex = object.vertices[i];
+            candidates.add(vertex);
+            occlusionSensitiveCandidates.add(vertex);
+            occlusionCandidateSupportTriangles
+                .putIfAbsent(vertex, () => Map<Object3D, Set<int>>.identity())
+                .putIfAbsent(object, () => <int>{})
+                .addAll(vertexSupportTriangles[i]);
           }
           if (object.type == Object3DType.polyhedron) {
             occlusionSensitiveCandidates.addAll(object.vertices);
@@ -5261,6 +5300,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
                   object.vertices[second],
                   excludeOccluded: true,
                   occlusionSurface: object,
+                  supportTriangles: edgeSupportTriangles[entry.key],
                 );
               }
             }
@@ -5282,18 +5322,21 @@ class MathCanvas3DState extends State<MathCanvas3D> {
                 object.vertices[b],
                 excludeOccluded: true,
                 occlusionSurface: object,
+                supportTriangles: edgeSupportTriangles[edgeKey(a, b)],
               );
               addSegmentCandidate(
                 object.vertices[b],
                 object.vertices[c],
                 excludeOccluded: true,
                 occlusionSurface: object,
+                supportTriangles: edgeSupportTriangles[edgeKey(b, c)],
               );
               addSegmentCandidate(
                 object.vertices[c],
                 object.vertices[a],
                 excludeOccluded: true,
                 occlusionSurface: object,
+                supportTriangles: edgeSupportTriangles[edgeKey(c, a)],
               );
             }
           }
@@ -5401,8 +5444,8 @@ class MathCanvas3DState extends State<MathCanvas3D> {
             occlusionSensitiveCandidates.contains(candidate) &&
             _isPointOccludedByOpaqueSurface(
               candidate,
-              screenPosition: Offset(screenX, screenY),
-              candidateSurface: occlusionCandidateSurfaces[candidate],
+              candidateSupportTriangles:
+                  occlusionCandidateSupportTriangles[candidate],
             )) {
           continue;
         }
