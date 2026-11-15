@@ -1228,6 +1228,61 @@ void main() {
       );
     });
 
+    test('non-finite edge endpoints cannot invent a touching contour', () {
+      final expression = MathExpression.fromInput('1/x+1000*(x-0.1875)^2=0');
+      expect(expression.isValid, isTrue);
+
+      for (final xMax in [0.25, 1.0]) {
+        final segments = expression.sampleContourSegments(
+          xMin: 0,
+          xMax: xMax,
+          yMin: 0,
+          yMax: 0.25,
+          gridX: 1,
+          gridY: 1,
+        );
+        expect(segments, isEmpty, reason: 'xMax=$xMax');
+      }
+    });
+
+    test('non-finite endpoints preserve finite interior tangent roots', () {
+      final expression = MathExpression.fromInput('(x-0.1875)^2/x=0');
+
+      final segments = expression.sampleContourSegments(
+        xMin: 0,
+        xMax: 1,
+        yMin: 0,
+        yMax: 0.25,
+        gridX: 1,
+        gridY: 1,
+      );
+
+      expect(segments, isNotEmpty);
+      expect(
+        segments
+            .expand((segment) => segment)
+            .every((point) => (point['x']! - 0.1875).abs() < 1e-6),
+        isTrue,
+      );
+    });
+
+    test('non-finite endpoints do not accept underflowed positive minima', () {
+      final expression = MathExpression.fromInput(
+        '(((x-0.1875)^4+1e-300)^2)/x=0',
+      );
+
+      final segments = expression.sampleContourSegments(
+        xMin: 0,
+        xMax: 1,
+        yMin: 0,
+        yMax: 0.25,
+        gridX: 1,
+        gridY: 1,
+      );
+
+      expect(segments, isEmpty);
+    });
+
     test('rejects pole crossings while retaining nearby real roots', () {
       List<List<Map<String, double>>> sample(String equation) =>
           MathExpression.fromInput(equation).sampleContourSegments(
