@@ -16,7 +16,6 @@ class MathKeyboard extends StatefulWidget {
   final VoidCallback onPlot;
   final String activeLabel;
   final bool enabled;
-  final bool supportsStructuralNavigation;
   final bool supportsStructuredEditing;
   final String location;
   final bool persistenceEnabled;
@@ -34,7 +33,6 @@ class MathKeyboard extends StatefulWidget {
     required this.onPlot,
     required this.activeLabel,
     this.enabled = true,
-    this.supportsStructuralNavigation = true,
     this.supportsStructuredEditing = true,
     this.location = '公式',
     this.persistenceEnabled = true,
@@ -476,7 +474,6 @@ class _MathKeyboardState extends State<MathKeyboard> {
 
   Widget _keyArea(List<_MathKey> keys, int pageCount, int keysPerPage) {
     final canSwipePages = pageCount > 1 && _category != '字母';
-    final canNavigate = widget.enabled && widget.supportsStructuralNavigation;
     final keyGrid = Padding(
       padding: const EdgeInsets.fromLTRB(6, 4, 6, 0),
       child: _category == '字母'
@@ -516,22 +513,6 @@ class _MathKeyboardState extends State<MathKeyboard> {
                   ),
               ],
             ),
-    );
-    final previousButton = TextButton(
-      style: TextButton.styleFrom(
-        minimumSize: const Size(48, 44),
-        padding: const EdgeInsets.symmetric(horizontal: 2),
-      ),
-      onPressed: canNavigate ? () => widget.onCommand('previous', '') : null,
-      child: Text(_label('上一项')),
-    );
-    final nextButton = TextButton(
-      style: TextButton.styleFrom(
-        minimumSize: const Size(48, 44),
-        padding: const EdgeInsets.symmetric(horizontal: 2),
-      ),
-      onPressed: canNavigate ? () => widget.onCommand('next', '') : null,
-      child: Text(_label('下一项')),
     );
     final isAlphabetCategory = _category == '字母';
     final currentPage = isAlphabetCategory ? 1 : _page + 1;
@@ -634,12 +615,10 @@ class _MathKeyboardState extends State<MathKeyboard> {
                   overflowAlignment: OverflowBarAlignment.center,
                   overflowDirection: VerticalDirection.down,
                   children: [
-                    previousButton,
                     if (pageNavigation != null)
                       pageNavigation
                     else if (pageIndicator != null)
                       pageIndicator,
-                    nextButton,
                   ],
                 ),
               ),

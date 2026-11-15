@@ -398,7 +398,6 @@ class _HostOwnedCompositionPageState extends State<HostOwnedCompositionPage> {
           constraints: const BoxConstraints(maxHeight: 280),
           child: MathKeyboard(
             activeLabel: 'Formula',
-            supportsStructuralNavigation: false,
             supportsStructuredEditing: false,
             onCommand: _command,
             onDismiss: () {},

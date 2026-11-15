@@ -380,15 +380,11 @@ void editorInteractionTests() {
       final editor = platform.activeEditors.single.controller;
       editor.emit({'type': 'focus', 'revision': 0});
       await tester.pumpAndSettle();
-      expect(find.text('下一项'), findsOneWidget);
-
       await tester.tap(find.byTooltip('收起数学键盘'));
       await tester.pumpAndSettle();
-      expect(find.text('下一项'), findsNothing);
 
       editor.emit({'type': 'tap', 'revision': 0});
       await tester.pumpAndSettle();
-      expect(find.text('下一项'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -418,7 +414,6 @@ void editorInteractionTests() {
     final lastRow = tester.getRect(lastField);
     expect(lastRow.top, greaterThanOrEqualTo(formulaViewport.top));
     expect(lastRow.bottom, lessThanOrEqualTo(formulaViewport.bottom));
-    expect(find.text('下一项'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -519,7 +514,6 @@ void editorInteractionTests() {
     expect(tester.takeException(), isNull);
     await tester.tap(find.byTooltip('收起数学键盘'));
     await tester.pump();
-    expect(find.text('下一项'), findsNothing);
   });
   testWidgets('math keyboard follows row identity across deletion and tabs', (
     tester,
@@ -534,7 +528,6 @@ void editorInteractionTests() {
     );
     await tester.tap(find.byType(MathFormulaField).first);
     await tester.pump();
-    expect(find.text('下一项'), findsOneWidget);
     await tester.tap(find.byIcon(Icons.add));
     await tester.pump();
     final fields = tester
@@ -558,7 +551,6 @@ void editorInteractionTests() {
     );
     await tester.tap(find.text('3D'));
     await tester.pumpAndSettle();
-    expect(find.text('下一项'), findsNothing);
     await tester.tap(find.text('2D'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('切换到 LaTeX 源码输入'));
@@ -570,9 +562,7 @@ void editorInteractionTests() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('fallback math keyboard disables structural navigation', (
-    tester,
-  ) async {
+  testWidgets('fallback math keyboard supports insertion', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: MathDrawingPage(
@@ -583,15 +573,6 @@ void editorInteractionTests() {
     );
     await tester.tap(find.byType(MathFormulaField).first);
     await tester.pump();
-
-    final previous = tester.widget<TextButton>(
-      find.widgetWithText(TextButton, '上一项'),
-    );
-    final next = tester.widget<TextButton>(
-      find.widgetWithText(TextButton, '下一项'),
-    );
-    expect(previous.onPressed, isNull);
-    expect(next.onPressed, isNull);
 
     await tester.tap(find.byTooltip('7'));
     await tester.pump();
