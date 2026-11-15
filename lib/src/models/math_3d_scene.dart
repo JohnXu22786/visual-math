@@ -484,22 +484,32 @@ class Projection3D {
     final depthScale = dart_math.max(far.abs(), near.abs());
     final normalizedFar = far / depthScale;
     final normalizedNear = near / depthScale;
+    final depthTranslationRatio = far / (near - far);
+    // A projection matrix is unchanged by scaling all coefficients together.
+    // Keep the depth translation representable when finite clip planes make
+    // its unscaled value exceed the largest finite double.
+    final matrixScale = dart_math.max(
+      1.0,
+      4 * (near.abs() / double.maxFinite) * depthTranslationRatio.abs(),
+    );
     return [
-      f / aspect,
+      f / aspect / matrixScale,
       0,
       0,
       0,
       0,
-      f,
+      f / matrixScale,
       0,
       0,
       0,
       0,
-      (normalizedFar + normalizedNear) / (normalizedNear - normalizedFar),
-      -1,
+      (normalizedFar + normalizedNear) /
+          (normalizedNear - normalizedFar) /
+          matrixScale,
+      -1 / matrixScale,
       0,
       0,
-      2 * near * (far / (near - far)),
+      2 * (near / matrixScale) * depthTranslationRatio,
       0,
     ];
   }
