@@ -5444,7 +5444,6 @@ class MathCanvas3DState extends State<MathCanvas3D> {
             occlusionSensitiveCandidates.contains(candidate) &&
             _isPointOccludedByOpaqueSurface(
               candidate,
-              screenPosition: Offset(screenX, screenY),
               candidateSupportTriangles:
                   occlusionCandidateSupportTriangles[candidate],
             )) {
