@@ -149,6 +149,24 @@ void main() {
       expect(scene.sceneCenter, equals(Point3D(0, 0, 0)));
     });
 
+    test('scene center uses line anchors for rays and infinite lines', () {
+      const anchor = Point3D(2, 3, 4);
+      final objects = [
+        (Line3DKind.ray, const Point3D(3, 3, 4), const Point3D(22, 3, 4)),
+        (Line3DKind.line, const Point3D(3, 3, 4), const Point3D(-4, 3, 4)),
+      ];
+
+      for (final (lineKind, direction1, direction2) in objects) {
+        final firstScene = Scene3D()
+          ..add(Object3D.line(anchor, direction1, lineKind: lineKind));
+        final secondScene = Scene3D()
+          ..add(Object3D.line(anchor, direction2, lineKind: lineKind));
+
+        expect(firstScene.sceneCenter, equals(anchor));
+        expect(secondScene.sceneCenter, equals(anchor));
+      }
+    });
+
     test(
       'scene center preserves averaging for non-finite object positions',
       () {
