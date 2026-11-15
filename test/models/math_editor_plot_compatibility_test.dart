@@ -181,6 +181,8 @@ void main() {
         r'\left\lfloor x-0.2\right\rfloor': -1,
         r'\left\lceil x+0.2\right\rceil': 1,
         r'\operatorname{round}\left(x+0.6\right)': 1,
+        'sin(x)!': 1,
+        'sin (x)!': 1,
         r'\left(x+3\right)!': 6,
         r'\frac{\left(x+3\right)!}{2}': 3,
         r'\frac{6}{2}!': 6,
