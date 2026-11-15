@@ -5118,6 +5118,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     }
     final surfaceCandidates = <Point3D>[];
     final parallelSphereHits = Set<Point3D>.identity();
+    final pointObjectCandidates = Set<Point3D>.identity();
     final segmentCandidates = Set<Point3D>.identity();
     final occlusionSensitiveCandidates = Set<Point3D>.identity();
     final occlusionCandidateSupportTriangles =
@@ -5195,6 +5196,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         case Object3DType.point:
           if (pointInDepthRange(object.point)) {
             candidates.add(object.point);
+            pointObjectCandidates.add(object.point);
             occlusionSensitiveCandidates.add(object.point);
           }
         case Object3DType.line:
@@ -5462,8 +5464,32 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       return nearest;
     }
 
-    return nearestIn(candidates, resolveDepth: true) ??
-        nearestIn(surfaceCandidates, resolveDepth: true);
+    final nearestCandidate = nearestIn(candidates);
+    final nearestPoint = pointObjectCandidates.isEmpty
+        ? null
+        : nearestIn(pointObjectCandidates.toList(), resolveDepth: true);
+    if (nearestPoint != null) {
+      final pointScreen = worldToScreen(nearestPoint, camera, projection);
+      final pointDx = pointScreen.x - screenX;
+      final pointDy = pointScreen.y - screenY;
+      final pointDistance = dart_math.sqrt(
+        pointDx * pointDx + pointDy * pointDy,
+      );
+      final candidateScreen = nearestCandidate == null
+          ? null
+          : worldToScreen(nearestCandidate, camera, projection);
+      final candidateDx = candidateScreen == null
+          ? double.infinity
+          : candidateScreen.x - screenX;
+      final candidateDy = candidateScreen == null
+          ? double.infinity
+          : candidateScreen.y - screenY;
+      final candidateDistance = dart_math.sqrt(
+        candidateDx * candidateDx + candidateDy * candidateDy,
+      );
+      if (pointDistance - candidateDistance <= 1e-7) return nearestPoint;
+    }
+    return nearestCandidate ?? nearestIn(surfaceCandidates, resolveDepth: true);
   }
 
   Point3D _screenToConstructionPlane(
