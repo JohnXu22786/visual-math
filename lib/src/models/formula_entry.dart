@@ -110,14 +110,22 @@ class FormulaEntry {
       rawExpression.isNotEmpty && parsed != null && parsed!.isValid;
 }
 
-/// Assign the next auto-color from the palette, skipping [usedColors].
-/// Cycles after [lastAutoColor] if all colors are used.
-Color nextFormulaColor(Set<Color> usedColors, {Color? lastAutoColor}) {
-  for (final c in formulaPalette) {
-    if (!usedColors.contains(c)) return c;
-  }
+/// Assign the first unused palette color until [cycleStarted], then advance
+/// after [lastAutoColor].
+Color nextFormulaColor(
+  Set<Color> usedColors, {
+  Color? lastAutoColor,
+  bool cycleStarted = false,
+}) {
   final lastIndex = lastAutoColor == null
       ? -1
       : formulaPalette.indexOf(lastAutoColor);
-  return formulaPalette[(lastIndex + 1) % formulaPalette.length];
+  if (cycleStarted && lastIndex >= 0) {
+    return formulaPalette[(lastIndex + 1) % formulaPalette.length];
+  }
+
+  for (final c in formulaPalette) {
+    if (!usedColors.contains(c)) return c;
+  }
+  return formulaPalette.first;
 }
