@@ -1020,7 +1020,7 @@ class MathCanvasState extends State<MathCanvas> {
   }
 
   bool? _categoryAggregate(String category) {
-    if (_formulaCurves.isEmpty) return false;
+    if (_formulaCurves.isEmpty) return true;
     final enabledCount = _formulaCurves
         .where((curve) => _isCategoryEnabled(curve.formula, category))
         .length;
