@@ -646,6 +646,7 @@ class _RootEvidenceNode {
         if (left!.zero) return right!.rootFactors;
       case '-':
         if (right == null || right!.zero) return left!.rootFactors;
+        if (left!.zero) return right!.rootFactors;
       case 'abs':
         if (left!.continuous) return [left!];
       case '^':
