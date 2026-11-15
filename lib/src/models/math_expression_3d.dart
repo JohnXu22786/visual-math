@@ -289,15 +289,22 @@ class Expression3D {
 
     for (int i = 0; i < numSamples; i++) {
       final t = tMin + i * step;
+      late final Point3D point;
       try {
-        final point = evaluateCurve(t);
-        if (!point.x.isFinite || !point.y.isFinite || !point.z.isFinite) {
-          endSegment();
-          continue;
-        }
+        point = evaluateCurve(t);
+      } catch (_) {
+        endSegment();
+        continue;
+      }
 
-        if (current.isNotEmpty && i > 0) {
-          final previousT = tMin + (i - 1) * step;
+      if (!point.x.isFinite || !point.y.isFinite || !point.z.isFinite) {
+        endSegment();
+        continue;
+      }
+
+      if (current.isNotEmpty && i > 0) {
+        final previousT = tMin + (i - 1) * step;
+        try {
           if (_isCurveIntervalDiscontinuous(
             previousT,
             current.last,
@@ -307,11 +314,13 @@ class Expression3D {
           )) {
             endSegment();
           }
+        } catch (_) {
+          // A failed probe leaves the interval uncertain, but both endpoint
+          // samples are still valid and should be retained separately.
+          endSegment();
         }
-        current.add(point);
-      } catch (_) {
-        endSegment();
       }
+      current.add(point);
     }
     endSegment();
     return segments;

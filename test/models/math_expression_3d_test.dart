@@ -189,6 +189,24 @@ void main() {
       expect(pts.length, 50);
     });
 
+    test('preserves finite samples when an interval probe throws', () {
+      final expr = Expression3D.parametricCurve(
+        '(fact(t), t, 0)',
+        tMin: 0,
+        tMax: 1,
+      );
+
+      final segments = expr.sampleCurveSegments(numSamples: 2);
+
+      expect(segments, hasLength(2));
+      expect(segments[0], hasLength(1));
+      expect(segments[0].single.x, 1);
+      expect(segments[0].single.y, 0);
+      expect(segments[1], hasLength(1));
+      expect(segments[1].single.x, 1);
+      expect(segments[1].single.y, 1);
+    });
+
     test('splits branches when a pole falls between default samples', () {
       final expr = Expression3D.parametricCurve(
         '(1/t, 0, t)',
