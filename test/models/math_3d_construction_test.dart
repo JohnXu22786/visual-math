@@ -312,14 +312,26 @@ void main() {
 
     state.addPoint(Point3D.origin);
     state.addPoint(const Point3D(1, 0, 0));
-    state.addPoint(const Point3D(1e308, 1e308, 0));
+    const profileStart = Point3D(1e308, 1e308, 0);
+    state.addPoint(profileStart);
     expect(
       state.addPoint(const Point3D(1e308, -1e308, 0)),
-      ConstructionAction.complete,
+      ConstructionAction.awaitInput,
     );
 
+    expect(state.points, [
+      Point3D.origin,
+      const Point3D(1, 0, 0),
+      profileStart,
+    ]);
+    expect(state.result, isNull);
+
+    expect(
+      state.addPoint(const Point3D(1e308, 5e307, 0)),
+      ConstructionAction.complete,
+    );
     final result = state.result;
-    expect(result?.type, Object3DType.curve);
+    expect(result?.type, Object3DType.surface);
     expect(
       result?.vertices.every(
         (point) => point.x.isFinite && point.y.isFinite && point.z.isFinite,
