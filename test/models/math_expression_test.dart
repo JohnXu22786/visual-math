@@ -1441,7 +1441,7 @@ void main() {
         xMax: 1e308,
         yMin: -1,
         yMax: 1,
-        gridX: 20,
+        gridX: 1,
         gridY: 20,
       );
       final horizontal = MathExpression.fromInput('x+y=0')
@@ -1451,7 +1451,7 @@ void main() {
             yMin: -1e308,
             yMax: 1e308,
             gridX: 20,
-            gridY: 20,
+            gridY: 1,
           );
 
       for (final segments in [vertical, horizontal]) {
