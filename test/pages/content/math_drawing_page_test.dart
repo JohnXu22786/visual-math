@@ -562,9 +562,7 @@ void editorInteractionTests() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('fallback math keyboard supports insertion', (
-    tester,
-  ) async {
+  testWidgets('fallback math keyboard supports insertion', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: MathDrawingPage(

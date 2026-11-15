@@ -686,9 +686,7 @@ void main() {
     },
   );
 
-  testWidgets('loading editor disables insertion', (
-    tester,
-  ) async {
+  testWidgets('loading editor disables insertion', (tester) async {
     final commands = <String>[];
     await tester.pumpWidget(
       MaterialApp(
@@ -716,9 +714,7 @@ void main() {
     expect(find.byTooltip('Q'), findsNothing);
     expect(commands, isEmpty);
   });
-  testWidgets('changing categories keeps numeric keys usable', (
-    tester,
-  ) async {
+  testWidgets('changing categories keeps numeric keys usable', (tester) async {
     final commands = <String>[];
     await tester.pumpWidget(
       MaterialApp(
