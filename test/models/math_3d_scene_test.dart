@@ -92,6 +92,15 @@ void main() {
   });
 
   group('Projection3D', () {
+    test('perspective matrix stays finite for extreme finite clip planes', () {
+      final matrix = Projection3D.perspective(
+        near: 7e307,
+        far: 1e308,
+      ).projectionMatrix();
+
+      expect(matrix.every((value) => value.isFinite), isTrue);
+    });
+
     test('project transforms 3D point to 2D screen coordinates', () {
       final proj = Projection3D.parallel(width: 800, height: 600, scale: 50);
       // Origin should project to center of screen
