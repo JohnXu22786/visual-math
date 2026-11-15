@@ -105,6 +105,19 @@ class ConstructionState {
         !_isFiniteVector(point - _points.first)) {
       return _reject('向量长度过大，无法表示，请重新选择终点');
     }
+    if (tool == ConstructionTool.cube && _points.length == 1) {
+      final candidate = _createCube(
+        _points.first,
+        point,
+        planeNormal:
+            workingPlaneNormal != null && workingPlaneNormal.magnitude > 1e-9
+            ? workingPlaneNormal.normalized()
+            : _workingPlaneNormal,
+      );
+      if (!_hasFiniteGeometry(candidate)) {
+        return _reject('边长过大，无法表示构造结果，请重新选择端点');
+      }
+    }
     if (_points.isNotEmpty &&
         (tool == ConstructionTool.regularPolygon ||
             tool == ConstructionTool.tetrahedron)) {
@@ -2246,6 +2259,52 @@ class ConstructionState {
     if (!_isNonCollinear(a, b, c)) return a;
     final edgeU = b - a;
     final edgeV = c - a;
+    if (!_isFiniteVector(edgeU) || !_isFiniteVector(edgeV)) {
+      final coordinateScale = <double>[
+        a.x.abs(),
+        a.y.abs(),
+        a.z.abs(),
+        b.x.abs(),
+        b.y.abs(),
+        b.z.abs(),
+        c.x.abs(),
+        c.y.abs(),
+        c.z.abs(),
+      ].reduce(dart_math.max);
+      final scaledA = Point3D(
+        a.x / coordinateScale,
+        a.y / coordinateScale,
+        a.z / coordinateScale,
+      );
+      final scaledB = Point3D(
+        b.x / coordinateScale,
+        b.y / coordinateScale,
+        b.z / coordinateScale,
+      );
+      final scaledC = Point3D(
+        c.x / coordinateScale,
+        c.y / coordinateScale,
+        c.z / coordinateScale,
+      );
+      final scaledCenter = _circumcenterFromEdges(
+        scaledA,
+        scaledB - scaledA,
+        scaledC - scaledA,
+      );
+      return Point3D(
+        scaledCenter.x * coordinateScale,
+        scaledCenter.y * coordinateScale,
+        scaledCenter.z * coordinateScale,
+      );
+    }
+    return _circumcenterFromEdges(a, edgeU, edgeV);
+  }
+
+  static Point3D _circumcenterFromEdges(
+    Point3D a,
+    Vector3D edgeU,
+    Vector3D edgeV,
+  ) {
     final unitU = _stableNormalize(edgeU);
     final unitV = _stableNormalize(edgeV);
     final normal = _stableNormalize(unitU.cross(unitV));
