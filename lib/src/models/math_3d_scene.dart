@@ -530,11 +530,20 @@ class Projection3D {
       final safeDepth = depth.abs() < 1e-9
           ? (depth.isNegative ? -1e-9 : 1e-9)
           : depth;
-      final ndcX = worldPoint.x * focalScale / (aspect * safeDepth);
-      final ndcY = worldPoint.y * focalScale / safeDepth;
+      // Order the depth and focal/aspect operations by depth magnitude so
+      // large finite camera-space coordinates do not overflow prematurely.
+      double projectCoordinate(double coordinate, double scale) =>
+          safeDepth.abs() < 1
+          ? coordinate * scale / safeDepth
+          : coordinate / safeDepth * scale;
+
+      final ndcX = projectCoordinate(worldPoint.x, focalScale / aspect);
+      final ndcY = projectCoordinate(worldPoint.y, focalScale);
+      final halfWidth = width / 2;
+      final halfHeight = height / 2;
       return ScreenPoint(
-        (ndcX + 1) * width / 2,
-        (1 - ndcY) * height / 2,
+        ndcX * halfWidth + halfWidth,
+        halfHeight - ndcY * halfHeight,
         depth,
       );
     }

@@ -141,6 +141,65 @@ void main() {
       // They differ (perspective has foreshortening)
       expect(p1.x, isNot(equals(p2.x)));
     });
+
+    test(
+      'perspective projection stays finite for extreme camera coordinates',
+      () {
+        final perspective = Projection3D.perspective(
+          width: 800,
+          height: 600,
+          fov: 60,
+        );
+        final focalScale = 1 / dart_math.tan(dart_math.pi / 6);
+        final extreme = 1.7e308;
+
+        final projectedX = perspective.project(Point3D(extreme, 0, -extreme));
+        expect(projectedX.x.isFinite, isTrue);
+        expect(projectedX.x, closeTo(400 + focalScale * 300, 1e-10));
+
+        final projectedY = perspective.project(Point3D(0, extreme, -extreme));
+        expect(projectedY.y.isFinite, isTrue);
+        expect(projectedY.y, closeTo(300 - focalScale * 300, 1e-10));
+
+        final narrowAspect = Projection3D.perspective(
+          width: 4,
+          height: 1,
+          fov: 60,
+        );
+        final compensatedX = narrowAspect.project(Point3D(extreme, 0, -1));
+        final compensatedXExpected = extreme * (focalScale / 2);
+        expect(compensatedX.x.isFinite, isTrue);
+        expect(
+          compensatedX.x,
+          closeTo(compensatedXExpected, compensatedXExpected * 1e-15),
+        );
+        final compensatedShallowX = narrowAspect.project(
+          Point3D(extreme, 0, -0.9),
+        );
+        final compensatedShallowExpected = extreme * (focalScale / 2 / 0.9);
+        expect(compensatedShallowX.x.isFinite, isTrue);
+        expect(
+          compensatedShallowX.x,
+          closeTo(
+            compensatedShallowExpected,
+            compensatedShallowExpected * 1e-15,
+          ),
+        );
+
+        final smallViewport = Projection3D.perspective(
+          width: 2,
+          height: 2,
+          fov: 60,
+        );
+        final largeScreenX = smallViewport.project(Point3D(1e308, 0, -1));
+        final largeScreenY = smallViewport.project(Point3D(0, 1e308, -1));
+        final largeScreenExpected = 1e308 * focalScale;
+        expect(largeScreenX.x.isFinite, isTrue);
+        expect(largeScreenX.x, closeTo(largeScreenExpected, 1e293));
+        expect(largeScreenY.y.isFinite, isTrue);
+        expect(largeScreenY.y, closeTo(-largeScreenExpected, 1e293));
+      },
+    );
   });
 
   group('Scene3D', () {
