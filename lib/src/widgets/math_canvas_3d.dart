@@ -1327,6 +1327,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
   bool _isPointOccludedByOpaqueSurface(
     Point3D point, {
     Offset? screenPosition,
+    Object3D? candidateSurface,
   }) {
     final projection = _currentProjection();
     final projectedPoint = worldToScreen(point, camera, projection);
@@ -1347,6 +1348,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
           (((object.color >> 24) & 0xFF) / 255.0) * object.opacity < 0.999) {
         continue;
       }
+      if (identical(object, candidateSurface)) continue;
       for (var i = 0; i + 2 < object.indices.length; i += 3) {
         final ia = object.indices[i];
         final ib = object.indices[i + 1];
@@ -5113,11 +5115,13 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     final parallelSphereHits = Set<Point3D>.identity();
     final segmentCandidates = Set<Point3D>.identity();
     final occlusionSensitiveCandidates = Set<Point3D>.identity();
+    final occlusionCandidateSurfaces = Map<Point3D, Object3D>.identity();
 
     void addSegmentCandidate(
       Point3D a,
       Point3D b, {
       bool excludeOccluded = false,
+      Object3D? occlusionSurface,
     }) {
       if (projection.type == ProjectionType.perspective) {
         final depthA = worldToScreen(a, camera, projection).z;
@@ -5164,6 +5168,9 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       segmentCandidates.add(candidate);
       if (excludeOccluded) {
         occlusionSensitiveCandidates.add(candidate);
+        if (occlusionSurface != null) {
+          occlusionCandidateSurfaces[candidate] = occlusionSurface;
+        }
       }
     }
 
@@ -5193,6 +5200,10 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         case Object3DType.surface:
         case Object3DType.polyhedron:
           candidates.addAll(object.vertices);
+          occlusionSensitiveCandidates.addAll(object.vertices);
+          for (final vertex in object.vertices) {
+            occlusionCandidateSurfaces[vertex] = object;
+          }
           if (object.type == Object3DType.polyhedron) {
             occlusionSensitiveCandidates.addAll(object.vertices);
             if (object.showEdges && object.edgeWidth > 0) {
@@ -5246,6 +5257,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
                   object.vertices[first],
                   object.vertices[second],
                   excludeOccluded: true,
+                  occlusionSurface: object,
                 );
               }
             }
@@ -5262,9 +5274,24 @@ class MathCanvas3DState extends State<MathCanvas3D> {
                   c >= object.vertices.length) {
                 continue;
               }
-              addSegmentCandidate(object.vertices[a], object.vertices[b]);
-              addSegmentCandidate(object.vertices[b], object.vertices[c]);
-              addSegmentCandidate(object.vertices[c], object.vertices[a]);
+              addSegmentCandidate(
+                object.vertices[a],
+                object.vertices[b],
+                excludeOccluded: true,
+                occlusionSurface: object,
+              );
+              addSegmentCandidate(
+                object.vertices[b],
+                object.vertices[c],
+                excludeOccluded: true,
+                occlusionSurface: object,
+              );
+              addSegmentCandidate(
+                object.vertices[c],
+                object.vertices[a],
+                excludeOccluded: true,
+                occlusionSurface: object,
+              );
             }
           }
         case Object3DType.curve:
@@ -5369,7 +5396,11 @@ class MathCanvas3DState extends State<MathCanvas3D> {
             : dart_math.sqrt(dx * dx + dy * dy);
         if (pixelDistance < 14.0 &&
             occlusionSensitiveCandidates.contains(candidate) &&
-            _isPointOccludedByOpaqueSurface(candidate)) {
+            _isPointOccludedByOpaqueSurface(
+              candidate,
+              screenPosition: Offset(screenX, screenY),
+              candidateSurface: occlusionCandidateSurfaces[candidate],
+            )) {
           continue;
         }
         if (pixelDistance < 14.0 &&
