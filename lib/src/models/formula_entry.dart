@@ -78,8 +78,11 @@ class FormulaEntry {
     bool? autoColor,
     bool? visible,
     Object3D? hiddenPlot3D,
+    bool clearHiddenPlot3D = false,
     String? domainStartExpression,
+    bool clearDomainStartExpression = false,
     String? domainEndExpression,
+    bool clearDomainEndExpression = false,
     bool? includeDomainStart,
     bool? includeDomainEnd,
     Map<String, double>? parameterValues,
@@ -96,10 +99,15 @@ class FormulaEntry {
       color: color ?? this.color,
       autoColor: autoColor ?? this.autoColor,
       visible: visible ?? this.visible,
-      hiddenPlot3D: hiddenPlot3D ?? this.hiddenPlot3D,
-      domainStartExpression:
-          domainStartExpression ?? this.domainStartExpression,
-      domainEndExpression: domainEndExpression ?? this.domainEndExpression,
+      hiddenPlot3D: clearHiddenPlot3D
+          ? null
+          : hiddenPlot3D ?? this.hiddenPlot3D,
+      domainStartExpression: clearDomainStartExpression
+          ? null
+          : domainStartExpression ?? this.domainStartExpression,
+      domainEndExpression: clearDomainEndExpression
+          ? null
+          : domainEndExpression ?? this.domainEndExpression,
       includeDomainStart: includeDomainStart ?? this.includeDomainStart,
       includeDomainEnd: includeDomainEnd ?? this.includeDomainEnd,
       parameterValues: parameterValues ?? this.parameterValues,
