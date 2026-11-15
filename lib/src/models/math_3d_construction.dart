@@ -105,6 +105,15 @@ class ConstructionState {
         !_isFiniteVector(point - _points.first)) {
       return _reject('向量长度过大，无法表示，请重新选择终点');
     }
+    if (const {
+          ConstructionTool.line,
+          ConstructionTool.segment,
+          ConstructionTool.ray,
+        }.contains(tool) &&
+        _points.length == 1 &&
+        !_isFiniteVector(point - _points.first)) {
+      return _reject('方向过大，无法表示直线，请重新选择终点');
+    }
     if (tool == ConstructionTool.cube && _points.length == 1) {
       final candidate = _createCube(
         _points.first,
