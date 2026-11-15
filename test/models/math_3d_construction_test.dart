@@ -156,6 +156,40 @@ void main() {
     },
   );
 
+  test('clustered extreme polygon area center remains finite', () {
+    final state = ConstructionState(tool: ConstructionTool.area);
+    final vertices = <Point3D>[
+      const Point3D(-1e308, -1e308, 0),
+      const Point3D(1e308, -1e308, 0),
+      const Point3D(1e308, 1e308, 0),
+      const Point3D(-1e308, 1e308, 0),
+      const Point3D(-1e308, 7e307, 0),
+      for (var index = 1; index <= 40; index++)
+        Point3D(-1e308 + index * 1e305, 7e307, 0),
+      const Point3D(7e307, 7e307, 0),
+      const Point3D(7e307, -7e307, 0),
+      for (var index = 1; index <= 40; index++)
+        Point3D(-1e308 + (40 - index) * 1e305, -7e307, 0),
+    ];
+
+    for (final vertex in vertices) {
+      state.addPoint(vertex);
+    }
+    final action = state.addPoint(vertices.first);
+
+    expect(action, ConstructionAction.complete);
+    expect(state.result?.type, Object3DType.point);
+    final center = state.result!.point;
+    expect(center.x.isFinite && center.y.isFinite && center.z.isFinite, isTrue);
+    final insideOuterBoundary =
+        center.x > -1e308 &&
+        center.x < 1e308 &&
+        center.y > -1e308 &&
+        center.y < 1e308;
+    final outsideTheConcaveNotch = center.x > 7e307 || center.y.abs() > 7e307;
+    expect(insideOuterBoundary && outsideTheConcaveNotch, isTrue);
+  });
+
   test('large collinear polygon remains rejected', () {
     final state = ConstructionState(tool: ConstructionTool.polygon);
 
