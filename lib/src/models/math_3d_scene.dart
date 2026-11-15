@@ -550,6 +550,44 @@ class Projection3D {
 // Scene3D
 // ======================================================================
 
+Point3D? _nearestOriginPointOnPlane(Object3D plane) {
+  final a = plane.planeA;
+  final b = plane.planeB;
+  final c = plane.planeC;
+  final d = plane.planeD;
+  if (![a, b, c, d].every((value) => value.isFinite)) return null;
+
+  final scale = [
+    a.abs(),
+    b.abs(),
+    c.abs(),
+  ].reduce((first, second) => first > second ? first : second);
+  if (scale == 0) return null;
+
+  final scaledA = a / scale;
+  final scaledB = b / scale;
+  final scaledC = c / scale;
+  final normalLengthSquared =
+      scaledA * scaledA + scaledB * scaledB + scaledC * scaledC;
+  final scaledOffset = d / scale;
+  double coordinate(double scaledCoefficient) {
+    if (scaledOffset.isFinite) {
+      return (scaledOffset / normalLengthSquared) * scaledCoefficient;
+    }
+    return ((d * scaledCoefficient) / normalLengthSquared) / scale;
+  }
+
+  final point = Point3D(
+    coordinate(scaledA),
+    coordinate(scaledB),
+    coordinate(scaledC),
+  );
+  if (![point.x, point.y, point.z].every((value) => value.isFinite)) {
+    return null;
+  }
+  return point;
+}
+
 /// A 3D scene containing objects, a camera, and projection settings.
 class Scene3D {
   Camera3D camera;
@@ -584,44 +622,6 @@ class Scene3D {
       meanZ = updateMean(meanZ, p.z);
     }
 
-    void addPlaneOrigin(Object3D plane) {
-      final a = plane.planeA;
-      final b = plane.planeB;
-      final c = plane.planeC;
-      final d = plane.planeD;
-      if (![a, b, c, d].every((value) => value.isFinite)) return;
-
-      final scale = [
-        a.abs(),
-        b.abs(),
-        c.abs(),
-      ].reduce((first, second) => first > second ? first : second);
-      if (scale == 0) return;
-
-      final scaledA = a / scale;
-      final scaledB = b / scale;
-      final scaledC = c / scale;
-      final normalLengthSquared =
-          scaledA * scaledA + scaledB * scaledB + scaledC * scaledC;
-      final scaledOffset = d / scale;
-      double coordinate(double scaledCoefficient) {
-        if (scaledOffset.isFinite) {
-          return (scaledOffset / normalLengthSquared) * scaledCoefficient;
-        }
-        return ((d * scaledCoefficient) / normalLengthSquared) / scale;
-      }
-
-      final point = Point3D(
-        coordinate(scaledA),
-        coordinate(scaledB),
-        coordinate(scaledC),
-      );
-      if (![point.x, point.y, point.z].every((value) => value.isFinite)) {
-        return;
-      }
-      addPoint(point);
-    }
-
     for (final obj in _objects) {
       switch (obj.type) {
         case Object3DType.point:
@@ -631,7 +631,8 @@ class Scene3D {
           addPoint(obj.pointB);
         case Object3DType.plane:
           // Use the point on the plane closest to the scene origin.
-          addPlaneOrigin(obj);
+          final point = _nearestOriginPointOnPlane(obj);
+          if (point != null) addPoint(point);
         case Object3DType.surface:
         case Object3DType.polyhedron:
           for (final v in obj.vertices) {
@@ -713,7 +714,8 @@ class Scene3D {
             checkPoint(obj.pointB);
           }
         case Object3DType.plane:
-          break;
+          final point = _nearestOriginPointOnPlane(obj);
+          if (point != null) checkPoint(point);
         case Object3DType.surface:
         case Object3DType.polyhedron:
           for (final v in obj.vertices) {
