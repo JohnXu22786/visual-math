@@ -4,6 +4,20 @@ import 'package:visual_math/src/models/math_expression_parser.dart';
 
 void main() {
   group('MathExpressionParser', () {
+    test('preserves touching root evidence after subtracting from zero', () {
+      final factors = MathExpressionParser.touchingRootFactors(
+        '0 - (x - 1.234)^2',
+        variables: const ['x'],
+      );
+
+      expect(factors, hasLength(1));
+      final evaluate = MathExpressionParser.parse(
+        factors.single,
+        variables: const ['x'],
+      );
+      expect(evaluate({'x': 1.234}), closeTo(0, 1e-12));
+    });
+
     test('preserves arithmetic precedence, unary signs, and right powers', () {
       final evaluate = MathExpressionParser.parse(
         '-(x^2) + 2 * (3 + 1) + 2^3^2',
