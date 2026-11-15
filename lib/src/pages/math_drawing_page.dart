@@ -865,6 +865,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       final restored = [
         for (final formula in _formulas)
           if (formula.visible &&
+              formula.controller.text.trim().isNotEmpty &&
               formula.hiddenPlot3D != null &&
               !currentFormulaIds.contains(formula.id))
             _refreshFormulaPlot3D(formula.hiddenPlot3D!),
