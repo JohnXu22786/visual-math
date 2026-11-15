@@ -1866,7 +1866,7 @@ class MathExpression {
         if (source[start] == open) depth--;
       }
       if (depth != 0) return null;
-      final function = RegExp(r'[a-zA-Z]+$')
+      final function = RegExp(r'[a-zA-Z]+(?=\s*$)')
           .firstMatch(source.substring(0, start));
       if (function != null && _knownFunctions.contains(function[0]))
         start = function.start;
