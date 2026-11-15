@@ -1289,7 +1289,7 @@ void main() {
       expect(curve, isNotEmpty);
       final wide = MathExpression.fromInput('x*x=2').sampleContourSegments(
         xMin: 0,
-        xMax: 1e40,
+        xMax: 1e200,
         yMin: -1,
         yMax: 1,
         gridX: 1,
@@ -1300,6 +1300,60 @@ void main() {
         wide
             .expand((s) => s)
             .every((p) => (p['x']! - 1.41421356237).abs() < 1e-6),
+        isTrue,
+      );
+      final infinitePole = MathExpression.fromInput('1/(x*(x-1))=0')
+          .sampleContourSegments(
+            xMin: 0,
+            xMax: 1,
+            yMin: 0,
+            yMax: 1,
+            gridX: 1,
+            gridY: 1,
+          );
+      expect(infinitePole, isEmpty);
+      final rootBetweenInfiniteEndpoints =
+          MathExpression.fromInput('((x*x-0.5)/(x*(1-x)))=0')
+              .sampleContourSegments(
+                xMin: 0,
+                xMax: 1,
+                yMin: 0,
+                yMax: 1,
+                gridX: 1,
+                gridY: 1,
+              );
+      expect(rootBetweenInfiniteEndpoints, isNotEmpty);
+      expect(
+        rootBetweenInfiniteEndpoints
+            .expand((segment) => segment)
+            .every((point) => (point['x']! - dart_math.sqrt(0.5)).abs() < 1e-4),
+        isTrue,
+      );
+      final overflowPole = MathExpression.fromInput('1/(x*(x-1)*1e308*1e308)=0')
+          .sampleContourSegments(
+            xMin: 0,
+            xMax: 1,
+            yMin: 0,
+            yMax: 1,
+            gridX: 1,
+            gridY: 1,
+          );
+      expect(overflowPole, isEmpty);
+      final adjacentRootsWithInfiniteEndpoints =
+          MathExpression.fromInput('((x-0.25)*(x-0.5)*(x-0.75))/(x*(1-x))=0')
+              .sampleContourSegments(
+                xMin: 0,
+                xMax: 1,
+                yMin: 0,
+                yMax: 1,
+                gridX: 1,
+                gridY: 1,
+              );
+      expect(adjacentRootsWithInfiniteEndpoints, isNotEmpty);
+      expect(
+        adjacentRootsWithInfiniteEndpoints
+            .expand((segment) => segment)
+            .any((point) => (point['x']! - 0.5).abs() < 1e-4),
         isTrue,
       );
     });
