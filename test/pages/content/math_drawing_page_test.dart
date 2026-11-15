@@ -763,6 +763,44 @@ void main() {
     check(reopened.drawing.scene3D.singleWhere((o) => o.formulaRowId != null));
   });
 
+  testWidgets('clearing a 3D formula does not restore its cached plot', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_buildTestApp());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('3D'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'x+y');
+    await tester.pump();
+    await tester.tap(find.byTooltip('绘制').first);
+    await tester.pumpAndSettle();
+
+    final canvas = tester.state<MathCanvas3DState>(find.byType(MathCanvas3D));
+    expect(
+      canvas.objects.where((object) => object.formulaRowId != null),
+      hasLength(1),
+    );
+
+    await tester.enterText(find.byType(TextField), '');
+    await tester.pump();
+    await tester.tap(find.byTooltip('绘制').first);
+    await tester.pumpAndSettle();
+    expect(
+      canvas.objects.where((object) => object.formulaRowId != null),
+      isEmpty,
+    );
+
+    await tester.tap(find.text('2D'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('3D'));
+    await tester.pumpAndSettle();
+
+    expect(
+      canvas.objects.where((object) => object.formulaRowId != null),
+      isEmpty,
+    );
+  });
+
   testWidgets(
     'formula color picker updates existing 3D plot from either view',
     (tester) async {
