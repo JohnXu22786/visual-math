@@ -687,11 +687,11 @@ class MathCanvasState extends State<MathCanvas> {
             domainEnd == null)) {
       return [];
     }
-    final sampleMin = dart_math.max(
+    var sampleMin = dart_math.max(
       _xMin - marginX,
       domainStart ?? double.negativeInfinity,
     );
-    final sampleMax = dart_math.min(
+    var sampleMax = dart_math.min(
       _xMax + marginX,
       domainEnd ?? double.infinity,
     );
@@ -723,6 +723,14 @@ class MathCanvasState extends State<MathCanvas> {
               case final clipped?)
             clipped,
       ];
+    }
+    if (!(sampleMax - sampleMin).isFinite) {
+      // The pan margin can make two individually finite endpoints whose
+      // difference overflows. Explicit sampling rejects that range, so use
+      // the visible viewport bounds in this case.
+      sampleMin = dart_math.max(_xMin, domainStart ?? double.negativeInfinity);
+      sampleMax = dart_math.min(_xMax, domainEnd ?? double.infinity);
+      if (sampleMin >= sampleMax) return [];
     }
     // Sample well beyond viewport bounds to ensure curves reach the
     // canvas edges during pan/zoom without visible holes in the graph.

@@ -1170,6 +1170,37 @@ void main() {
 
   group('MathCanvas - extended sampling margin', () {
     testWidgets(
+      'explicit curve falls back to finite viewport bounds when pan margin overflows',
+      (tester) async {
+        final key = GlobalKey<MathCanvasState>();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SizedBox(
+                width: 300,
+                height: 300,
+                child: MathCanvas(key: key),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        await key.currentState!.setViewport(-5e307, -10, 5e307, 10);
+        await key.currentState!.setExpression('x', null);
+        await tester.pump();
+
+        final points = key.currentState!.curvePoints;
+        expect(points, isNotEmpty);
+        expect(
+          points.every((point) => point['x']!.isFinite && point['y']!.isFinite),
+          isTrue,
+        );
+      },
+    );
+
+    testWidgets(
       'explicit function sampling extends well beyond viewport bounds',
       (tester) async {
         final key = GlobalKey<MathCanvasState>();
