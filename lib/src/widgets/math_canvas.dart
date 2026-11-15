@@ -1249,6 +1249,8 @@ class GraphPainter extends CustomPainter {
   static double _niceStep(double range, int targetTicks) {
     if (range <= 0) return 1.0;
     final roughStep = range / targetTicks;
+    if (!roughStep.isFinite) return double.maxFinite;
+    if (roughStep <= 0) return double.minPositive;
     final magnitude = dart_math.pow(
       10,
       (dart_math.log(roughStep) / dart_math.ln10).floor(),
@@ -1266,7 +1268,8 @@ class GraphPainter extends CustomPainter {
       niceStep = 10;
     }
 
-    return niceStep * magnitude;
+    final step = niceStep * magnitude;
+    return step > 0 && step.isFinite ? step : double.minPositive;
   }
 
   double _firstGridTick(double minimum, double step) {
