@@ -276,6 +276,9 @@ class MathExpression {
     }
 
     final step = (xMax - xMin) / (numPoints - 1);
+    double midpoint(double a, double b) =>
+        a.isNegative == b.isNegative ? a + (b - a) / 2 : (a + b) / 2;
+
     final segments = <List<Map<String, double>>>[];
     var currentSegment = <Map<String, double>>[];
 
@@ -294,8 +297,8 @@ class MathExpression {
             final previousX = previous['x']!;
             final previousY = previous['y']!;
             try {
-              final midpointY = evaluator((previousX + x) / 2);
-              final expectedMidpointY = (previousY + y) / 2;
+              final midpointY = evaluator(midpoint(previousX, x));
+              final expectedMidpointY = midpoint(previousY, y);
               final scale = [
                 1.0,
                 previousY.abs(),
