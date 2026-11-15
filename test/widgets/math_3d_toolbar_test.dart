@@ -67,6 +67,24 @@ void main() {
     expect(find.text('French:命令：French:切换到标准等轴测视图'), findsNothing);
   });
 
+  testWidgets('view menu toggle labels are resolved once', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MathCanvas3D(labelResolver: (source) => 'en:$source'),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('en:3D 视图设置'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('en:坐标轴'), findsOneWidget);
+    expect(find.text('en:xOy 平面'), findsOneWidget);
+    expect(find.text('en:网格'), findsOneWidget);
+  });
+
   testWidgets(
     'group selection creates a regular polygon and changing sides resets partial input',
     (tester) async {

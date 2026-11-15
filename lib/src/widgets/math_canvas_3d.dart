@@ -5819,19 +5819,19 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     _menuToggle(
       value: _ViewAction.toggleAxes,
       icon: Icons.straighten,
-      label: _label('坐标轴'),
+      label: '坐标轴',
       selected: _showAxes,
     ),
     _menuToggle(
       value: _ViewAction.togglePlane,
       icon: Icons.crop_square,
-      label: _label('xOy 平面'),
+      label: 'xOy 平面',
       selected: _showPlane,
     ),
     _menuToggle(
       value: _ViewAction.toggleGrid,
       icon: Icons.grid_on,
-      label: _label('网格'),
+      label: '网格',
       selected: _showGrid,
     ),
     const PopupMenuDivider(),
