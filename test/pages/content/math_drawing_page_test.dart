@@ -1388,31 +1388,57 @@ void editorInteractionTests() {
     tester,
   ) async {
     final controller = MathDrawingController();
-    await tester.pumpWidget(
-      MaterialApp(
-        home: MathDrawingPage(
-          initialExpression: 'x+y',
-          controller: controller,
-          initialMathematicalMode: false,
-          initialShowWebView: false,
-          options: MathWorkspaceOptions(
-            showFormulaEditor: false,
-            formulaEditorBuilder: (context, _, actions) => TextButton(
-              onPressed: () {
-                actions.setActiveView(ViewMode.mode3D);
-                actions.plot();
-              },
-              child: const Text('Switch and plot'),
-            ),
-          ),
-        ),
+    final plotted = <MathDrawingSnapshot>[];
+    controller.onPlotted = plotted.add;
+    final platform = await _delayedEditors(
+      tester,
+      rows: 2,
+      controller: controller,
+    );
+    final field = tester.state<MathFormulaFieldState>(
+      find.byType(MathFormulaField).first,
+    );
+    field.acceptSnapshot({
+      'revision': field.revision,
+      'latex': 'A*x',
+      'edited': true,
+    });
+    await tester.pump();
+
+    final gate = Completer<void>();
+    platform.activeEditors.first.controller.snapshotGate = gate.future;
+    tester
+        .widget<MathFormulaField>(find.byType(MathFormulaField).first)
+        .onSubmitted();
+    await tester.pump();
+    expect(
+      platform.activeEditors.first.controller.snapshotStarted.isCompleted,
+      isTrue,
+    );
+
+    final snapshot = controller.snapshot!;
+    controller.restore(
+      MathDrawingSnapshot(
+        formulas: snapshot.formulas,
+        parameters: snapshot.parameters,
+        activeView: ViewMode.mode3D,
+        activeTool: snapshot.activeTool,
+        viewport2D: snapshot.viewport2D,
+        camera3D: snapshot.camera3D,
+        projection3D: snapshot.projection3D,
+        scene3D: snapshot.scene3D,
       ),
     );
-    await tester.pumpAndSettle();
+    expect(controller.activeView, ViewMode.mode3D);
+    await tester.pump();
 
-    await tester.tap(find.text('Switch and plot'));
-    await tester.pumpAndSettle();
+    gate.complete();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
 
+    expect(plotted, hasLength(1));
+    expect(plotted.single.activeView, ViewMode.mode3D);
     expect(controller.activeView, ViewMode.mode3D);
     final canvas = tester.state<MathCanvas3DState>(find.byType(MathCanvas3D));
     expect(
@@ -1558,13 +1584,19 @@ void editorInteractionTests() {
 Future<_DelayedEditorPlatform> _delayedEditors(
   WidgetTester tester, {
   required int rows,
+  MathDrawingController? controller,
 }) async {
   final original = InAppWebViewPlatform.instance;
   final platform = _DelayedEditorPlatform();
   InAppWebViewPlatform.instance = platform;
   addTearDown(_delayedEditorPlatformRestoration(original));
   await tester.pumpWidget(
-    const MaterialApp(home: MathDrawingPage(initialMathematicalMode: true)),
+    MaterialApp(
+      home: MathDrawingPage(
+        controller: controller,
+        initialMathematicalMode: true,
+      ),
+    ),
   );
   for (var i = 1; i < rows; i++) {
     await tester.tap(find.byIcon(Icons.add));
@@ -1619,6 +1651,7 @@ class _DelayedEditor extends PlatformInAppWebViewWidget {
 
 class _DelayedEditorController extends PlatformInAppWebViewController {
   Future<void>? snapshotGate;
+  final snapshotStarted = Completer<void>();
   JavaScriptHandlerCallback? _handler;
   _DelayedEditorController()
     : super.implementation(
@@ -1634,7 +1667,10 @@ class _DelayedEditorController extends PlatformInAppWebViewController {
     required String source,
     ContentWorld? contentWorld,
   }) async {
-    if (source.contains('stroomMath.snapshot()')) await snapshotGate;
+    if (source.contains('stroomMath.snapshot()')) {
+      if (!snapshotStarted.isCompleted) snapshotStarted.complete();
+      await snapshotGate;
+    }
     return null;
   }
 
