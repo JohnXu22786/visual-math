@@ -381,6 +381,78 @@ void main() {
     });
   });
 
+  testWidgets('native cut does not delete from a replacement controller', (
+    tester,
+  ) async {
+    await _withTargetPlatformOverride(TargetPlatform.android, () async {
+      final originalPlatform = InAppWebViewPlatform.instance;
+      final platform = _EditorPlatform();
+      InAppWebViewPlatform.instance = platform;
+      addTearDown(
+        () => InAppWebViewPlatform.instance =
+            originalPlatform ?? _EditorPlatform(),
+      );
+      final initialValue = const TextEditingValue(
+        text: 'x+y',
+        selection: TextSelection(baseOffset: 0, extentOffset: 1),
+      );
+      final original = TextEditingController.fromValue(initialValue);
+      final replacement = TextEditingController.fromValue(initialValue);
+      final key = GlobalKey<MathFormulaFieldState>();
+      Widget app(TextEditingController controller) => MaterialApp(
+        home: Scaffold(
+          body: MathFormulaField(
+            key: key,
+            controller: controller,
+            mathematical: true,
+            onModeChanged: (_) {},
+            onActivate: () {},
+            onChanged: () {},
+            onSubmitted: () {},
+            label: '公式 1',
+          ),
+        ),
+      );
+
+      await tester.pumpWidget(app(original));
+      final native = platform.editor!;
+      final controller = native.controllerFromPlatform<InAppWebViewController>(
+        native.controller,
+      );
+      native.controller.cutSelectionResponse =
+          '{"latex":"x","selection":"selection-1"}';
+      native.params.onWebViewCreated!(controller);
+      native.params.onLoadStop!(controller, null);
+      await tester.pumpAndSettle();
+
+      final clipboardWrite = Completer<void>();
+      final copied = <String>[];
+      final cut = key.currentState!.clipboard(
+        'cut',
+        clipboardWriter: (text) async {
+          copied.add(text);
+          await clipboardWrite.future;
+        },
+      );
+      await tester.pump();
+      expect(copied, ['x']);
+
+      await tester.pumpWidget(app(replacement));
+      clipboardWrite.complete();
+      await cut;
+
+      expect(copied, ['x']);
+      expect(replacement.value, initialValue);
+      expect(
+        native.controller.scripts.where((s) => s.contains('deleteSelection')),
+        isEmpty,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      original.dispose();
+      replacement.dispose();
+    });
+  });
+
   testWidgets(
     'unsupported WebView platforms keep the built-in formula editor usable',
     (tester) async {
