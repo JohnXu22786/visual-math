@@ -804,10 +804,13 @@ class Scene3D {
         final halfHeight = dart_math.max(minUp.abs(), maxUp.abs());
         final requiredScale = dart_math.max(halfHeight, halfWidth / aspect);
         if (requiredScale.isFinite) {
+          final paddedScale = requiredScale > double.maxFinite / 1.1
+              ? double.maxFinite
+              : requiredScale * 1.1;
           fittedProjection = Projection3D.parallel(
             width: projection.width,
             height: projection.height,
-            scale: dart_math.max(1e-3, requiredScale * 1.1).toDouble(),
+            scale: dart_math.max(1e-3, paddedScale).toDouble(),
           );
         }
       }
