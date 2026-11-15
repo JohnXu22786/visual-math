@@ -1384,6 +1384,44 @@ void editorInteractionTests() {
     },
   );
 
+  testWidgets('plot uses the view selected while editor flush is pending', (
+    tester,
+  ) async {
+    final controller = MathDrawingController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MathDrawingPage(
+          initialExpression: 'x+y',
+          controller: controller,
+          initialMathematicalMode: false,
+          initialShowWebView: false,
+          options: MathWorkspaceOptions(
+            showFormulaEditor: false,
+            formulaEditorBuilder: (context, _, actions) => TextButton(
+              onPressed: () {
+                actions.setActiveView(ViewMode.mode3D);
+                actions.plot();
+              },
+              child: const Text('Switch and plot'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Switch and plot'));
+    await tester.pumpAndSettle();
+
+    expect(controller.activeView, ViewMode.mode3D);
+    final canvas = tester.state<MathCanvas3DState>(find.byType(MathCanvas3D));
+    expect(
+      canvas.objects.where((object) => object.formulaRowId != null),
+      hasLength(1),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('concurrent pending deletions retain the final formula', (
     tester,
   ) async {

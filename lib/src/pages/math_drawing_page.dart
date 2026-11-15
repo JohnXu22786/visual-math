@@ -898,9 +898,9 @@ class _MathDrawingPageState extends State<MathDrawingPage>
 
   /// Plot all visible formulas that have changes.
   Future<void> _plotAll() async {
-    final view = _currentView;
     await _flushEditors();
     if (!mounted) return;
+    final view = _currentView;
     _plotError = null;
     if (view == ViewMode.mode2D) {
       _plotAll2D();
