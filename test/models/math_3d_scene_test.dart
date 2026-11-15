@@ -320,6 +320,23 @@ void main() {
       expect(scene.camera.distance, closeTo(5.4, 1e-10));
     });
 
+    test('fitToView includes the nearest-origin point of an offset plane', () {
+      final scene = Scene3D();
+      scene.add(const Object3D.plane(a: 1, b: 0, c: 0, d: 100));
+
+      scene.fitToView();
+
+      expect(scene.camera.target, equals(const Point3D(100, 0, 0)));
+
+      final mixedScene = Scene3D();
+      mixedScene.add(const Object3D.point(Point3D(0, 0, 0)));
+      mixedScene.add(const Object3D.plane(a: 1, b: 0, c: 0, d: 100));
+
+      mixedScene.fitToView();
+
+      expect(mixedScene.camera.target, equals(const Point3D(50, 0, 0)));
+    });
+
     test(
       'fitToView uses anchors for rays and lines, endpoints for segments',
       () {
