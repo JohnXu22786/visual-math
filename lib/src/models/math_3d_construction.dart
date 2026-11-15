@@ -3489,10 +3489,47 @@ class ConstructionState {
     final plane = _conicPlane(points);
     if (plane == null) return _centroid(points);
 
+    final coordinateScale = points.fold<double>(0, (maximum, point) {
+      return dart_math
+          .max(
+            maximum,
+            dart_math.max(
+              point.x.abs(),
+              dart_math.max(point.y.abs(), point.z.abs()),
+            ),
+          )
+          .toDouble();
+    });
+    if (coordinateScale == 0 || !coordinateScale.isFinite) {
+      return _centroid(points);
+    }
+    final originX = plane.origin.x / coordinateScale;
+    final originY = plane.origin.y / coordinateScale;
+    final originZ = plane.origin.z / coordinateScale;
+    double normalizedOffset(
+      double coordinate,
+      double origin,
+      double scaledOrigin,
+    ) {
+      final offset = coordinate - origin;
+      return offset.isFinite
+          ? offset / coordinateScale
+          : coordinate / coordinateScale - scaledOrigin;
+    }
+
     final coordinates = points.map((point) {
-      final relative = point - plane.origin;
+      final relative = Vector3D(
+        normalizedOffset(point.x, plane.origin.x, originX),
+        normalizedOffset(point.y, plane.origin.y, originY),
+        normalizedOffset(point.z, plane.origin.z, originZ),
+      );
       return [relative.dot(plane.u), relative.dot(plane.v)];
     }).toList();
+    Point3D pointAt(double x, double y) => Point3D(
+      (originX + plane.u.x * x + plane.v.x * y) * coordinateScale,
+      (originY + plane.u.y * x + plane.v.y * y) * coordinateScale,
+      (originZ + plane.u.z * x + plane.v.z * y) * coordinateScale,
+    );
     var centerX = 0.0;
     var centerY = 0.0;
     for (final coordinate in coordinates) {
@@ -3502,7 +3539,7 @@ class ConstructionState {
     centerX /= coordinates.length;
     centerY /= coordinates.length;
     if (_containsPoint2D(centerX, centerY, coordinates)) {
-      return plane.origin + plane.u * centerX + plane.v * centerY;
+      return pointAt(centerX, centerY);
     }
 
     var interiorX = centerX;
@@ -3534,7 +3571,7 @@ class ConstructionState {
       }
     }
     if (widestInterior > 0) {
-      return plane.origin + plane.u * interiorX + plane.v * interiorY;
+      return pointAt(interiorX, interiorY);
     }
     return _centroid(points);
   }
