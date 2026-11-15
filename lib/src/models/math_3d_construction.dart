@@ -3378,11 +3378,6 @@ class ConstructionState {
         indices.addAll([a, b, c, a, c, d]);
       }
     }
-    if (!vertices.every(_isFinitePoint)) {
-      return Object3D.curve(
-        points: [profileStart, profileEnd].where(_isFinitePoint).toList(),
-      );
-    }
     return Object3D.surface(
       vertices: vertices,
       indices: indices,
