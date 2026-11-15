@@ -361,6 +361,7 @@ class MathExpression {
     required int gridX,
     required int gridY,
     required int refinements,
+    bool inheritedNonFiniteEndpoint = false,
   }) {
     final result = <List<Map<String, double>>>[];
     if (!isValid ||
@@ -383,6 +384,7 @@ class MathExpression {
     final zeroResidual = '(${equationParts[0]})-(${equationParts[1]})';
     final expressionVariables = ['x', 'y', ...parameters];
     var rejectedUnderflowZero = false;
+    var touchingSawNonFiniteEndpoint = false;
 
     final stepX = (xMax - xMin) / gridX;
     final stepY = (yMax - yMin) / gridY;
@@ -523,6 +525,14 @@ class MathExpression {
       return null;
     }
 
+    bool isStructurallyZeroAt(double x, double y) =>
+        MathExpressionParser.isIdenticallyZeroAfterSubstitution(
+          zeroResidual,
+          variables: expressionVariables,
+          substitutions: {...parameterValues, 'x': x, 'y': y},
+          intervals: const {},
+        );
+
     // Look for an interior minimum of |f| on an edge whose endpoints have
     // the same sign. This detects some tangential roots; finite samples cannot
     // distinguish every root from an arbitrarily small positive minimum.
@@ -534,14 +544,21 @@ class MathExpression {
       double a,
       double b,
     ) {
+      if (a.isNaN || b.isNaN) return null;
+      if (!a.isFinite || !b.isFinite) {
+        touchingSawNonFiniteEndpoint = true;
+        return null;
+      }
       if (a == 0 || b == 0 || (a < 0) != (b < 0)) return null;
-      double value(double t) {
+      double signedValue(double t) {
         try {
-          return evaluator2D(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t).abs();
+          return evaluator2D(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t);
         } catch (_) {
           return double.nan;
         }
       }
+
+      double value(double t) => signedValue(t).abs();
 
       final middle = value(0.5);
       if (!middle.isFinite) return null;
@@ -592,7 +609,13 @@ class MathExpression {
       }
       final t = leftValue < rightValue ? left : right;
       final residual = leftValue < rightValue ? leftValue : rightValue;
-      return residual <= scale * 1e-14 ? t : null;
+      final zeroIsProven =
+          !inheritedNonFiniteEndpoint ||
+          residual != 0 ||
+          isStructurallyZeroAt(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t);
+      return scale.isFinite && residual <= scale * 1e-14 && zeroIsProven
+          ? t
+          : null;
     }
 
     bool crossingsHaveSameSign(double a, double b, double c, double d) {
@@ -611,6 +634,7 @@ class MathExpression {
         final v01 = grid[ix][iy + 1];
         final v11 = grid[ix + 1][iy + 1];
         rejectedUnderflowZero = false;
+        touchingSawNonFiniteEndpoint = false;
 
         final x = xMin + ix * stepX;
         final y = yMin + iy * stepY;
@@ -976,9 +1000,16 @@ class MathExpression {
                 gridX: 4,
                 gridY: 4,
                 refinements: refinements - 1,
+                inheritedNonFiniteEndpoint:
+                    inheritedNonFiniteEndpoint || touchingSawNonFiniteEndpoint,
               ),
             );
           }
+        }
+
+        if (touchingSawNonFiniteEndpoint && refinements > 0) {
+          refineCell();
+          continue;
         }
 
         if (hasFalseZeroEdge && refinements > 0) {
@@ -1037,17 +1068,27 @@ class MathExpression {
             {'x': x + stepX, 'y': y + tangentRight * stepY},
         ];
         if (zeroEdges.isEmpty && crossingsHaveSameSign(v00, v10, v01, v11)) {
-          if (v00 == 0 && !rejectedZeroEdgeCorners.contains((x, y))) {
+          if (v00 == 0 &&
+              !rejectedZeroEdgeCorners.contains((x, y)) &&
+              (!inheritedNonFiniteEndpoint || isStructurallyZeroAt(x, y))) {
             tangentPoints.add({'x': x, 'y': y});
           }
-          if (v10 == 0 && !rejectedZeroEdgeCorners.contains((x + stepX, y))) {
+          if (v10 == 0 &&
+              !rejectedZeroEdgeCorners.contains((x + stepX, y)) &&
+              (!inheritedNonFiniteEndpoint ||
+                  isStructurallyZeroAt(x + stepX, y))) {
             tangentPoints.add({'x': x + stepX, 'y': y});
           }
-          if (v01 == 0 && !rejectedZeroEdgeCorners.contains((x, y + stepY))) {
+          if (v01 == 0 &&
+              !rejectedZeroEdgeCorners.contains((x, y + stepY)) &&
+              (!inheritedNonFiniteEndpoint ||
+                  isStructurallyZeroAt(x, y + stepY))) {
             tangentPoints.add({'x': x, 'y': y + stepY});
           }
           if (v11 == 0 &&
-              !rejectedZeroEdgeCorners.contains((x + stepX, y + stepY))) {
+              !rejectedZeroEdgeCorners.contains((x + stepX, y + stepY)) &&
+              (!inheritedNonFiniteEndpoint ||
+                  isStructurallyZeroAt(x + stepX, y + stepY))) {
             tangentPoints.add({'x': x + stepX, 'y': y + stepY});
           }
         }
@@ -1130,8 +1171,9 @@ class MathExpression {
             v01.abs(),
             v11.abs(),
           ].reduce((a, b) => a > b ? a : b);
-          var uncertain = false;
+          var uncertain = !scale.isFinite;
           for (final t in [0.25, 0.5, 0.75]) {
+            if (uncertain) break;
             try {
               final residual = evaluator2D(
                 a['x']! + (b['x']! - a['x']!) * t,
