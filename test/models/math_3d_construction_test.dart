@@ -2,6 +2,68 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:visual_math/visual_math.dart';
 
 void main() {
+  test(
+    'cube rejects endpoints whose difference overflows before committing',
+    () {
+      final state = ConstructionState(tool: ConstructionTool.cube);
+      const start = Point3D(-1e308, 0, 0);
+
+      expect(state.addPoint(start), ConstructionAction.advanceStep);
+      expect(
+        state.addPoint(const Point3D(1e308, 0, 0)),
+        ConstructionAction.awaitInput,
+      );
+      expect(state.points, [start]);
+      expect(state.result, isNull);
+
+      expect(
+        state.addPoint(const Point3D(-5e307, 0, 0)),
+        ConstructionAction.complete,
+      );
+      expect(
+        state.result!.vertices.every(
+          (point) => point.x.isFinite && point.y.isFinite && point.z.isFinite,
+        ),
+        isTrue,
+      );
+    },
+  );
+
+  test('cube validates geometry with the supplied plane normal', () {
+    final state = ConstructionState(tool: ConstructionTool.cube);
+    const start = Point3D(1.55e308, -1.75e308, 0);
+
+    expect(state.addPoint(start), ConstructionAction.advanceStep);
+    expect(
+      state.addPoint(
+        const Point3D(1.7e308, -1.6e308, 0),
+        workingPlaneNormal: const Vector3D(0, 0, -1),
+      ),
+      ConstructionAction.awaitInput,
+    );
+    expect(state.points, [start]);
+    expect(state.result, isNull);
+  });
+
+  test('circumcircle sector handles finite points with overflowing deltas', () {
+    final state = ConstructionState(tool: ConstructionTool.circumcircleSector);
+
+    state.addPoint(const Point3D(-1e308, 0, 0));
+    state.addPoint(const Point3D(1e308, 0, 0));
+    expect(
+      state.addPoint(const Point3D(0, 1e308, 0)),
+      ConstructionAction.complete,
+    );
+
+    expect(state.result?.type, Object3DType.polyhedron);
+    expect(
+      state.result!.vertices.every(
+        (point) => point.x.isFinite && point.y.isFinite && point.z.isFinite,
+      ),
+      isTrue,
+    );
+  });
+
   test('large finite square can close a polygon with finite mesh vertices', () {
     final state = ConstructionState(tool: ConstructionTool.polygon);
 
