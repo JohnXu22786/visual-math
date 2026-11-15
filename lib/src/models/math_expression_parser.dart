@@ -213,7 +213,7 @@ class MathExpressionParser {
       'fact' =>
         '((v)=>{if(!Number.isFinite(v)||v<0||Math.trunc(v)!=v)return NaN;let r=1;for(let i=2;i<=v;i++){r*=i;if(!Number.isFinite(r))return r;}return r;})($a)',
       'nrt' =>
-        '((r,v)=>v<0&&Number.isFinite(r)&&Math.abs(r%2)==1?-Math.pow(-v,1/r):Math.pow(v,1/r))($a,${args[1]})',
+        '((r,v)=>r===0?NaN:v<0&&Number.isFinite(r)&&Math.abs(r%2)==1?-Math.pow(-v,1/r):Math.pow(v,1/r))($a,${args[1]})',
       _ => 'Math.$name(${args.join(',')})',
     };
     return _JsExpression(code, 4);
@@ -504,7 +504,9 @@ class MathExpressionParser {
 
   static final Map<String, double Function(double, double)> _binaryFunctions = {
     'log': (base, value) => math.log(value) / math.log(base),
-    'nrt': (root, value) => value < 0 && root.isFinite && root % 2 == 1
+    'nrt': (root, value) => root == 0
+        ? double.nan
+        : value < 0 && root.isFinite && root % 2 == 1
         ? -math.pow(-value, 1 / root).toDouble()
         : math.pow(value, 1 / root).toDouble(),
     'pow': (base, exponent) => math.pow(base, exponent).toDouble(),
