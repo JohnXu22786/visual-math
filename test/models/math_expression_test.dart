@@ -352,6 +352,28 @@ void main() {
       expect(points.last['y'], closeTo(4, 1e-10));
     });
 
+    test('keeps a continuous segment when x midpoint sums would overflow', () {
+      final expr = MathExpression.fromInput('sqrt(x)');
+
+      final segments = expr.samplePointSegments(
+        xMin: 1e308,
+        xMax: 1.1e308,
+        numPoints: 3,
+      );
+
+      expect(segments, hasLength(1));
+      expect(segments.single, hasLength(3));
+    });
+
+    test('keeps a continuous segment when y midpoint sums would overflow', () {
+      final expr = MathExpression.fromInput('1e308');
+
+      final segments = expr.samplePointSegments(xMin: 0, xMax: 2, numPoints: 3);
+
+      expect(segments, hasLength(1));
+      expect(segments.single, hasLength(3));
+    });
+
     test('returns empty list for invalid expression', () {
       final expr = MathExpression.fromInput('');
       expect(expr.samplePoints(), isEmpty);
