@@ -121,6 +121,28 @@ void main() {
     expect(state.objects, isEmpty);
   });
 
+  testWidgets('outside mouse tap commits edge width and unfocuses field', (
+    tester,
+  ) async {
+    final state = await _setupCanvas(tester);
+    final widthField = find.byKey(const ValueKey('solid-edge-width'));
+
+    await tester.tap(widthField);
+    await tester.enterText(widthField, '4.5');
+    await tester.pump();
+    final focusedNode = tester.binding.focusManager.primaryFocus!;
+    expect(focusedNode.hasFocus, isTrue);
+
+    await tester.tapAt(
+      tester.getCenter(find.byKey(const ValueKey('solid-show-edges'))),
+      kind: ui.PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+
+    expect(state.objects.single.edgeWidth, 4.5);
+    expect(focusedNode.hasFocus, isFalse);
+  });
+
   testWidgets('solid style edits color, width, and edge visibility', (
     tester,
   ) async {

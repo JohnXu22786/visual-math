@@ -1,5 +1,8 @@
 import 'dart:math' as dart_math;
-import 'dart:ui' show PointMode;
+import 'dart:ui' show PointMode, PointerDeviceKind;
+
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
@@ -6309,8 +6312,21 @@ class _SolidStyleControlsState extends State<_SolidStyleControls> {
                       ],
                       textAlign: TextAlign.center,
                       onSubmitted: _commitEdgeWidth,
-                      onTapOutside: (_) =>
-                          _commitEdgeWidth(_edgeWidthController.text),
+                      onTapOutside: (event) {
+                        _commitEdgeWidth(_edgeWidthController.text);
+                        final isMobilePlatform =
+                            switch (defaultTargetPlatform) {
+                              TargetPlatform.android ||
+                              TargetPlatform.iOS ||
+                              TargetPlatform.fuchsia => true,
+                              _ => false,
+                            };
+                        if (!isMobilePlatform ||
+                            event.kind != PointerDeviceKind.touch ||
+                            kIsWeb) {
+                          FocusScope.of(context).unfocus();
+                        }
+                      },
                       decoration: InputDecoration(
                         labelText: _label('棱宽 (0–6)'),
                         suffixText: 'px',
