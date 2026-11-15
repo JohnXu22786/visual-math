@@ -1435,6 +1435,57 @@ void main() {
       );
     });
 
+    test('samples finite contours across overflowing axis spans', () {
+      final vertical = MathExpression.fromInput('x=0').sampleContourSegments(
+        xMin: -1e308,
+        xMax: 1e308,
+        yMin: -1,
+        yMax: 1,
+        gridX: 1,
+        gridY: 20,
+      );
+      final horizontal = MathExpression.fromInput('x+y=0')
+          .sampleContourSegments(
+            xMin: -1,
+            xMax: 1,
+            yMin: -1e308,
+            yMax: 1e308,
+            gridX: 20,
+            gridY: 1,
+          );
+      final diagonal = MathExpression.fromInput('x+y=0').sampleContourSegments(
+        xMin: -1e308,
+        xMax: 1e308,
+        yMin: -1e308,
+        yMax: 1e308,
+        gridX: 2,
+        gridY: 2,
+      );
+
+      for (final segments in [vertical, horizontal, diagonal]) {
+        expect(segments, isNotEmpty);
+        final points = segments.expand((segment) => segment);
+        expect(
+          points.every((point) => point['x']!.isFinite && point['y']!.isFinite),
+          isTrue,
+        );
+      }
+      expect(
+        vertical.expand((segment) => segment).any((point) => point['x'] == 0),
+        isTrue,
+      );
+      expect(
+        horizontal.expand((segment) => segment).any((point) => point['y'] == 0),
+        isTrue,
+      );
+      expect(
+        diagonal
+            .expand((segment) => segment)
+            .any((point) => point['x'] == 1e308 && point['y'] == -1e308),
+        isTrue,
+      );
+    });
+
     test('detects contour crossing for unit circle', () {
       // x^2 + y^2 = 1
       // The circle does not pass through the origin (f(0,0) = -1), but it
