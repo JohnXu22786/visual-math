@@ -131,6 +131,22 @@ void main() {
       },
     );
 
+    test('returns NaN for a zeroth root', () {
+      final evaluate = MathExpressionParser.parse(
+        'nrt(root, value)',
+        variables: const ['root', 'value'],
+      );
+
+      expect(evaluate({'root': 0, 'value': 8}).isNaN, isTrue);
+      expect(
+        MathExpressionParser.toJavaScript(
+          'nrt(root, value)',
+          variables: const ['root', 'value'],
+        ),
+        contains('r===0?NaN'),
+      );
+    });
+
     test('hyperbolic ratios stay stable at large and small inputs', () {
       for (final name in ['tanh', 'coth']) {
         final evaluate = MathExpressionParser.parse(
