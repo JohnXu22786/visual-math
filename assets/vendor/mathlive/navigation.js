@@ -37,7 +37,10 @@ window.stroomNavigation = function(field) {
       } else if (scriptLevels(latex).length && !/^\\left/.test(latex)) {
         kind = 'script';
         levels = scriptLevels(latex);
-        const limits = /^\\(?:sum|prod|int|iint|oint|lim)\b/.test(latex);
+        const limits =
+          /^\\(?:sum|prod|int|iint|oint|lim(?:sup|inf)?)(?=$|[^a-zA-Z])/.test(
+            atoms[start - 1]?.latex || latex,
+          );
         labels = levels.map(level => limits ? (level === '指数' ? '上限' : '下限') : level);
       } else if (/^\\left\|/.test(latex)) labels = ['绝对值内'];
       else if (/^\\left/.test(latex)) labels = ['括号内'];

@@ -247,6 +247,19 @@ test('vertical navigation edits fraction, script, radical and matrix target slot
   } finally { dom.window.close(); }
 });
 
+test('limit operators label lower and upper scripts consistently', async () => {
+  const {dom, field, bridge} = await editor();
+  try {
+    for (const operator of ['\\lim', '\\limsup', '\\liminf']) {
+      bridge.setSource(`${operator}_{x\\to0}^{n}`, 1);
+      field.position = offsetOf(field,'x');
+      assert.equal(bridge.snapshot().location,'下限', `${operator} subscript`);
+      field.position = offsetOf(field,'n');
+      assert.equal(bridge.snapshot().location,'上限', `${operator} superscript`);
+    }
+  } finally { dom.window.close(); }
+});
+
 test('slot navigation revisits filled content and exits the correct parent', async () => {
   const {dom, field, bridge} = await editor();
   try {
