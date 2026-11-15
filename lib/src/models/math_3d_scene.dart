@@ -154,8 +154,57 @@ Point3D? intersectRayPlane(
       }
     }
   }
-  if (!distance.isFinite || (!allowBehind && distance < 0)) return null;
-  return ray.origin + direction * distance;
+  if (distance.isFinite) {
+    if (!allowBehind && distance < 0) return null;
+    return ray.origin + direction * distance;
+  }
+
+  // The ray parameter can exceed the largest double even when cancellation
+  // with the origin leaves each hit coordinate representable. Keep the
+  // parameter scaled by the largest input coordinate until forming the hit.
+  final coordinateScale = [
+    if (unitNormal.x != 0) point.x.abs(),
+    if (unitNormal.x != 0) ray.origin.x.abs(),
+    if (unitNormal.y != 0) point.y.abs(),
+    if (unitNormal.y != 0) ray.origin.y.abs(),
+    if (unitNormal.z != 0) point.z.abs(),
+    if (unitNormal.z != 0) ray.origin.z.abs(),
+  ].reduce(dart_math.max);
+  if (!coordinateScale.isFinite || coordinateScale == 0) return null;
+  final scaledOffset = compensatedSum([
+    if (unitNormal.x != 0)
+      (point.x / coordinateScale - ray.origin.x / coordinateScale) *
+          unitNormal.x,
+    if (unitNormal.y != 0)
+      (point.y / coordinateScale - ray.origin.y / coordinateScale) *
+          unitNormal.y,
+    if (unitNormal.z != 0)
+      (point.z / coordinateScale - ray.origin.z / coordinateScale) *
+          unitNormal.z,
+  ]);
+  final scaledDistance = scaledOffset / denominator;
+  if (!scaledDistance.isFinite || (!allowBehind && scaledDistance < 0)) {
+    return null;
+  }
+
+  double hitCoordinate(double origin, double component) {
+    final scaledComponent = component * coordinateScale;
+    final displacement = scaledComponent * scaledDistance;
+    final hit = origin + displacement;
+    if (displacement.isFinite && hit.isFinite) return hit;
+
+    final axisScale = dart_math.max(origin.abs(), coordinateScale);
+    return (origin / axisScale +
+            component * (coordinateScale / axisScale) * scaledDistance) *
+        axisScale;
+  }
+
+  final hit = Point3D(
+    hitCoordinate(ray.origin.x, direction.x),
+    hitCoordinate(ray.origin.y, direction.y),
+    hitCoordinate(ray.origin.z, direction.z),
+  );
+  return hit.x.isFinite && hit.y.isFinite && hit.z.isFinite ? hit : null;
 }
 
 // ======================================================================

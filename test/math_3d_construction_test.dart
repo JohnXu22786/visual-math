@@ -287,6 +287,50 @@ void main() {
       expect(hit, isNull);
     });
 
+    test('ray-plane hit survives overflowing scalar distance', () {
+      const ray = Ray3D(Point3D(-1.7e308, 0, 0), Vector3D(1, 1e-308, 0));
+
+      final hit = intersectRayPlane(
+        ray,
+        point: const Point3D(1.3e308, 0, 0),
+        normal: Vector3D.unitX,
+      );
+
+      expect(hit, isNotNull);
+      expect(hit!.x / 1.3e308, closeTo(1, 1e-15));
+      expect(hit.y, closeTo(3, 1e-12));
+      expect(hit.z, 0);
+
+      final irrelevantInfiniteCoordinateHit = intersectRayPlane(
+        ray,
+        point: const Point3D(1.3e308, double.infinity, 0),
+        normal: Vector3D.unitX,
+      );
+      expect(irrelevantInfiniteCoordinateHit, isNotNull);
+      expect(irrelevantInfiniteCoordinateHit!.x / 1.3e308, closeTo(1, 1e-15));
+      expect(irrelevantInfiniteCoordinateHit.y, closeTo(3, 1e-12));
+
+      const behindRay = Ray3D(Point3D(1.7e308, 0, 0), Vector3D(1, 1e-308, 0));
+      const behindPlane = Point3D(-1.3e308, 0, 0);
+      expect(
+        intersectRayPlane(
+          behindRay,
+          point: behindPlane,
+          normal: Vector3D.unitX,
+        ),
+        isNull,
+      );
+      final behindHit = intersectRayPlane(
+        behindRay,
+        point: behindPlane,
+        normal: Vector3D.unitX,
+        allowBehind: true,
+      );
+      expect(behindHit, isNotNull);
+      expect(behindHit!.x / -1.3e308, closeTo(1, 1e-15));
+      expect(behindHit.y, closeTo(-3, 1e-12));
+    });
+
     test('ray-plane offset ignores overflowing perpendicular separation', () {
       const ray = Ray3D(Point3D(-1e308, 0, 5), Vector3D(0, 0, -1));
 
