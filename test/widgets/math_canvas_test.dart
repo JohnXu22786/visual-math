@@ -887,6 +887,40 @@ void main() {
       expect(reported, key.currentState!.viewport);
     });
 
+    testWidgets('smallest finite viewport paints with axes enabled', (
+      tester,
+    ) async {
+      final key = GlobalKey<MathCanvasState>();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 300,
+              height: 300,
+              child: MathCanvas(key: key),
+            ),
+          ),
+        ),
+      );
+
+      await key.currentState!.setViewport(
+        -double.minPositive,
+        -double.minPositive,
+        double.minPositive,
+        double.minPositive,
+      );
+      await tester.pump();
+
+      final viewport = key.currentState!.viewport;
+      expect(viewport.$1.isFinite, isTrue);
+      expect(viewport.$2.isFinite, isTrue);
+      expect(viewport.$3.isFinite, isTrue);
+      expect(viewport.$4.isFinite, isTrue);
+      expect(viewport.$3, greaterThan(viewport.$1));
+      expect(viewport.$4, greaterThan(viewport.$2));
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('deep zoom keeps a recoverable viewport', (tester) async {
       final key = GlobalKey<MathCanvasState>();
       await tester.pumpWidget(
