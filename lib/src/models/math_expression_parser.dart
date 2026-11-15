@@ -201,11 +201,14 @@ class MathExpressionParser {
       'csc' => '(1/Math.sin($a))',
       'sec' => '(1/Math.cos($a))',
       'sinh' => 'Math.sinh($a)',
-      'cosh' => '((v)=>(Math.exp(v)+Math.exp(-v))/2)($a)',
+      'cosh' =>
+        '((v)=>Math.exp(Math.abs(v)-Math.LN2)*(1+Math.exp(-2*Math.abs(v))))($a)',
       'tanh' => 'Math.tanh($a)',
       'coth' => '(1/Math.tanh($a))',
-      'csch' => '(1/Math.sinh($a))',
-      'sech' => '((v)=>2/(Math.exp(v)+Math.exp(-v)))($a)',
+      'csch' =>
+        '((v)=>Math.abs(v)<0.01?1/Math.sinh(v):(v<0?-1:1)*2*Math.exp(-Math.abs(v))/(1-Math.exp(-2*Math.abs(v))))($a)',
+      'sech' =>
+        '((v)=>2*Math.exp(-Math.abs(v))/(1+Math.exp(-2*Math.abs(v))))($a)',
       'round' => '((v)=>Math.sign(v)*Math.round(Math.abs(v)))($a)',
       'fact' =>
         '((v)=>{if(!Number.isFinite(v)||v<0||Math.trunc(v)!=v)return NaN;let r=1;for(let i=2;i<=v;i++){r*=i;if(!Number.isFinite(r))return r;}return r;})($a)',
@@ -477,11 +480,11 @@ class MathExpressionParser {
         value.isNaN || value == 0 ? double.nan : (value < 0 ? math.pi : 0),
     'ceil': (value) => value.ceilToDouble(),
     'cos': math.cos,
-    'cosh': (value) => (math.exp(value) + math.exp(-value)) / 2,
+    'cosh': _cosh,
     'cot': (value) => 1 / math.tan(value),
     'coth': (value) => 1 / _tanh(value),
     'csc': (value) => 1 / math.sin(value),
-    'csch': (value) => 1 / _sinh(value),
+    'csch': _csch,
     'exp': math.exp,
     'fact': _factorial,
     'floor': (value) => value.floorToDouble(),
@@ -491,7 +494,7 @@ class MathExpressionParser {
     'Re': (value) => value,
     'Im': (_) => 0,
     'sec': (value) => 1 / math.cos(value),
-    'sech': (value) => 2 / (math.exp(value) + math.exp(-value)),
+    'sech': _sech,
     'sin': math.sin,
     'sinh': _sinh,
     'sqrt': math.sqrt,
@@ -521,7 +524,27 @@ class MathExpressionParser {
       final square = value * value;
       return value * (1 + square / 6 + square * square / 120);
     }
-    return (math.exp(value) - math.exp(-value)) / 2;
+    final absolute = value.abs();
+    final result =
+        math.exp(absolute - math.ln2) * (1 - math.exp(-2 * absolute));
+    return value.isNegative ? -result : result;
+  }
+
+  static double _cosh(double value) {
+    final absolute = value.abs();
+    return math.exp(absolute - math.ln2) * (1 + math.exp(-2 * absolute));
+  }
+
+  static double _sech(double value) {
+    final absolute = value.abs();
+    return 2 * math.exp(-absolute) / (1 + math.exp(-2 * absolute));
+  }
+
+  static double _csch(double value) {
+    final absolute = value.abs();
+    if (absolute < 1e-2) return 1 / _sinh(value);
+    final result = 2 * math.exp(-absolute) / (1 - math.exp(-2 * absolute));
+    return value.isNegative ? -result : result;
   }
 
   static double _asinh(double value) {
@@ -1200,14 +1223,13 @@ class _RootEvidenceParser {
         minimum = MathExpressionParser._sinh(lower);
         maximum = MathExpressionParser._sinh(upper);
       case 'cosh':
-        final left = (math.exp(lower) + math.exp(-lower)) / 2;
-        final right = (math.exp(upper) + math.exp(-upper)) / 2;
+        final left = MathExpressionParser._cosh(lower);
+        final right = MathExpressionParser._cosh(upper);
         minimum = lower <= 0 && upper >= 0 ? 1 : math.min(left, right);
         maximum = math.max(left, right);
       case 'sech':
-        double sech(double value) => 2 / (math.exp(value) + math.exp(-value));
-        final left = sech(lower);
-        final right = sech(upper);
+        final left = MathExpressionParser._sech(lower);
+        final right = MathExpressionParser._sech(upper);
         minimum = math.min(left, right);
         maximum = lower <= 0 && upper >= 0 ? 1 : math.max(left, right);
       case 'tanh':

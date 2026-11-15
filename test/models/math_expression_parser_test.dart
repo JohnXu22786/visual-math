@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:visual_math/src/models/math_expression.dart';
 import 'package:visual_math/src/models/math_expression_parser.dart';
@@ -180,6 +182,49 @@ void main() {
           isTrue,
         );
         expect(evaluate({'x': 0}), name == 'sinh' ? 0 : double.infinity);
+      }
+    });
+
+    test('hyperbolic functions remain stable near exponential overflow', () {
+      for (final name in ['cosh', 'sinh', 'sech', 'csch']) {
+        final evaluate = MathExpressionParser.parse(
+          '$name(x)',
+          variables: const ['x'],
+        );
+        final inputs = name == 'csch'
+            ? [-720.0, -710.0, 710.0, 720.0]
+            : [-710.0, 710.0];
+        for (final x in inputs) {
+          final actual = evaluate({'x': x});
+          expect(actual.isFinite, isTrue, reason: '$name($x) should be finite');
+          expect(
+            actual,
+            isNot(0),
+            reason: '$name($x) should not underflow to zero',
+          );
+          final expected = switch (name) {
+            'cosh' => math.exp(x.abs() - math.ln2),
+            'sinh' =>
+              x.isNegative
+                  ? -math.exp(x.abs() - math.ln2)
+                  : math.exp(x.abs() - math.ln2),
+            'sech' => 2 * math.exp(-x.abs()),
+            _ => (x.isNegative ? -1 : 1) * 2 * math.exp(-x.abs()),
+          };
+          expect(
+            (actual / expected - 1).abs(),
+            lessThan(1e-12),
+            reason: '$name($x)',
+          );
+        }
+      }
+
+      for (final name in ['cosh', 'sech', 'csch']) {
+        final javascript = MathExpressionParser.toJavaScript(
+          '$name(x)',
+          variables: const ['x'],
+        );
+        expect(javascript, contains('Math.abs(v)'));
       }
     });
 
