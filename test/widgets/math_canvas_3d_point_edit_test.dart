@@ -1764,6 +1764,169 @@ void main() {
     }
   });
 
+  testWidgets('mesh snapping ignores its own hidden back-side features', (
+    tester,
+  ) async {
+    final state = await setup(tester);
+    final camera = state.camera;
+    final view = camera.viewMatrix();
+    final right = Vector3D(view[0], view[4], view[8]).normalized();
+    final up = Vector3D(view[1], view[5], view[9]).normalized();
+    final forward = (camera.target - camera.position).normalized();
+    final center = camera.target + right * 1.5;
+
+    Point3D onFront(double x, double y) => center + right * x + up * y;
+    Point3D onBack(double x, double y) =>
+        center + forward * 2 + right * x + up * y;
+
+    final backVertex = onBack(0, 0);
+    state.setObjects([
+      Object3D.polyhedron(
+        vertices: [
+          onFront(-3, -2),
+          onFront(3, -2),
+          onFront(0, 3),
+          onBack(0.35, -0.2),
+          onBack(-0.35, -0.2),
+          backVertex,
+        ],
+        indices: const [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          0,
+          3,
+          1,
+          1,
+          3,
+          5,
+          1,
+          5,
+          2,
+          2,
+          5,
+          4,
+          2,
+          4,
+          0,
+          0,
+          4,
+          3,
+        ],
+      ),
+    ]);
+    state.setTool(ConstructionTool.segment);
+    await tester.pump();
+
+    await tester.tapAt(screen(state, backVertex));
+    await tester.pump();
+    expect(state.constructionState!.points.single, isNot(backVertex));
+
+    state.setTool(ConstructionTool.move);
+    state.setTool(ConstructionTool.segment);
+    await tester.pump();
+    final visibleVertex = onFront(-3, -2);
+    await tester.tapAt(screen(state, visibleVertex));
+    await tester.pump();
+    expect(state.constructionState!.points.single, visibleVertex);
+
+    final sharedBackVertex = onBack(0, 0);
+    state.setObjects([
+      Object3D.polyhedron(
+        vertices: [sharedBackVertex, onBack(0.35, -0.2), onBack(-0.35, -0.2)],
+        indices: const [0, 1, 2],
+      ),
+      Object3D.polyhedron(
+        vertices: [
+          sharedBackVertex,
+          onFront(-3, -2),
+          onFront(3, -2),
+          onFront(0, 3),
+        ],
+        indices: const [1, 2, 3],
+      ),
+    ]);
+    state.setTool(ConstructionTool.move);
+    state.setTool(ConstructionTool.segment);
+    await tester.pump();
+    await tester.tapAt(screen(state, sharedBackVertex));
+    await tester.pump();
+    expect(state.constructionState!.points.single, isNot(sharedBackVertex));
+
+    state.setProjectionType(ProjectionType.parallel);
+    state.setCamera(camera.copyWith(target: const Point3D(0, 0, 1e14)));
+    final distantCamera = state.camera;
+    final distantView = distantCamera.viewMatrix();
+    final distantRight = Vector3D(
+      distantView[0],
+      distantView[4],
+      distantView[8],
+    ).normalized();
+    final distantUp = Vector3D(
+      distantView[1],
+      distantView[5],
+      distantView[9],
+    ).normalized();
+    final distantForward = (distantCamera.target - distantCamera.position)
+        .normalized();
+    final distantCenter = distantCamera.target + distantRight * 1.5;
+    Point3D distantFront(double x, double y) =>
+        distantCenter +
+        distantForward * 1.875 +
+        distantRight * x +
+        distantUp * y;
+    Point3D distantBack(double x, double y) =>
+        distantCenter + distantForward * 2 + distantRight * x + distantUp * y;
+    final distantBackVertex = distantBack(0, 0);
+    state.setObjects([
+      Object3D.polyhedron(
+        vertices: [
+          distantFront(-3, -2),
+          distantFront(3, -2),
+          distantFront(0, 3),
+          distantBack(0.35, -0.2),
+          distantBack(-0.35, -0.2),
+          distantBackVertex,
+        ],
+        indices: const [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          0,
+          3,
+          1,
+          1,
+          3,
+          5,
+          1,
+          5,
+          2,
+          2,
+          5,
+          4,
+          2,
+          4,
+          0,
+          0,
+          4,
+          3,
+        ],
+      ),
+    ]);
+    state.setTool(ConstructionTool.move);
+    state.setTool(ConstructionTool.segment);
+    await tester.pump();
+    await tester.tapAt(screen(state, distantBackVertex));
+    await tester.pump();
+    expect(state.constructionState!.points.single, isNot(distantBackVertex));
+  });
+
   testWidgets(
     'parallel sphere snapping uses the front surface across the camera plane',
     (tester) async {
