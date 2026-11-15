@@ -84,6 +84,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
 
   /// All formula rows (each is equal).
   final List<_FormulaState> _formulas = [];
+  bool _autoColorCycleStarted = false;
   final ScrollController _formulaScroll = ScrollController();
   _FormulaState? _activeFormula;
   bool _mathMode = true;
@@ -464,6 +465,28 @@ class _MathDrawingPageState extends State<MathDrawingPage>
 
   void _setFormulas(List<FormulaEntry> formulas) {
     setState(() {
+      final removingExistingRows =
+          formulas.isNotEmpty &&
+          formulas.length < _formulas.length &&
+          formulas.map((entry) => entry.id).toSet().length == formulas.length &&
+          formulas.every(
+            (entry) => _formulas.any(
+              (existing) =>
+                  existing.id == entry.id &&
+                  existing.controller.text == entry.rawExpression &&
+                  existing.color == entry.color &&
+                  existing.autoColor == entry.autoColor &&
+                  existing.visible == entry.visible &&
+                  identical(existing.hiddenPlot3D, entry.hiddenPlot3D) &&
+                  existing.domainStartExpression ==
+                      (entry.domainStartExpression ?? '') &&
+                  existing.domainEndExpression ==
+                      (entry.domainEndExpression ?? '') &&
+                  existing.includeDomainStart == entry.includeDomainStart &&
+                  existing.includeDomainEnd == entry.includeDomainEnd,
+            ),
+          );
+      if (!removingExistingRows) _autoColorCycleStarted = false;
       for (final formula in _formulas) {
         formula.controller.dispose();
       }
@@ -535,6 +558,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       _ => widget.options.initialView,
     };
     setState(() {
+      _autoColorCycleStarted = false;
       for (final formula in _formulas) {
         formula.controller.dispose();
       }
@@ -1268,9 +1292,12 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   void _addFormula() {
     final autoColored = _formulas.where((f) => f.autoColor).toList();
     final used = autoColored.map((f) => f.color).toSet();
+    final cycleStarted =
+        _autoColorCycleStarted || used.containsAll(formulaPalette);
     final color = nextFormulaColor(
       used,
       lastAutoColor: autoColored.isEmpty ? null : autoColored.last.color,
+      cycleStarted: cycleStarted,
     );
 
     setState(() {
@@ -1282,6 +1309,11 @@ class _MathDrawingPageState extends State<MathDrawingPage>
           visible: true,
         ),
       );
+      _autoColorCycleStarted =
+          cycleStarted ||
+          formulaPalette.every((paletteColor) {
+            return used.contains(paletteColor) || color == paletteColor;
+          });
     });
     _syncController();
   }

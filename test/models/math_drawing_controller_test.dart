@@ -380,9 +380,24 @@ void main() {
     );
     await tester.pumpAndSettle();
     controller.setFormulas([
+      FormulaEntry(rawExpression: '', color: formulaPalette[0]),
+      FormulaEntry(rawExpression: '', color: formulaPalette[2]),
+    ]);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('添加公式'));
+    await tester.pumpAndSettle();
+    expect(controller.formulas.last.color, formulaPalette[1]);
+
+    controller.setFormulas([
       for (final color in formulaPalette)
         FormulaEntry(rawExpression: '', color: color),
     ]);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('删除公式').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除').last);
     await tester.pumpAndSettle();
 
     for (var i = 0; i < 3; i++) {
@@ -390,12 +405,55 @@ void main() {
       await tester.pumpAndSettle();
       expect(controller.formulas.last.color, formulaPalette[i]);
     }
-    final formulas = controller.formulas.toList()..removeAt(10);
-    controller.setFormulas(formulas);
+    final formulasWithAddedRows = controller.formulas.toList()..removeAt(9);
+    controller.setFormulas(formulasWithAddedRows);
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('添加公式'));
     await tester.pumpAndSettle();
     expect(controller.formulas.last.color, formulaPalette[3]);
+
+    controller.setFormulas([
+      FormulaEntry(rawExpression: '', color: formulaPalette[0]),
+      FormulaEntry(rawExpression: '', color: formulaPalette[2]),
+    ]);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('添加公式'));
+    await tester.pumpAndSettle();
+    expect(controller.formulas.last.color, formulaPalette[1]);
+
+    controller.setFormulas([
+      for (final color in formulaPalette)
+        FormulaEntry(rawExpression: '', color: color),
+    ]);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('添加公式'));
+    await tester.pumpAndSettle();
+    expect(controller.formulas.last.color, formulaPalette[0]);
+
+    final duplicateFormula = controller.formulas[2];
+    controller.setFormulas([duplicateFormula, duplicateFormula]);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('添加公式'));
+    await tester.pumpAndSettle();
+    expect(controller.formulas.last.color, formulaPalette[0]);
+
+    controller.setFormulas([
+      for (final color in formulaPalette)
+        FormulaEntry(rawExpression: '', color: color),
+    ]);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('添加公式'));
+    await tester.pumpAndSettle();
+    expect(controller.formulas.last.color, formulaPalette[0]);
+
+    final editedFormula = controller.formulas[2].copyWith(
+      domainStartExpression: '0',
+    );
+    controller.setFormulas([editedFormula]);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('添加公式'));
+    await tester.pumpAndSettle();
+    expect(controller.formulas.last.color, formulaPalette[0]);
   });
 
   testWidgets('snapshot restore preserves formula visibility', (tester) async {
