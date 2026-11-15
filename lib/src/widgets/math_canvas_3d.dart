@@ -5462,7 +5462,7 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       return nearest;
     }
 
-    return nearestIn(candidates) ??
+    return nearestIn(candidates, resolveDepth: true) ??
         nearestIn(surfaceCandidates, resolveDepth: true);
   }
 
