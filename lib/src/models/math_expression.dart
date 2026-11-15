@@ -377,6 +377,9 @@ class MathExpression {
     }
     if (type == MathExpressionType.explicit) return result;
 
+    if (!(xMax - xMin).isFinite && gridX == 1) gridX = 2;
+    if (!(yMax - yMin).isFinite && gridY == 1) gridY = 2;
+
     final evaluator2D = implicitEvaluator;
     if (evaluator2D == null) return result;
     final equationParts = normalizedExpression.split('=');
@@ -386,8 +389,25 @@ class MathExpression {
     var rejectedUnderflowZero = false;
     var touchingSawNonFiniteEndpoint = false;
 
-    final stepX = (xMax - xMin) / gridX;
-    final stepY = (yMax - yMin) / gridY;
+    double step(double min, double max, int count) {
+      final span = max - min;
+      return span.isFinite ? span / count : max / count - min / count;
+    }
+
+    double interpolate(double min, double max, double t) =>
+        min * (1 - t) + max * t;
+    double coordinate(double min, double max, int index, int count) {
+      final span = max - min;
+      return span.isFinite
+          ? min + index * (span / count)
+          : interpolate(min, max, index / count);
+    }
+
+    final stepX = step(xMin, xMax, gridX);
+    final stepY = step(yMin, yMax, gridY);
+    if (!stepX.isFinite || !stepY.isFinite || stepX <= 0 || stepY <= 0) {
+      return result;
+    }
 
     // Evaluate f at each grid point
     final grid = <List<double>>[];
@@ -395,9 +415,9 @@ class MathExpression {
       grid.add(List<double>.filled(gridY + 1, double.nan));
     }
     for (int ix = 0; ix <= gridX; ix++) {
-      final x = xMin + ix * stepX;
+      final x = coordinate(xMin, xMax, ix, gridX);
       for (int iy = 0; iy <= gridY; iy++) {
-        final y = yMin + iy * stepY;
+        final y = coordinate(yMin, yMax, iy, gridY);
         try {
           grid[ix][iy] = evaluator2D(x, y);
         } catch (_) {
@@ -636,8 +656,14 @@ class MathExpression {
         rejectedUnderflowZero = false;
         touchingSawNonFiniteEndpoint = false;
 
-        final x = xMin + ix * stepX;
-        final y = yMin + iy * stepY;
+        final x = coordinate(xMin, xMax, ix, gridX);
+        final xNext = (xMax - xMin).isFinite
+            ? x + stepX
+            : coordinate(xMin, xMax, ix + 1, gridX);
+        final y = coordinate(yMin, yMax, iy, gridY);
+        final yNext = (yMax - yMin).isFinite
+            ? y + stepY
+            : coordinate(yMin, yMax, iy + 1, gridY);
 
         final zeroEdges = <List<Map<String, double>>>[];
         var hasFalseZeroEdge = false;
@@ -743,20 +769,20 @@ class MathExpression {
         // Preserve grid-aligned zero sets such as x^2 = 0. Assign interior
         // edges to their left/bottom cell so a zero edge is emitted once.
         if (mayBeZeroEdge(v00, v10) && (v01 != 0.0 || v11 != 0.0)) {
-          addZeroEdge(x, y, x + stepX, y);
+          addZeroEdge(x, y, xNext, y);
         }
         if (iy == gridY - 1 &&
             mayBeZeroEdge(v01, v11) &&
             (v00 != 0.0 || v10 != 0.0)) {
-          addZeroEdge(x, y + stepY, x + stepX, y + stepY);
+          addZeroEdge(x, yNext, xNext, yNext);
         }
         if (mayBeZeroEdge(v00, v01) && (v10 != 0.0 || v11 != 0.0)) {
-          addZeroEdge(x, y, x, y + stepY);
+          addZeroEdge(x, y, x, yNext);
         }
         if (ix == gridX - 1 &&
             mayBeZeroEdge(v10, v11) &&
             (v00 != 0.0 || v01 != 0.0)) {
-          addZeroEdge(x + stepX, y, x + stepX, y + stepY);
+          addZeroEdge(xNext, y, xNext, yNext);
         }
 
         if (v00.isNaN || v10.isNaN || v01.isNaN || v11.isNaN) {
@@ -780,19 +806,19 @@ class MathExpression {
 
         // Bottom edge (v00-v10)
         if ((s00 < 0) != (s10 < 0)) {
-          bottomT = crossing(x, y, x + stepX, y, v00, v10);
+          bottomT = crossing(x, y, xNext, y, v00, v10);
         }
         // Top edge (v01-v11)
         if ((s01 < 0) != (s11 < 0)) {
-          topT = crossing(x, y + stepY, x + stepX, y + stepY, v01, v11);
+          topT = crossing(x, yNext, xNext, yNext, v01, v11);
         }
         // Left edge (v00-v01)
         if ((s00 < 0) != (s01 < 0)) {
-          leftT = crossing(x, y, x, y + stepY, v00, v01);
+          leftT = crossing(x, y, x, yNext, v00, v01);
         }
         // Right edge (v10-v11)
         if ((s10 < 0) != (s11 < 0)) {
-          rightT = crossing(x + stepX, y, x + stepX, y + stepY, v10, v11);
+          rightT = crossing(xNext, y, xNext, yNext, v10, v11);
         }
 
         if (rejectedUnderflowZero &&
@@ -866,7 +892,7 @@ class MathExpression {
           true,
           x,
           y,
-          x + stepX,
+          xNext,
           y,
           v00,
           v10,
@@ -876,9 +902,9 @@ class MathExpression {
           iy + 1,
           true,
           x,
-          y + stepY,
-          x + stepX,
-          y + stepY,
+          yNext,
+          xNext,
+          yNext,
           v01,
           v11,
         );
@@ -889,7 +915,7 @@ class MathExpression {
           x,
           y,
           x,
-          y + stepY,
+          yNext,
           v00,
           v01,
         );
@@ -897,10 +923,10 @@ class MathExpression {
           ix + 1,
           iy,
           false,
-          x + stepX,
+          xNext,
           y,
-          x + stepX,
-          y + stepY,
+          xNext,
+          yNext,
           v10,
           v11,
         );
@@ -994,9 +1020,9 @@ class MathExpression {
             result.addAll(
               _sampleContourSegments(
                 xMin: x,
-                xMax: x + stepX,
+                xMax: xNext,
                 yMin: y,
-                yMax: y + stepY,
+                yMax: yNext,
                 gridX: 4,
                 gridY: 4,
                 refinements: refinements - 1,
@@ -1038,13 +1064,12 @@ class MathExpression {
         }
 
         if (refinements > 0 &&
-            ((tangentBottom != null && hasMultipleMinima(x, y, x + stepX, y)) ||
+            ((tangentBottom != null && hasMultipleMinima(x, y, xNext, y)) ||
                 (tangentTop != null &&
-                    hasMultipleMinima(x, y + stepY, x + stepX, y + stepY)) ||
-                (tangentLeft != null &&
-                    hasMultipleMinima(x, y, x, y + stepY)) ||
+                    hasMultipleMinima(x, yNext, xNext, yNext)) ||
+                (tangentLeft != null && hasMultipleMinima(x, y, x, yNext)) ||
                 (tangentRight != null &&
-                    hasMultipleMinima(x + stepX, y, x + stepX, y + stepY)))) {
+                    hasMultipleMinima(xNext, y, xNext, yNext)))) {
           refineCell();
           continue;
         }
@@ -1062,10 +1087,9 @@ class MathExpression {
         final cellSegments = <List<Map<String, double>>>[...zeroEdges];
         final tangentPoints = <Map<String, double>>[
           if (tangentBottom != null) {'x': x + tangentBottom * stepX, 'y': y},
-          if (tangentTop != null) {'x': x + tangentTop * stepX, 'y': y + stepY},
+          if (tangentTop != null) {'x': x + tangentTop * stepX, 'y': yNext},
           if (tangentLeft != null) {'x': x, 'y': y + tangentLeft * stepY},
-          if (tangentRight != null)
-            {'x': x + stepX, 'y': y + tangentRight * stepY},
+          if (tangentRight != null) {'x': xNext, 'y': y + tangentRight * stepY},
         ];
         if (zeroEdges.isEmpty && crossingsHaveSameSign(v00, v10, v01, v11)) {
           if (v00 == 0 &&
@@ -1074,22 +1098,20 @@ class MathExpression {
             tangentPoints.add({'x': x, 'y': y});
           }
           if (v10 == 0 &&
-              !rejectedZeroEdgeCorners.contains((x + stepX, y)) &&
-              (!inheritedNonFiniteEndpoint ||
-                  isStructurallyZeroAt(x + stepX, y))) {
-            tangentPoints.add({'x': x + stepX, 'y': y});
+              !rejectedZeroEdgeCorners.contains((xNext, y)) &&
+              (!inheritedNonFiniteEndpoint || isStructurallyZeroAt(xNext, y))) {
+            tangentPoints.add({'x': xNext, 'y': y});
           }
           if (v01 == 0 &&
-              !rejectedZeroEdgeCorners.contains((x, y + stepY)) &&
-              (!inheritedNonFiniteEndpoint ||
-                  isStructurallyZeroAt(x, y + stepY))) {
-            tangentPoints.add({'x': x, 'y': y + stepY});
+              !rejectedZeroEdgeCorners.contains((x, yNext)) &&
+              (!inheritedNonFiniteEndpoint || isStructurallyZeroAt(x, yNext))) {
+            tangentPoints.add({'x': x, 'y': yNext});
           }
           if (v11 == 0 &&
-              !rejectedZeroEdgeCorners.contains((x + stepX, y + stepY)) &&
+              !rejectedZeroEdgeCorners.contains((xNext, yNext)) &&
               (!inheritedNonFiniteEndpoint ||
-                  isStructurallyZeroAt(x + stepX, y + stepY))) {
-            tangentPoints.add({'x': x + stepX, 'y': y + stepY});
+                  isStructurallyZeroAt(xNext, yNext))) {
+            tangentPoints.add({'x': xNext, 'y': yNext});
           }
         }
         // One bounded subdivision improves separation when nearby touching
@@ -1230,6 +1252,8 @@ class MathExpression {
             rightT,
             x,
             y,
+            xNext,
+            yNext,
             stepX,
             stepY,
           );
@@ -1241,6 +1265,8 @@ class MathExpression {
             rightT,
             x,
             y,
+            xNext,
+            yNext,
             stepX,
             stepY,
           );
@@ -1256,6 +1282,8 @@ class MathExpression {
             rightT,
             x,
             y,
+            xNext,
+            yNext,
             stepX,
             stepY,
           );
@@ -1267,6 +1295,8 @@ class MathExpression {
             rightT,
             x,
             y,
+            xNext,
+            yNext,
             stepX,
             stepY,
           );
@@ -1278,6 +1308,8 @@ class MathExpression {
             rightT,
             x,
             y,
+            xNext,
+            yNext,
             stepX,
             stepY,
           );
@@ -1289,6 +1321,8 @@ class MathExpression {
             rightT,
             x,
             y,
+            xNext,
+            yNext,
             stepX,
             stepY,
           );
@@ -1353,8 +1387,8 @@ class MathExpression {
               double? section(bool vertical, double coordinate) {
                 final x1 = vertical ? coordinate : x;
                 final y1 = vertical ? y : coordinate;
-                final x2 = vertical ? coordinate : x + stepX;
-                final y2 = vertical ? y + stepY : coordinate;
+                final x2 = vertical ? coordinate : xNext;
+                final y2 = vertical ? yNext : coordinate;
                 try {
                   final a = evaluator2D(x1, y1);
                   final b = evaluator2D(x2, y2);
@@ -1373,9 +1407,9 @@ class MathExpression {
                 final dx = stepX * fraction;
                 final dy = stepY * fraction;
                 if (saddle['x']! - dx <= x ||
-                    saddle['x']! + dx >= x + stepX ||
+                    saddle['x']! + dx >= xNext ||
                     saddle['y']! - dy <= y ||
-                    saddle['y']! + dy >= y + stepY) {
+                    saddle['y']! + dy >= yNext) {
                   break;
                 }
                 final below = section(false, saddle['y']! - dy);
@@ -1417,12 +1451,12 @@ class MathExpression {
               final dx = [
                 stepX * fraction,
                 (saddle['x']! - x) / 2,
-                (x + stepX - saddle['x']!) / 2,
+                (xNext - saddle['x']!) / 2,
               ].reduce((a, b) => a < b ? a : b);
               final dy = [
                 stepY * fraction,
                 (saddle['y']! - y) / 2,
-                (y + stepY - saddle['y']!) / 2,
+                (yNext - saddle['y']!) / 2,
               ].reduce((a, b) => a < b ? a : b);
               try {
                 final a = evaluator2D(saddle['x']! - dx, saddle['y']! - dy);
@@ -1478,6 +1512,8 @@ class MathExpression {
     double? rT,
     double x,
     double y,
+    double xNext,
+    double yNext,
     double stepX,
     double stepY,
   ) {
@@ -1485,11 +1521,11 @@ class MathExpression {
       case 'bottom':
         return bT == null ? null : {'x': x + bT * stepX, 'y': y};
       case 'top':
-        return tT == null ? null : {'x': x + tT * stepX, 'y': y + stepY};
+        return tT == null ? null : {'x': x + tT * stepX, 'y': yNext};
       case 'left':
         return lT == null ? null : {'x': x, 'y': y + lT * stepY};
       case 'right':
-        return rT == null ? null : {'x': x + stepX, 'y': y + rT * stepY};
+        return rT == null ? null : {'x': xNext, 'y': y + rT * stepY};
     }
     return null;
   }
