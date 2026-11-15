@@ -141,7 +141,16 @@ class Vector3D {
   Vector3D normalized() {
     final scale = dart_math.max(x.abs(), dart_math.max(y.abs(), z.abs()));
     if (scale == 0) return Vector3D.zero;
-    if (!scale.isFinite) {
+    if (scale.isInfinite) {
+      // Infinite components dominate finite ones. Preserve the signs of the
+      // infinite components, then normalize that direction without inf / inf.
+      final sx = x.isInfinite ? x.sign : 0.0;
+      final sy = y.isInfinite ? y.sign : 0.0;
+      final sz = z.isInfinite ? z.sign : 0.0;
+      final mag = dart_math.sqrt(sx * sx + sy * sy + sz * sz);
+      return Vector3D(sx / mag, sy / mag, sz / mag);
+    }
+    if (scale.isNaN) {
       final mag = magnitude;
       return Vector3D(x / mag, y / mag, z / mag);
     }

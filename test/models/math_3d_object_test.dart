@@ -117,6 +117,23 @@ void main() {
       }
     });
 
+    test('normalized preserves direction when components are infinite', () {
+      final xDirection = Vector3D(double.infinity, 0, 0).normalized();
+      expect(xDirection.x, 1);
+      expect(xDirection.y, 0);
+      expect(xDirection.z, 0);
+
+      final diagonal = Vector3D(
+        double.infinity,
+        double.negativeInfinity,
+        5,
+      ).normalized();
+      expect(diagonal.x, closeTo(0.7071067811865476, 1e-10));
+      expect(diagonal.y, closeTo(-0.7071067811865476, 1e-10));
+      expect(diagonal.z, 0);
+      expect(diagonal.magnitude, closeTo(1, 1e-10));
+    });
+
     test('normalized handles zero vector gracefully', () {
       final v = Vector3D(0, 0, 0);
       final n = v.normalized();
