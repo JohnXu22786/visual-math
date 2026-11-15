@@ -628,7 +628,7 @@ class Scene3D {
           addPoint(obj.point);
         case Object3DType.line:
           addPoint(obj.pointA);
-          addPoint(obj.pointB);
+          if (obj.lineKind == Line3DKind.segment) addPoint(obj.pointB);
         case Object3DType.plane:
           // Use the point on the plane closest to the scene origin.
           final point = _nearestOriginPointOnPlane(obj);
