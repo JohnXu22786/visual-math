@@ -17,10 +17,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      verified_commit: ${{ steps.verify-signed-tag.outputs.commit }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ github.ref }}
       - name: Validate tag trigger
         if: github.event_name == 'workflow_dispatch'
         shell: bash
@@ -33,6 +35,19 @@ jobs:
             echo "::error::Manual publishing must run on the selected tag ref; branch refs cannot authenticate with pub.dev Trusted Publishing."
             exit 1
           fi
+      - name: Checkout trusted release verifier
+        uses: actions/checkout@v4
+        with:
+          ref: v0.2
+          path: trusted-release-verifier
+          sparse-checkout: scripts/verify-release-tag.sh
+          sparse-checkout-cone-mode: false
+      - name: Verify signed release tag
+        id: verify-signed-tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref }}
+        run: ./trusted-release-verifier/scripts/verify-release-tag.sh "${RELEASE_TAG#refs/tags/}"
       - name: Match tag to package version
         shell: bash
         env:
@@ -66,7 +81,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ needs.verify-version.outputs.verified_commit }}
       - uses: dart-lang/setup-dart@7654d458321ee25acccccfdb86cd48bd95768ff1
       - uses: flutter-actions/setup-flutter@6e2468fd827c4a7337cd4b835a6049b78bc0bd1f
       - name: Install dependencies
