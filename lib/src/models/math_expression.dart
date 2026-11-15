@@ -395,7 +395,7 @@ class MathExpression {
     }
 
     double interpolate(double min, double max, double t) =>
-        min * (1 - t) + max * t;
+        _interpolateCoordinate(min, max, t);
     double coordinate(double min, double max, int index, int count) {
       final span = max - min;
       return span.isFinite
@@ -445,8 +445,8 @@ class MathExpression {
         final estimate = ratioA / (ratioA + ratioB);
         try {
           if (evaluator2D(
-                x1 + (x2 - x1) * estimate,
-                y1 + (y2 - y1) * estimate,
+                _interpolateCoordinate(x1, x2, estimate),
+                _interpolateCoordinate(y1, y2, estimate),
               ) ==
               0) {
             return estimate;
@@ -464,8 +464,8 @@ class MathExpression {
         for (final position in [1 / 3, 2 / 3]) {
           try {
             final value = evaluator2D(
-              x1 + (x2 - x1) * position,
-              y1 + (y2 - y1) * position,
+              _interpolateCoordinate(x1, x2, position),
+              _interpolateCoordinate(y1, y2, position),
             ).abs();
             if (value.isFinite && value > infiniteBracketScale) {
               infiniteBracketScale = value;
@@ -493,7 +493,10 @@ class MathExpression {
         if (t == lo || t == hi) break;
         double value;
         try {
-          value = evaluator2D(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t);
+          value = evaluator2D(
+            _interpolateCoordinate(x1, x2, t),
+            _interpolateCoordinate(y1, y2, t),
+          );
         } catch (_) {
           return null;
         }
@@ -503,8 +506,8 @@ class MathExpression {
             double probe(double position) {
               try {
                 return evaluator2D(
-                  x1 + (x2 - x1) * position,
-                  y1 + (y2 - y1) * position,
+                  _interpolateCoordinate(x1, x2, position),
+                  _interpolateCoordinate(y1, y2, position),
                 );
               } catch (_) {
                 return double.nan;
@@ -572,7 +575,10 @@ class MathExpression {
       if (a == 0 || b == 0 || (a < 0) != (b < 0)) return null;
       double signedValue(double t) {
         try {
-          return evaluator2D(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t);
+          return evaluator2D(
+            _interpolateCoordinate(x1, x2, t),
+            _interpolateCoordinate(y1, y2, t),
+          );
         } catch (_) {
           return double.nan;
         }
@@ -632,7 +638,10 @@ class MathExpression {
       final zeroIsProven =
           !inheritedNonFiniteEndpoint ||
           residual != 0 ||
-          isStructurallyZeroAt(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t);
+          isStructurallyZeroAt(
+            _interpolateCoordinate(x1, x2, t),
+            _interpolateCoordinate(y1, y2, t),
+          );
       return scale.isFinite && residual <= scale * 1e-14 && zeroIsProven
           ? t
           : null;
@@ -678,8 +687,8 @@ class MathExpression {
           bool isFiniteAt(double t) {
             try {
               return evaluator2D(
-                x1 + (x2 - x1) * t,
-                y1 + (y2 - y1) * t,
+                _interpolateCoordinate(x1, x2, t),
+                _interpolateCoordinate(y1, y2, t),
               ).isFinite;
             } catch (_) {
               return false;
@@ -709,8 +718,8 @@ class MathExpression {
               }
             }
             final finiteT = loFinite ? lo : hi;
-            final finiteX = x1 + (x2 - x1) * finiteT;
-            final finiteY = y1 + (y2 - y1) * finiteT;
+            final finiteX = _interpolateCoordinate(x1, x2, finiteT);
+            final finiteY = _interpolateCoordinate(y1, y2, finiteT);
             if (loFinite) {
               x2 = finiteX;
               y2 = finiteY;
@@ -738,7 +747,10 @@ class MathExpression {
           bool edgeProbesAreZero(double lo, double hi, int depth) {
             final t = (lo + hi) / 2;
             try {
-              final value = evaluator2D(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t);
+              final value = evaluator2D(
+                _interpolateCoordinate(x1, x2, t),
+                _interpolateCoordinate(y1, y2, t),
+              );
               if (!value.isFinite || value != 0.0) return false;
             } catch (_) {
               return false;
@@ -847,10 +859,10 @@ class MathExpression {
             final lo = a == 0 ? inset : 0.0;
             final hi = b == 0 ? 1 - inset : 1.0;
             try {
-              final xa = x1 + (x2 - x1) * lo;
-              final ya = y1 + (y2 - y1) * lo;
-              final xb = x1 + (x2 - x1) * hi;
-              final yb = y1 + (y2 - y1) * hi;
+              final xa = _interpolateCoordinate(x1, x2, lo);
+              final ya = _interpolateCoordinate(y1, y2, lo);
+              final xb = _interpolateCoordinate(x1, x2, hi);
+              final yb = _interpolateCoordinate(y1, y2, hi);
               final t = touching(
                 xa,
                 ya,
@@ -1048,8 +1060,8 @@ class MathExpression {
             final values = [
               for (var i = 0; i <= 8; i++)
                 evaluator2D(
-                  x1 + (x2 - x1) * i / 8,
-                  y1 + (y2 - y1) * i / 8,
+                  _interpolateCoordinate(x1, x2, i / 8),
+                  _interpolateCoordinate(y1, y2, i / 8),
                 ).abs(),
             ];
             var minima = 0;
@@ -1086,10 +1098,14 @@ class MathExpression {
 
         final cellSegments = <List<Map<String, double>>>[...zeroEdges];
         final tangentPoints = <Map<String, double>>[
-          if (tangentBottom != null) {'x': x + tangentBottom * stepX, 'y': y},
-          if (tangentTop != null) {'x': x + tangentTop * stepX, 'y': yNext},
-          if (tangentLeft != null) {'x': x, 'y': y + tangentLeft * stepY},
-          if (tangentRight != null) {'x': xNext, 'y': y + tangentRight * stepY},
+          if (tangentBottom != null)
+            {'x': _interpolateCoordinate(x, xNext, tangentBottom), 'y': y},
+          if (tangentTop != null)
+            {'x': _interpolateCoordinate(x, xNext, tangentTop), 'y': yNext},
+          if (tangentLeft != null)
+            {'x': x, 'y': _interpolateCoordinate(y, yNext, tangentLeft)},
+          if (tangentRight != null)
+            {'x': xNext, 'y': _interpolateCoordinate(y, yNext, tangentRight)},
         ];
         if (zeroEdges.isEmpty && crossingsHaveSameSign(v00, v10, v01, v11)) {
           if (v00 == 0 &&
@@ -1254,8 +1270,6 @@ class MathExpression {
             y,
             xNext,
             yNext,
-            stepX,
-            stepY,
           );
           final p2 = _crossingPoint(
             crossings[1],
@@ -1267,8 +1281,6 @@ class MathExpression {
             y,
             xNext,
             yNext,
-            stepX,
-            stepY,
           );
           if (p1 != null && p2 != null) {
             cellSegments.add([p1, p2]);
@@ -1284,8 +1296,6 @@ class MathExpression {
             y,
             xNext,
             yNext,
-            stepX,
-            stepY,
           );
           final pTop = _crossingPoint(
             'top',
@@ -1297,8 +1307,6 @@ class MathExpression {
             y,
             xNext,
             yNext,
-            stepX,
-            stepY,
           );
           final pLeft = _crossingPoint(
             'left',
@@ -1310,8 +1318,6 @@ class MathExpression {
             y,
             xNext,
             yNext,
-            stepX,
-            stepY,
           );
           final pRight = _crossingPoint(
             'right',
@@ -1323,8 +1329,6 @@ class MathExpression {
             y,
             xNext,
             yNext,
-            stepX,
-            stepY,
           );
           final scale = [
             v00.abs(),
@@ -1397,7 +1401,9 @@ class MathExpression {
                   }
                   final root = crossing(x1, y1, x2, y2, a, b);
                   if (root == null) return null;
-                  return vertical ? y1 + root * stepY : x1 + root * stepX;
+                  return vertical
+                      ? _interpolateCoordinate(y1, y2, root)
+                      : _interpolateCoordinate(x1, x2, root);
                 } catch (_) {
                   return null;
                 }
@@ -1503,6 +1509,13 @@ class MathExpression {
     return result;
   }
 
+  static double _interpolateCoordinate(double start, double end, double t) {
+    if (t <= 0) return start;
+    if (t >= 1) return end;
+    final span = end - start;
+    return span.isFinite ? start + span * t : start * (1 - t) + end * t;
+  }
+
   /// Compute the (x,y) coordinates of a crossing on the specified edge.
   Map<String, double>? _crossingPoint(
     String edge,
@@ -1514,18 +1527,24 @@ class MathExpression {
     double y,
     double xNext,
     double yNext,
-    double stepX,
-    double stepY,
   ) {
     switch (edge) {
       case 'bottom':
-        return bT == null ? null : {'x': x + bT * stepX, 'y': y};
+        return bT == null
+            ? null
+            : {'x': _interpolateCoordinate(x, xNext, bT), 'y': y};
       case 'top':
-        return tT == null ? null : {'x': x + tT * stepX, 'y': yNext};
+        return tT == null
+            ? null
+            : {'x': _interpolateCoordinate(x, xNext, tT), 'y': yNext};
       case 'left':
-        return lT == null ? null : {'x': x, 'y': y + lT * stepY};
+        return lT == null
+            ? null
+            : {'x': x, 'y': _interpolateCoordinate(y, yNext, lT)};
       case 'right':
-        return rT == null ? null : {'x': xNext, 'y': y + rT * stepY};
+        return rT == null
+            ? null
+            : {'x': xNext, 'y': _interpolateCoordinate(y, yNext, rT)};
     }
     return null;
   }

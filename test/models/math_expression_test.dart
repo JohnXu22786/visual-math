@@ -1453,8 +1453,16 @@ void main() {
             gridX: 20,
             gridY: 1,
           );
+      final diagonal = MathExpression.fromInput('x+y=0').sampleContourSegments(
+        xMin: -1e308,
+        xMax: 1e308,
+        yMin: -1e308,
+        yMax: 1e308,
+        gridX: 2,
+        gridY: 2,
+      );
 
-      for (final segments in [vertical, horizontal]) {
+      for (final segments in [vertical, horizontal, diagonal]) {
         expect(segments, isNotEmpty);
         final points = segments.expand((segment) => segment);
         expect(
@@ -1468,6 +1476,12 @@ void main() {
       );
       expect(
         horizontal.expand((segment) => segment).any((point) => point['y'] == 0),
+        isTrue,
+      );
+      expect(
+        diagonal
+            .expand((segment) => segment)
+            .any((point) => point['x'] == 1e308 && point['y'] == -1e308),
         isTrue,
       );
     });
