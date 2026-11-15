@@ -500,6 +500,8 @@ class MathFormulaFieldState extends State<MathFormulaField>
       }
       return;
     }
+    final sourceController = widget.controller;
+    final sourceRevision = _revision;
     final generation = _webGeneration;
     if (action == 'paste') {
       dynamic capturedValue;
@@ -572,7 +574,12 @@ class MathFormulaFieldState extends State<MathFormulaField>
         (isTargetActive?.call() ?? true) &&
         selectionToken is String) {
       await _enqueue(() async {
-        if (!_ready || !(isTargetActive?.call() ?? true)) return;
+        if (!_ready ||
+            !(isTargetActive?.call() ?? true) ||
+            !identical(widget.controller, sourceController) ||
+            _revision != sourceRevision) {
+          return;
+        }
         _acceptResult(
           await _web!.evaluateJavascript(
             source:
