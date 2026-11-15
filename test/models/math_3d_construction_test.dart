@@ -2,6 +2,35 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:visual_math/visual_math.dart';
 
 void main() {
+  test('line, segment, and ray reject overflowing endpoint directions', () {
+    for (final tool in [
+      ConstructionTool.line,
+      ConstructionTool.segment,
+      ConstructionTool.ray,
+    ]) {
+      final state = ConstructionState(tool: tool);
+      const start = Point3D(-1e308, 0, 0);
+
+      expect(state.addPoint(start), ConstructionAction.advanceStep);
+      expect(
+        state.addPoint(const Point3D(1e308, 0, 0)),
+        ConstructionAction.awaitInput,
+      );
+      expect(state.points, [start]);
+      expect(state.result, isNull);
+
+      expect(
+        state.addPoint(const Point3D(-5e307, 0, 0)),
+        ConstructionAction.complete,
+      );
+      expect(state.result?.type, Object3DType.line);
+      expect(
+        (state.result!.pointB.x - state.result!.pointA.x).isFinite,
+        isTrue,
+      );
+    }
+  });
+
   test(
     'cube rejects endpoints whose difference overflows before committing',
     () {
