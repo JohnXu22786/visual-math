@@ -1081,5 +1081,38 @@ void main() {
       expect(pyramid.result?.vertices.length, 4);
       expect(pyramid.result?.indices.length, 12);
     });
+
+    test(
+      'extruded prism rejects a finite height point that overflows its mesh',
+      () {
+        final prism = ConstructionState(tool: ConstructionTool.extrudePrism);
+        prism.addPoint(Point3D.origin);
+        prism.addPoint(const Point3D(1, -1, 0));
+        prism.addPoint(const Point3D(1, 0, -1));
+
+        expect(
+          prism.addPoint(const Point3D(1.1e308, 1.1e308, 1.1e308)),
+          ConstructionAction.awaitInput,
+        );
+        expect(prism.points, [
+          Point3D.origin,
+          const Point3D(1, -1, 0),
+          const Point3D(1, 0, -1),
+        ]);
+        expect(prism.result, isNull);
+
+        expect(
+          prism.addPoint(const Point3D(0, 0, 3)),
+          ConstructionAction.complete,
+        );
+        expect(prism.result?.vertices.length, 6);
+        expect(
+          prism.result!.vertices.every(
+            (point) => point.x.isFinite && point.y.isFinite && point.z.isFinite,
+          ),
+          isTrue,
+        );
+      },
+    );
   });
 }

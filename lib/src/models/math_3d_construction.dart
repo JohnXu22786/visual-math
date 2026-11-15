@@ -726,12 +726,16 @@ class ConstructionState {
 
       case ConstructionTool.extrudePrism:
         if (_points.length >= 4) {
-          _result = _createTriangularPrism(
+          final prism = _createTriangularPrism(
             _points[0],
             _points[1],
             _points[2],
             _points[3],
           );
+          if (!_hasFiniteVertices(prism)) {
+            return _rejectLastConstructionPoint('构造结果坐标过大，无法表示，请重新选择点');
+          }
+          _result = prism;
           _updatePreview();
           return ConstructionAction.complete;
         }
