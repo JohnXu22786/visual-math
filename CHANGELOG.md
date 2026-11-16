@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3
+
+- Show characteristic point options as enabled by default, including before a formula is plotted.
+
 ## 0.1.2
 
 - Add 2D graph view controls and formula domains with characteristic points.
