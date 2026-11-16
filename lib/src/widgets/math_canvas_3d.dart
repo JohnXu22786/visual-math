@@ -5449,11 +5449,22 @@ class MathCanvas3DState extends State<MathCanvas3D> {
             )) {
           continue;
         }
+        final pixelTie =
+            resolveDepth && (pixelDistance - nearestDistance).abs() <= 1e-7;
+        final candidateIsSegment = segmentCandidates.contains(candidate);
+        final nearestIsSegment =
+            nearest != null && segmentCandidates.contains(nearest);
+        final preferPointFeature =
+            pixelTie && nearestIsSegment && !candidateIsSegment;
+        final preferFrontmostPoint =
+            pixelTie &&
+            !nearestIsSegment &&
+            !candidateIsSegment &&
+            screen.z < nearestDepth;
         if (pixelDistance < 14.0 &&
             (pixelDistance < nearestDistance - (resolveDepth ? 1e-7 : 0) ||
-                (resolveDepth &&
-                    (pixelDistance - nearestDistance).abs() <= 1e-7 &&
-                    screen.z < nearestDepth))) {
+                preferPointFeature ||
+                preferFrontmostPoint)) {
           nearestDistance = pixelDistance;
           nearestDepth = screen.z;
           nearest = candidate;
