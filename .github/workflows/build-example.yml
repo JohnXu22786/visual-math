@@ -51,7 +51,7 @@ jobs:
             build_args: ''
           - label: macOS x64
             artifact: macos-x64
-            runner: macos-15
+            runner: macos-15-intel
             platform: macos
             target: macos
             arch: x86_64
