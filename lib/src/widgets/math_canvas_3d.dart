@@ -5118,7 +5118,6 @@ class MathCanvas3DState extends State<MathCanvas3D> {
     }
     final surfaceCandidates = <Point3D>[];
     final parallelSphereHits = Set<Point3D>.identity();
-    final pointObjectCandidates = Set<Point3D>.identity();
     final segmentCandidates = Set<Point3D>.identity();
     final occlusionSensitiveCandidates = Set<Point3D>.identity();
     final occlusionCandidateSupportTriangles =
@@ -5196,7 +5195,6 @@ class MathCanvas3DState extends State<MathCanvas3D> {
         case Object3DType.point:
           if (pointInDepthRange(object.point)) {
             candidates.add(object.point);
-            pointObjectCandidates.add(object.point);
             occlusionSensitiveCandidates.add(object.point);
           }
         case Object3DType.line:
@@ -5451,11 +5449,22 @@ class MathCanvas3DState extends State<MathCanvas3D> {
             )) {
           continue;
         }
+        final pixelTie =
+            resolveDepth && (pixelDistance - nearestDistance).abs() <= 1e-7;
+        final candidateIsSegment = segmentCandidates.contains(candidate);
+        final nearestIsSegment =
+            nearest != null && segmentCandidates.contains(nearest);
+        final preferPointFeature =
+            pixelTie && nearestIsSegment && !candidateIsSegment;
+        final preferFrontmostPoint =
+            pixelTie &&
+            !nearestIsSegment &&
+            !candidateIsSegment &&
+            screen.z < nearestDepth;
         if (pixelDistance < 14.0 &&
             (pixelDistance < nearestDistance - (resolveDepth ? 1e-7 : 0) ||
-                (resolveDepth &&
-                    (pixelDistance - nearestDistance).abs() <= 1e-7 &&
-                    screen.z < nearestDepth))) {
+                preferPointFeature ||
+                preferFrontmostPoint)) {
           nearestDistance = pixelDistance;
           nearestDepth = screen.z;
           nearest = candidate;
@@ -5464,34 +5473,10 @@ class MathCanvas3DState extends State<MathCanvas3D> {
       return nearest;
     }
 
-    final nearestCandidate = nearestIn(candidates);
-    final nearestPoint = pointObjectCandidates.isEmpty
-        ? null
-        : nearestIn(pointObjectCandidates.toList(), resolveDepth: true);
-    if (nearestPoint != null) {
-      final pointScreen = worldToScreen(nearestPoint, camera, projection);
-      final pointDx = pointScreen.x - screenX;
-      final pointDy = pointScreen.y - screenY;
-      final pointDistance = dart_math.sqrt(
-        pointDx * pointDx + pointDy * pointDy,
-      );
-      final candidateScreen = nearestCandidate == null
-          ? null
-          : worldToScreen(nearestCandidate, camera, projection);
-      final candidateDx = candidateScreen == null
-          ? double.infinity
-          : candidateScreen.x - screenX;
-      final candidateDy = candidateScreen == null
-          ? double.infinity
-          : candidateScreen.y - screenY;
-      final candidateDistance = dart_math.sqrt(
-        candidateDx * candidateDx + candidateDy * candidateDy,
-      );
-      if (pointDistance - candidateDistance <= 1e-7 &&
-          (candidateScreen == null || pointScreen.z < candidateScreen.z)) {
-        return nearestPoint;
-      }
-    }
+    // Resolve equal screen-space hits by camera depth for every candidate
+    // type. Independent points are only one source of snap candidates; mesh
+    // vertices and line/curve endpoints can overlap them as well.
+    final nearestCandidate = nearestIn(candidates, resolveDepth: true);
     return nearestCandidate ?? nearestIn(surfaceCandidates, resolveDepth: true);
   }
 

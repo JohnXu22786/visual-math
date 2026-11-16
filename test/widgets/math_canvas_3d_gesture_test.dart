@@ -105,6 +105,104 @@ void main() {
       expect(state.constructionState!.points, [Point3D.origin]);
     });
 
+    for (final projection in ProjectionType.values) {
+      testWidgets(
+        'snapping an overlapping line endpoint chooses the nearer candidate '
+        '($projection)',
+        (tester) async {
+          final state = await setupCanvas(
+            tester,
+            tool: ConstructionTool.segment,
+          );
+          state.setCamera(
+            const Camera3D(
+              target: Point3D.origin,
+              distance: 10,
+              theta: 0,
+              phi: 0,
+            ),
+          );
+          state.setProjectionType(projection);
+          const fartherPoint = Point3D(0, -2, 0);
+          const nearerEndpoint = Point3D(0, 3, 0);
+          state.setObjects([
+            Object3D.point(fartherPoint),
+            Object3D.line(nearerEndpoint, Point3D(1, 3, 0)),
+          ]);
+          await tester.pump();
+
+          await tester.tapAt(tester.getCenter(find.byType(MathCanvas3D)));
+          await tester.pump();
+
+          expect(state.constructionState!.points, [nearerEndpoint]);
+        },
+      );
+
+      testWidgets(
+        'snapping overlapping mesh vertices chooses the nearer vertex '
+        '($projection)',
+        (tester) async {
+          final state = await setupCanvas(
+            tester,
+            tool: ConstructionTool.segment,
+          );
+          state.setCamera(
+            const Camera3D(
+              target: Point3D.origin,
+              distance: 10,
+              theta: 0,
+              phi: 0,
+            ),
+          );
+          state.setProjectionType(projection);
+          const fartherVertex = Point3D(0, -2, 0);
+          const nearerVertex = Point3D(0, 3, 0);
+          state.setObjects([
+            Object3D.polyhedron(vertices: [fartherVertex], indices: const []),
+            Object3D.polyhedron(vertices: [nearerVertex], indices: const []),
+          ]);
+          await tester.pump();
+
+          await tester.tapAt(tester.getCenter(find.byType(MathCanvas3D)));
+          await tester.pump();
+
+          expect(state.constructionState!.points, [nearerVertex]);
+        },
+      );
+
+      testWidgets(
+        'snapping an overlapping curve vertex chooses the nearer candidate '
+        '($projection)',
+        (tester) async {
+          final state = await setupCanvas(
+            tester,
+            tool: ConstructionTool.segment,
+          );
+          state.setCamera(
+            const Camera3D(
+              target: Point3D.origin,
+              distance: 10,
+              theta: 0,
+              phi: 0,
+            ),
+          );
+          state.setProjectionType(projection);
+          const fartherPoint = Point3D(0, -2, 0);
+          const nearerCurveVertex = Point3D(0, 3, 0);
+          state.setObjects([
+            Object3D.point(fartherPoint),
+            Object3D.curve(points: [nearerCurveVertex, Point3D(1, 3, 0)]),
+          ]);
+          await tester.pump();
+
+          await tester.tapAt(tester.getCenter(find.byType(MathCanvas3D)));
+          await tester.pump();
+
+          expect(state.constructionState!.points, [nearerCurveVertex]);
+        },
+      );
+    }
+
     testWidgets('dragging right increases the orbit angle', (tester) async {
       final state = await setupCanvas(tester);
       final initialTheta = state.camera.theta;
