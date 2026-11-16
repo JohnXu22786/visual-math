@@ -51,7 +51,7 @@ jobs:
             build_args: ''
           - label: macOS x64
             artifact: macos-x64
-            runner: macos-15
+            runner: macos-15-intel
             platform: macos
             target: macos
             arch: x86_64
@@ -86,7 +86,7 @@ jobs:
       - if: matrix.platform != 'none'
         name: Generate ${{ matrix.platform }} host scaffolding
         working-directory: example
-        run: flutter create --platforms=${{ matrix.platform }} .
+        run: flutter create --no-pub --platforms=${{ matrix.platform }} .
       - if: matrix.target == 'windows'
         name: Set Windows WebView coroutine compatibility define
         working-directory: example
