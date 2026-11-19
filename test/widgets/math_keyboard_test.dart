@@ -77,6 +77,37 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('all toolbar actions fit at a 390px phone width', (tester) async {
+    tester.view.physicalSize = const Size(390, 920);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _pumpKeyboard(tester, [], width: 390, height: 300);
+
+    final actions = [
+      '光标左移',
+      '光标右移',
+      '光标上移 / 切换上层',
+      '光标下移 / 切换下层',
+      '退出当前结构',
+      '撤销',
+      '重做',
+      '选择与剪贴板',
+      '收起数学键盘',
+      '绘图',
+    ];
+    final keyboard = tester.getRect(find.byType(MathKeyboard));
+    for (final label in actions) {
+      final finder = find.byTooltip(label);
+      expect(finder.hitTestable(), findsOneWidget, reason: label);
+      final rect = tester.getRect(finder);
+      expect(rect.left, greaterThanOrEqualTo(keyboard.left), reason: label);
+      expect(rect.right, lessThanOrEqualTo(keyboard.right), reason: label);
+    }
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('common first page swaps the operator and function columns', (
     tester,
   ) async {
