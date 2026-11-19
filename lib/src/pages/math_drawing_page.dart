@@ -255,6 +255,17 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     });
   }
 
+  void _revertFormula(_FormulaState formula) {
+    if (formula.controller.text == formula.committedText) return;
+    formula.controller.text = formula.committedText;
+    setState(() {});
+  }
+
+  void _cancelCurrentFormulaEdit() {
+    final formula = _activeFormula;
+    if (formula != null) _revertFormula(formula);
+  }
+
   void _ensureFormulaVisible(_FormulaState formula) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final rowContext = formula.rowKey.currentContext;
@@ -1314,6 +1325,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       ),
       onCommand: _sendEditorCommand,
       onDismiss: _dismissKeyboard,
+      onCancel: _cancelCurrentFormulaEdit,
       onPlot: _plotAll,
       labelResolver: widget.options.presentation.labels.resolve,
       dialogBuilder: widget.options.presentation.buildDialog,
@@ -1571,12 +1583,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
               onCaretChanged: () {
                 if (mounted && _activeFormula == f) setState(() {});
               },
-              onRevert: hasChanged
-                  ? () {
-                      f.controller.text = f.committedText;
-                      setState(() {});
-                    }
-                  : null,
+              onRevert: hasChanged ? () => _revertFormula(f) : null,
             ),
           ),
 
@@ -1619,7 +1626,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                   child: ListTile(
                     dense: true,
                     leading: Icon(Icons.code),
-                    title: Text('切换到源码输入'),
+                    title: Text('切换到 LaTeX 输入'),
                   ),
                 ),
               PopupMenuItem(
@@ -1733,7 +1740,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                   },
                 ),
                 PopupMenuButton<String>(
-                  tooltip: '更多画布工具',
+                  tooltip: '更多画布工具与定积分面积',
                   icon: const Icon(Icons.more_vert),
                   onSelected: (_) => _showDefiniteIntegralDialog(),
                   itemBuilder: (_) => const [
@@ -2538,6 +2545,8 @@ class _DomainEditorDialogState extends State<_DomainEditorDialog> {
       GlobalKey<MathFormulaFieldState>();
   late final TextEditingController _lower;
   late final TextEditingController _upper;
+  late final String _initialLower;
+  late final String _initialUpper;
   late bool _mathematical;
   late bool _includeLower;
   late bool _includeUpper;
@@ -2549,6 +2558,8 @@ class _DomainEditorDialogState extends State<_DomainEditorDialog> {
     super.initState();
     _lower = TextEditingController(text: widget.lowerExpression);
     _upper = TextEditingController(text: widget.upperExpression);
+    _initialLower = widget.lowerExpression;
+    _initialUpper = widget.upperExpression;
     _mathematical = widget.mathematical;
     _includeLower = widget.includeLower;
     _includeUpper = widget.includeUpper;
@@ -2577,6 +2588,11 @@ class _DomainEditorDialogState extends State<_DomainEditorDialog> {
     _editingLower = true;
     _keyboardVisible = _mathematical;
   });
+
+  void _cancelEndpointEdit() {
+    final controller = _editingLower ? _lower : _upper;
+    controller.text = _editingLower ? _initialLower : _initialUpper;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2795,6 +2811,7 @@ class _DomainEditorDialogState extends State<_DomainEditorDialog> {
                         },
                         onDismiss: () =>
                             setState(() => _keyboardVisible = false),
+                        onCancel: _cancelEndpointEdit,
                         onPlot: _apply,
                       ),
                     ),

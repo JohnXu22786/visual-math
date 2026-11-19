@@ -14,6 +14,7 @@ import 'math_ui_tokens.dart';
 class MathKeyboard extends StatefulWidget {
   final Future<void> Function(String kind, String value) onCommand;
   final VoidCallback onDismiss;
+  final VoidCallback onCancel;
   final VoidCallback onPlot;
   final String activeLabel;
   final bool enabled;
@@ -31,6 +32,7 @@ class MathKeyboard extends StatefulWidget {
     super.key,
     required this.onCommand,
     required this.onDismiss,
+    required this.onCancel,
     required this.onPlot,
     required this.activeLabel,
     this.enabled = true,
@@ -313,8 +315,8 @@ class _MathKeyboardState extends State<MathKeyboard> {
                       child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: SizedBox(
-                          width: toolbarConstraints.maxWidth < 368
-                              ? 368
+                          width: toolbarConstraints.maxWidth < 380
+                              ? 380
                               : toolbarConstraints.maxWidth,
                           child: Row(
                             children: [
@@ -334,30 +336,60 @@ class _MathKeyboardState extends State<MathKeyboard> {
                               const Spacer(),
                               _action(Icons.undo, '撤销', 'undo'),
                               _action(Icons.redo, '重做', 'redo'),
-                              IconButton(
-                                onPressed: widget.onDismiss,
-                                tooltip: _label('收起数学键盘'),
-                                icon: const Icon(Icons.close, size: 20),
-                                padding: EdgeInsets.zero,
-                                visualDensity: VisualDensity.compact,
-                                constraints: const BoxConstraints(
-                                  minWidth: 36,
-                                  minHeight: 36,
+                              _toolbarButton(
+                                IconButton(
+                                  onPressed: widget.onCancel,
+                                  tooltip: _label('丢弃未提交更改'),
+                                  icon: const Icon(Icons.close, size: 20),
+                                  padding: EdgeInsets.zero,
+                                  visualDensity: VisualDensity.standard,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 36,
+                                    minHeight: 36,
+                                  ),
+                                  style: IconButton.styleFrom(
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
                                 ),
                               ),
-                              IconButton(
-                                onPressed: widget.onPlot,
-                                tooltip: _label('绘图'),
-                                icon: const Icon(Icons.check, size: 21),
-                                padding: EdgeInsets.zero,
-                                visualDensity: VisualDensity.compact,
-                                constraints: const BoxConstraints(
-                                  minWidth: 36,
-                                  minHeight: 36,
+                              _toolbarButton(
+                                IconButton(
+                                  onPressed: widget.onDismiss,
+                                  tooltip: _label('收起数学键盘'),
+                                  icon: const Icon(
+                                    Icons.keyboard_hide,
+                                    size: 20,
+                                  ),
+                                  padding: EdgeInsets.zero,
+                                  visualDensity: VisualDensity.standard,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 36,
+                                    minHeight: 36,
+                                  ),
+                                  style: IconButton.styleFrom(
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
                                 ),
-                                style: IconButton.styleFrom(
-                                  backgroundColor: Colors.transparent,
-                                  foregroundColor: cs.primary,
+                              ),
+                              _toolbarButton(
+                                IconButton(
+                                  onPressed: widget.onPlot,
+                                  tooltip: _label('绘图'),
+                                  icon: const Icon(Icons.check, size: 21),
+                                  padding: EdgeInsets.zero,
+                                  visualDensity: VisualDensity.standard,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 36,
+                                    minHeight: 36,
+                                  ),
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    foregroundColor: cs.primary,
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
                                 ),
                               ),
                             ],
@@ -405,7 +437,7 @@ class _MathKeyboardState extends State<MathKeyboard> {
                     ),
                   ),
                   PopupMenuButton<String>(
-                    tooltip: _label('选择与剪贴板'),
+                    tooltip: _label('全选、复制、剪切与粘贴'),
                     enabled: widget.enabled,
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(
@@ -748,27 +780,41 @@ class _MathKeyboardState extends State<MathKeyboard> {
     ),
   );
 
-  Widget _navigate(IconData icon, String label, String direction) => IconButton(
-    icon: Icon(icon, size: 20),
-    tooltip: _label(label),
-    padding: EdgeInsets.zero,
-    visualDensity: VisualDensity.compact,
-    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-    onPressed: widget.enabled
-        ? () => widget.onCommand('navigate', direction)
-        : null,
+  Widget _navigate(IconData icon, String label, String direction) =>
+      _toolbarButton(
+        IconButton(
+          icon: Icon(icon, size: 20),
+          tooltip: _label(label),
+          padding: EdgeInsets.zero,
+          visualDensity: VisualDensity.standard,
+          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+          style: IconButton.styleFrom(
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          onPressed: widget.enabled
+              ? () => widget.onCommand('navigate', direction)
+              : null,
+        ),
+      );
+
+  Widget _action(IconData icon, String label, String command) => _toolbarButton(
+    IconButton(
+      icon: Icon(icon, size: 20),
+      tooltip: _label(label),
+      padding: EdgeInsets.zero,
+      visualDensity: VisualDensity.standard,
+      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+      style: IconButton.styleFrom(
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      onPressed: widget.enabled
+          ? () => widget.onCommand('command', command)
+          : null,
+    ),
   );
 
-  Widget _action(IconData icon, String label, String command) => IconButton(
-    icon: Icon(icon, size: 20),
-    tooltip: _label(label),
-    padding: EdgeInsets.zero,
-    visualDensity: VisualDensity.compact,
-    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-    onPressed: widget.enabled
-        ? () => widget.onCommand('command', command)
-        : null,
-  );
+  Widget _toolbarButton(Widget child) =>
+      Padding(padding: const EdgeInsets.symmetric(horizontal: 1), child: child);
 
   Widget _key(_MathKey? key) => SizedBox(
     height: _keyHeight,

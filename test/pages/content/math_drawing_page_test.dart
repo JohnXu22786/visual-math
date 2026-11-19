@@ -56,6 +56,30 @@ void main() {
       await tester.pump();
       expect(find.byType(TextField), findsNWidgets(2));
     });
+
+    testWidgets('canvas overflow menu identifies its area action', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_buildTestApp());
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField).first, 'x^2');
+      await _chooseFormulaAction(tester, 0, '绘制');
+      await tester.pumpAndSettle();
+
+      final menu = find.byTooltip('更多画布工具与定积分面积');
+      expect(menu, findsOneWidget);
+      await tester.ensureVisible(menu);
+      await tester.tap(menu);
+      await tester.pumpAndSettle();
+      expect(find.text('定积分与面积'), findsOneWidget);
+      await tester.tap(find.text('定积分与面积'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsOneWidget);
+      await tester.tap(find.text('取消').last);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
   });
 
   group('MathDrawingPage - adjustable parameters', () {
@@ -240,13 +264,41 @@ void main() {
       expect(find.byTooltip('切换到 LaTeX 源码输入'), findsNothing);
       await tester.tap(find.byTooltip('公式操作').first);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('切换到源码输入'));
+      await tester.tap(find.text('切换到 LaTeX 输入'));
       await tester.pumpAndSettle();
 
       expect(find.byType(TextField), findsOneWidget);
       await tester.tap(find.byTooltip('公式操作').first);
       await tester.pumpAndSettle();
       expect(find.text('打开数学键盘'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('keyboard cancel reverts draft and hide preserves it', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_buildTestApp());
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField).first, 'x^2');
+      await _chooseFormulaAction(tester, 0, '绘制');
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).first, 'x^3');
+      await tester.pump();
+      await _chooseFormulaAction(tester, 0, '打开数学键盘');
+
+      final sourceField = find.byType(TextField, skipOffstage: false).first;
+      expect(tester.widget<TextField>(sourceField).controller!.text, 'x^3');
+      await tester.tap(find.byTooltip('收起数学键盘'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(sourceField).controller!.text, 'x^3');
+
+      await tester.tap(find.byType(MathFormulaField).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('丢弃未提交更改'));
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<TextField>(sourceField).controller!.text, 'x^2');
       expect(tester.takeException(), isNull);
     });
 

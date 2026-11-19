@@ -26,6 +26,9 @@ Future<void> _pumpKeyboard(
   bool enabled = true,
   bool persistenceEnabled = true,
   String preferenceNamespace = '',
+  VoidCallback? onDismiss,
+  VoidCallback? onCancel,
+  VoidCallback? onPlot,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -40,8 +43,9 @@ Future<void> _pumpKeyboard(
               enabled: enabled,
               persistenceEnabled: persistenceEnabled,
               preferenceNamespace: preferenceNamespace,
-              onDismiss: () {},
-              onPlot: () {},
+              onDismiss: onDismiss ?? () {},
+              onCancel: onCancel ?? () {},
+              onPlot: onPlot ?? () {},
               onCommand: (kind, value) async => commands.add('$kind:$value'),
             ),
           ),
@@ -67,12 +71,13 @@ void main() {
       '退出当前结构',
       '撤销',
       '重做',
+      '丢弃未提交更改',
       '收起数学键盘',
       '绘图',
     ].map((label) => tester.getRect(find.byTooltip(label))).toList();
 
     expect(toolbar.map((rect) => rect.center.dy).toSet(), hasLength(1));
-    expect(find.byTooltip('选择与剪贴板').hitTestable(), findsOneWidget);
+    expect(find.byTooltip('全选、复制、剪切与粘贴').hitTestable(), findsOneWidget);
     expect(find.text('绘图'), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -93,6 +98,7 @@ void main() {
       '退出当前结构',
       '撤销',
       '重做',
+      '丢弃未提交更改',
       '收起数学键盘',
       '绘图',
     ];
@@ -101,10 +107,40 @@ void main() {
       final finder = find.byTooltip(label);
       expect(finder.hitTestable(), findsOneWidget, reason: label);
       final rect = tester.getRect(finder);
+      expect(rect.width, greaterThanOrEqualTo(36), reason: label);
+      expect(rect.height, greaterThanOrEqualTo(36), reason: label);
       expect(rect.left, greaterThanOrEqualTo(keyboard.left), reason: label);
       expect(rect.right, lessThanOrEqualTo(keyboard.right), reason: label);
     }
-    expect(find.byTooltip('选择与剪贴板').hitTestable(), findsOneWidget);
+    final left = tester.getRect(find.byTooltip('光标左移'));
+    final right = tester.getRect(find.byTooltip('光标右移'));
+    expect(right.left - left.right, closeTo(2, 0.1));
+    expect(find.byTooltip('全选、复制、剪切与粘贴').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('cancel, keyboard hide, and apply are separate actions', (
+    tester,
+  ) async {
+    var cancelled = 0;
+    var hidden = 0;
+    var applied = 0;
+    await _pumpKeyboard(
+      tester,
+      [],
+      width: 390,
+      onCancel: () => cancelled++,
+      onDismiss: () => hidden++,
+      onPlot: () => applied++,
+    );
+
+    await tester.tap(find.byTooltip('丢弃未提交更改'));
+    await tester.tap(find.byTooltip('收起数学键盘'));
+    await tester.tap(find.byTooltip('绘图'));
+
+    expect(cancelled, 1);
+    expect(hidden, 1);
+    expect(applied, 1);
     expect(tester.takeException(), isNull);
   });
 
@@ -602,6 +638,7 @@ void main() {
                 child: MathKeyboard(
                   activeLabel: '公式 1',
                   onDismiss: () {},
+                  onCancel: () {},
                   onPlot: () {},
                   onCommand: (kind, value) async =>
                       commands.add('$kind:$value'),
@@ -669,6 +706,7 @@ void main() {
                 child: MathKeyboard(
                   activeLabel: '公式 1',
                   onDismiss: () {},
+                  onCancel: () {},
                   onPlot: () {},
                   onCommand: (kind, value) async =>
                       commands.add('$kind:$value'),
@@ -712,6 +750,7 @@ void main() {
                 child: MathKeyboard(
                   activeLabel: '公式 1',
                   onDismiss: () {},
+                  onCancel: () {},
                   onPlot: () {},
                   onCommand: (kind, value) async {
                     commands.add('$kind:$value');
@@ -744,6 +783,7 @@ void main() {
             enabled: false,
             activeLabel: '公式 1',
             onDismiss: () {},
+            onCancel: () {},
             onPlot: () {},
             onCommand: (kind, value) async {
               commands.add('$kind:$value');
@@ -771,6 +811,7 @@ void main() {
           body: MathKeyboard(
             activeLabel: '公式 1',
             onDismiss: () {},
+            onCancel: () {},
             onPlot: () {},
             onCommand: (kind, value) async {
               commands.add('$kind:$value');
@@ -809,6 +850,7 @@ void main() {
                 keyScale: 1.5,
                 persistenceEnabled: false,
                 onDismiss: () {},
+                onCancel: () {},
                 onPlot: () {},
                 onCommand: (kind, value) async => commands.add('$kind:$value'),
               ),
