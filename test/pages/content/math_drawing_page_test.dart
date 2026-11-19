@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:visual_math/visual_math.dart';
@@ -188,6 +189,18 @@ void main() {
     testWidgets('source mode can reopen the math keyboard from row actions', (
       tester,
     ) async {
+      var systemKeyboardDismissed = false;
+      final messenger = tester.binding.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(SystemChannels.textInput, (
+        call,
+      ) async {
+        if (call.method == 'TextInput.hide') systemKeyboardDismissed = true;
+        return null;
+      });
+      addTearDown(
+        () =>
+            messenger.setMockMethodCallHandler(SystemChannels.textInput, null),
+      );
       await tester.pumpWidget(
         const MaterialApp(
           home: MathDrawingPage(
@@ -205,6 +218,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byTooltip('切换到 LaTeX 源码输入'), findsOneWidget);
+      expect(systemKeyboardDismissed, isTrue);
       expect(tester.takeException(), isNull);
     });
 

@@ -248,6 +248,13 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     widget.onMathematicalModeChanged?.call(mathematical);
   }
 
+  void _openMathKeyboard(_FormulaState formula) {
+    _setMode(true, formula);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(formula.editorKey.currentState?.activate());
+    });
+  }
+
   void _ensureFormulaVisible(_FormulaState formula) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final rowContext = formula.rowKey.currentContext;
@@ -1589,7 +1596,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                 case 'delete':
                   _confirmRemove(f);
                 case 'math_keyboard':
-                  _setMode(true, f);
+                  _openMathKeyboard(f);
                 case 'source_mode':
                   _setMode(false, f);
               }
