@@ -14,6 +14,18 @@ Widget _app(MathWorkspaceOptions options) => MaterialApp(
   ),
 );
 
+Future<void> _selectFormulaAction(
+  WidgetTester tester,
+  String action, {
+  int rowIndex = 0,
+}) async {
+  await tester.ensureVisible(find.byTooltip('公式操作').at(rowIndex));
+  await tester.tap(find.byTooltip('公式操作').at(rowIndex));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(action).last);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -103,27 +115,33 @@ void main() {
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({
-      'math_drawing_mathematical_input': false,
+      'math_drawing_mathematical_input': true,
     });
     await tester.pumpWidget(
-      _app(
-        const MathWorkspaceOptions(
-          show3D: false,
-          persistence: MathWorkspacePersistence(namespace: 'host-a'),
+      const MaterialApp(
+        home: MathDrawingPage(
+          initialMathematicalMode: true,
+          initialShowWebView: false,
+          options: MathWorkspaceOptions(
+            show3D: false,
+            persistence: MathWorkspacePersistence(namespace: 'host-a'),
+          ),
         ),
       ),
     );
     await tester.pump();
 
-    await tester.tap(find.byTooltip('切换到数学键盘（内置公式预览）'));
+    await tester.tap(find.byType(MathFormulaField).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('切换到 LaTeX 源码输入'));
     await tester.pumpAndSettle();
     final preferences = await SharedPreferences.getInstance();
 
     expect(
       preferences.getBool('visual_math.host-a.math_drawing_mathematical_input'),
-      isTrue,
+      isFalse,
     );
-    expect(preferences.getBool('math_drawing_mathematical_input'), isFalse);
+    expect(preferences.getBool('math_drawing_mathematical_input'), isTrue);
   });
 
   testWidgets('unsupported platform uses source editor without WebView', (
@@ -159,7 +177,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: MathDrawingPage(
-          initialMathematicalMode: false,
+          initialMathematicalMode: true,
           initialShowWebView: false,
           options: const MathWorkspaceOptions(
             persistence: MathWorkspacePersistence(enabled: false),
@@ -168,7 +186,9 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byTooltip('切换到数学键盘（内置公式预览）'));
+    await tester.tap(find.byType(MathFormulaField).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('切换到 LaTeX 源码输入'));
     await tester.pumpAndSettle();
 
     final preferences = await SharedPreferences.getInstance();
@@ -351,7 +371,9 @@ void main() {
     expect(find.text('Plane'), findsOneWidget);
     expect(find.text('Space'), findsOneWidget);
     expect(find.bySemanticsLabel(RegExp('Plane')), findsOneWidget);
-    expect(find.byTooltip('Plot expression'), findsOneWidget);
+    await tester.tap(find.byTooltip('公式操作').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Plot expression'), findsOneWidget);
     semantics.dispose();
   });
 
@@ -447,14 +469,13 @@ void main() {
 
     await tester.tap(find.byTooltip('添加公式'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('删除公式').last);
+    await _selectFormulaAction(tester, '删除公式', rowIndex: 1);
     await tester.pumpAndSettle();
     expect(find.text('Host dialog'), findsOneWidget);
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('绘制').first);
-    await tester.pumpAndSettle();
+    await _selectFormulaAction(tester, '绘制');
 
     expect(find.textContaining('Host error:'), findsOneWidget);
     expect(find.byType(MathCanvas), findsOneWidget);
