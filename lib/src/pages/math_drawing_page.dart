@@ -1590,6 +1590,8 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                   _confirmRemove(f);
                 case 'math_keyboard':
                   _setMode(true, f);
+                case 'source_mode':
+                  _setMode(false, f);
               }
             },
             itemBuilder: (context) => [
@@ -1600,6 +1602,15 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                     dense: true,
                     leading: Icon(Icons.keyboard),
                     title: Text('打开数学键盘'),
+                  ),
+                ),
+              if (_mathMode && !_keyboardVisible)
+                const PopupMenuItem(
+                  value: 'source_mode',
+                  child: ListTile(
+                    dense: true,
+                    leading: Icon(Icons.code),
+                    title: Text('切换到源码输入'),
                   ),
                 ),
               PopupMenuItem(

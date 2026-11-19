@@ -208,6 +208,31 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('math mode without a keyboard can switch back to source', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: MathDrawingPage(
+            initialShowWebView: false,
+            initialMathematicalMode: true,
+            options: MathWorkspaceOptions(showKeyboard: false),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byType(TextField), findsNothing);
+      expect(find.byTooltip('切换到 LaTeX 源码输入'), findsNothing);
+      await tester.tap(find.byTooltip('公式操作').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('切换到源码输入'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TextField), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('checkmark button plots formulas', (tester) async {
       await tester.pumpWidget(_buildTestApp());
       await tester.pump();
