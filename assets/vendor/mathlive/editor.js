@@ -8,7 +8,9 @@
   MathLive.MathfieldElement.keypressSound = null;
   MathLive.MathfieldElement.plonkSound = null;
   field.mathVirtualKeyboardPolicy = 'manual';
-  field.smartFence = true;
+  // Keyboard templates insert both delimiters explicitly. Let backspace
+  // remove either delimiter independently instead of treating them as a pair.
+  field.smartFence = false;
   field.defaultMode = 'math';
   let revision = -1, sequence = 0, original = '', canonical = '', selection = '', edited = false, importing = false;
   // Literal names and roman identifier namespaces are not ordinary math runs.
