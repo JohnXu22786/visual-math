@@ -185,6 +185,29 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('source mode can reopen the math keyboard from row actions', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: MathDrawingPage(
+            initialShowWebView: false,
+            initialMathematicalMode: false,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byTooltip('切换到数学键盘'), findsNothing);
+      await tester.tap(find.byTooltip('公式操作').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('打开数学键盘'));
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('切换到 LaTeX 源码输入'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('checkmark button plots formulas', (tester) async {
       await tester.pumpWidget(_buildTestApp());
       await tester.pump();

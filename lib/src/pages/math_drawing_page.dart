@@ -1588,9 +1588,20 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                   _plotAll();
                 case 'delete':
                   _confirmRemove(f);
+                case 'math_keyboard':
+                  _setMode(true, f);
               }
             },
             itemBuilder: (context) => [
+              if (!_mathMode)
+                const PopupMenuItem(
+                  value: 'math_keyboard',
+                  child: ListTile(
+                    dense: true,
+                    leading: Icon(Icons.keyboard),
+                    title: Text('打开数学键盘'),
+                  ),
+                ),
               PopupMenuItem(
                 value: 'visibility',
                 child: ListTile(
