@@ -1595,7 +1595,9 @@ class _MathDrawingPageState extends State<MathDrawingPage>
               }
             },
             itemBuilder: (context) => [
-              if (!_mathMode)
+              if (!_mathMode &&
+                  (widget.options.showKeyboard ||
+                      widget.options.keyboardBuilder != null))
                 const PopupMenuItem(
                   value: 'math_keyboard',
                   child: ListTile(

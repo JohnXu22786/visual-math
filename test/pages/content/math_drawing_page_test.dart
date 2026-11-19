@@ -230,6 +230,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(TextField), findsOneWidget);
+      await tester.tap(find.byTooltip('公式操作').first);
+      await tester.pumpAndSettle();
+      expect(find.text('打开数学键盘'), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
