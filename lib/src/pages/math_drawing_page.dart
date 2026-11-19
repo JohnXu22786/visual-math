@@ -259,6 +259,11 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     if (formula.controller.text == formula.committedText) return;
     formula.controller.text = formula.committedText;
     setState(() {});
+    _syncController();
+    final index = _formulas.indexOf(formula);
+    if (index >= 0) {
+      widget.controller?.onFormulaEdited?.call(index, formula.controller.text);
+    }
   }
 
   void _cancelCurrentFormulaEdit() {

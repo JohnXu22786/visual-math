@@ -14,7 +14,7 @@ import 'math_ui_tokens.dart';
 class MathKeyboard extends StatefulWidget {
   final Future<void> Function(String kind, String value) onCommand;
   final VoidCallback onDismiss;
-  final VoidCallback onCancel;
+  final VoidCallback? onCancel;
   final VoidCallback onPlot;
   final String activeLabel;
   final bool enabled;
@@ -32,7 +32,7 @@ class MathKeyboard extends StatefulWidget {
     super.key,
     required this.onCommand,
     required this.onDismiss,
-    required this.onCancel,
+    this.onCancel,
     required this.onPlot,
     required this.activeLabel,
     this.enabled = true,
@@ -336,23 +336,24 @@ class _MathKeyboardState extends State<MathKeyboard> {
                               const Spacer(),
                               _action(Icons.undo, '撤销', 'undo'),
                               _action(Icons.redo, '重做', 'redo'),
-                              _toolbarButton(
-                                IconButton(
-                                  onPressed: widget.onCancel,
-                                  tooltip: _label('丢弃未提交更改'),
-                                  icon: const Icon(Icons.close, size: 20),
-                                  padding: EdgeInsets.zero,
-                                  visualDensity: VisualDensity.standard,
-                                  constraints: const BoxConstraints(
-                                    minWidth: 36,
-                                    minHeight: 36,
-                                  ),
-                                  style: IconButton.styleFrom(
-                                    tapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
+                              if (widget.onCancel != null)
+                                _toolbarButton(
+                                  IconButton(
+                                    onPressed: widget.onCancel,
+                                    tooltip: _label('丢弃未提交更改'),
+                                    icon: const Icon(Icons.close, size: 20),
+                                    padding: EdgeInsets.zero,
+                                    visualDensity: VisualDensity.standard,
+                                    constraints: const BoxConstraints(
+                                      minWidth: 36,
+                                      minHeight: 36,
+                                    ),
+                                    style: IconButton.styleFrom(
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
+                                    ),
                                   ),
                                 ),
-                              ),
                               _toolbarButton(
                                 IconButton(
                                   onPressed: widget.onDismiss,

@@ -6,10 +6,14 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:visual_math/visual_math.dart';
 
-Widget _buildTestApp({String? initialExpression}) {
+Widget _buildTestApp({
+  String? initialExpression,
+  MathDrawingController? controller,
+}) {
   return MaterialApp(
     home: MathDrawingPage(
       initialExpression: initialExpression,
+      controller: controller,
       initialMathematicalMode: false,
       initialShowWebView: false,
     ),
@@ -277,7 +281,11 @@ void main() {
     testWidgets('keyboard cancel reverts draft and hide preserves it', (
       tester,
     ) async {
-      await tester.pumpWidget(_buildTestApp());
+      final controller = MathDrawingController();
+      final editedExpressions = <String>[];
+      controller.onFormulaEdited = (_, expression) =>
+          editedExpressions.add(expression);
+      await tester.pumpWidget(_buildTestApp(controller: controller));
       await tester.pumpAndSettle();
 
       await tester.enterText(find.byType(TextField).first, 'x^2');
@@ -285,6 +293,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).first, 'x^3');
       await tester.pump();
+      expect(controller.formulas.single.rawExpression, 'x^3');
       await _chooseFormulaAction(tester, 0, '打开数学键盘');
 
       final sourceField = find.byType(TextField, skipOffstage: false).first;
@@ -299,6 +308,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(tester.widget<TextField>(sourceField).controller!.text, 'x^2');
+      expect(controller.formulas.single.rawExpression, 'x^2');
+      expect(editedExpressions.last, 'x^2');
       expect(tester.takeException(), isNull);
     });
 
