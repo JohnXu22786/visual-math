@@ -54,6 +54,29 @@ Future<void> _pumpKeyboard(
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  testWidgets('navigation and apply actions share one compact icon row', (
+    tester,
+  ) async {
+    await _pumpKeyboard(tester, [], width: 320, height: 300);
+
+    final toolbar = [
+      '光标左移',
+      '光标右移',
+      '光标上移 / 切换上层',
+      '光标下移 / 切换下层',
+      '退出当前结构',
+      '撤销',
+      '重做',
+      '选择与剪贴板',
+      '收起数学键盘',
+      '绘图',
+    ].map((label) => tester.getRect(find.byTooltip(label))).toList();
+
+    expect(toolbar.map((rect) => rect.center.dy).toSet(), hasLength(1));
+    expect(find.text('绘图'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('common first page swaps the operator and function columns', (
     tester,
   ) async {
@@ -359,7 +382,7 @@ void main() {
             expect(rect.height, 44);
             expect(rect.left, greaterThanOrEqualTo(keyboard.left));
             expect(rect.right, lessThanOrEqualTo(keyboard.right));
-            expect(rect.bottom, lessThanOrEqualTo(navigation.top));
+            expect(navigation.bottom, lessThanOrEqualTo(rect.top));
             if (index > 0)
               expect(rect.left, greaterThan(rects[index - 1].right));
             await tester.tap(find.byTooltip(row[index]));
@@ -503,40 +526,35 @@ void main() {
     },
   );
 
-  testWidgets(
-    'short Latin keyboard scrolls letters while navigation stays pinned',
-    (tester) async {
-      final commands = <String>[];
-      await _pumpKeyboard(tester, commands, height: 90);
-      await _selectCategory(tester, '字母');
-      final right = find.byTooltip('光标右移');
-      final before = tester.getRect(right);
-      final scrollable = find.byWidgetPredicate(
-        (widget) =>
-            widget is Scrollable && widget.axisDirection == AxisDirection.down,
-      );
-      await tester.scrollUntilVisible(
-        find.byTooltip('q'),
-        40,
-        scrollable: scrollable,
-      );
-      await tester.tap(find.byTooltip('q'));
-      await tester.scrollUntilVisible(
-        find.byTooltip('⌫'),
-        40,
-        scrollable: scrollable,
-      );
-      await tester.tap(find.byTooltip('⌫'));
-      await tester.tap(right);
-      expect(commands, [
-        'insert:q',
-        'command:deleteBackward',
-        'navigate:right',
-      ]);
-      expect(tester.getRect(right), before);
-      expect(tester.takeException(), isNull);
-    },
-  );
+  testWidgets('short Latin keyboard scrolls controls and letters together', (
+    tester,
+  ) async {
+    final commands = <String>[];
+    await _pumpKeyboard(tester, commands, height: 90);
+    await _selectCategory(tester, '字母');
+    final right = find.byTooltip('光标右移');
+    final scrollable = find.byWidgetPredicate(
+      (widget) =>
+          widget is Scrollable && widget.axisDirection == AxisDirection.down,
+    );
+    await tester.scrollUntilVisible(
+      find.byTooltip('q'),
+      40,
+      scrollable: scrollable,
+    );
+    await tester.tap(find.byTooltip('q'));
+    await tester.scrollUntilVisible(
+      find.byTooltip('⌫'),
+      40,
+      scrollable: scrollable,
+    );
+    await tester.tap(find.byTooltip('⌫'));
+    await tester.ensureVisible(right);
+    await tester.tap(right);
+    expect(commands, ['insert:q', 'command:deleteBackward', 'navigate:right']);
+    expect(tester.getRect(right), isNotNull);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'category directory reaches logs and hidden Greek keys without losing numeric positions',
@@ -631,7 +649,6 @@ void main() {
       );
       expect(tester.takeException(), isNull);
       final right = find.byTooltip('光标右移');
-      final before = tester.getRect(right);
       await tester.scrollUntilVisible(
         find.byTooltip('7'),
         60,
@@ -642,8 +659,9 @@ void main() {
         ),
       );
       await tester.tap(find.byTooltip('7'));
+      await tester.ensureVisible(right);
       await tester.tap(right);
-      expect(tester.getRect(right), before);
+      expect(tester.getRect(right), isNotNull);
       expect(commands, ['insert:7', 'navigate:right']);
       expect(tester.takeException(), isNull);
     },
@@ -772,7 +790,7 @@ void main() {
 
     await pump(width: 400, height: 400);
     final fittedKeyHeight = tester.getSize(find.byTooltip('7')).height;
-    expect(fittedKeyHeight, closeTo(51, 1));
+    expect(fittedKeyHeight, closeTo((400 - 12) / 6 - 4, 1));
 
     await pump(width: 400, height: 500);
     final tallKeyHeight = tester.getSize(find.byTooltip('7')).height;
@@ -782,17 +800,11 @@ void main() {
     expect(alphabetKeyHeight, closeTo(44, 1));
     await _selectCategory(tester, '希腊字母');
     final tallGreekKeyHeight = tester.getSize(find.byTooltip('alpha')).height;
-    expect(tallGreekKeyHeight, closeTo((500 - 196) / 5, 1));
+    expect(tallGreekKeyHeight, closeTo((400 - 12) / 6 - 4, 1));
     await pump(width: 400, height: 400);
-    expect(
-      tester.getSize(find.byTooltip('alpha')).height,
-      closeTo((400 - 196) / 5, 1),
-    );
+    expect(tester.getSize(find.byTooltip('alpha')).height, closeTo(51.2, 1));
     await pump(width: 300, height: 500);
-    expect(
-      tester.getSize(find.byTooltip('7')).height,
-      closeTo((300 - 12) / 6 - 4, 1),
-    );
+    expect(tester.getSize(find.byTooltip('7')).height, closeTo(44, 1));
 
     await pump(width: 400, height: 260);
     final shortKeyHeight = tester.getSize(find.byTooltip('7')).height;

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
@@ -295,147 +296,180 @@ class _MathKeyboardState extends State<MathKeyboard> {
         child: LayoutBuilder(
           builder: (context, constraints) {
             _keyHeight = _resolveKeyHeight(constraints, widget.keyScale);
-            final heading = <Widget>[
-              SizedBox(
-                height: 44,
-                child: Row(
-                  children: [
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Tooltip(
-                        message: _label('点击公式定位，长按选择；左右逐项移动，上下切换结构层'),
-                        child: Text(
-                          widget.enabled
-                              ? '${widget.activeLabel} · ${widget.location}'
-                              : '${widget.activeLabel} · ${_label('正在准备数学输入…')}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: cs.onSurfaceVariant,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
+            final toolbar = SizedBox(
+              height: 40,
+              child: LayoutBuilder(
+                builder: (context, toolbarConstraints) => Semantics(
+                  label: '${widget.activeLabel} · ${widget.location}',
+                  child: ScrollConfiguration(
+                    behavior: ScrollConfiguration.of(context).copyWith(
+                      dragDevices: {
+                        PointerDeviceKind.touch,
+                        PointerDeviceKind.mouse,
+                        PointerDeviceKind.trackpad,
+                      },
                     ),
-                    _action(Icons.undo, '撤销', 'undo'),
-                    _action(Icons.redo, '重做', 'redo'),
-                    PopupMenuButton<String>(
-                      tooltip: _label('选择与剪贴板'),
-                      enabled: widget.enabled,
-                      onSelected: (action) => widget.onCommand(
-                        action == 'selectAll' ? 'command' : 'clipboard',
-                        action,
-                      ),
-                      itemBuilder: (_) => [
-                        for (final entry in {
-                          'selectAll': _label('全选'),
-                          'copy': _label('复制 LaTeX'),
-                          'cut': _label('剪切'),
-                          'paste': _label('粘贴公式'),
-                        }.entries)
-                          PopupMenuItem(
-                            value: entry.key,
-                            child: Text(entry.value),
-                          ),
-                      ],
-                    ),
-                    IconButton(
-                      onPressed: widget.onDismiss,
-                      tooltip: _label('收起数学键盘'),
-                      icon: const Icon(Icons.keyboard_hide),
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(
-                height: 44,
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: SingleChildScrollView(
-                        controller: _categoryScrollController,
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: SizedBox(
+                        width: toolbarConstraints.maxWidth < 408
+                            ? 408
+                            : toolbarConstraints.maxWidth,
                         child: Row(
                           children: [
-                            for (final category in _categoryOrder)
-                              Padding(
-                                key: _categoryKeys[category],
-                                padding: const EdgeInsets.only(right: 6),
-                                child: ChoiceChip(
-                                  label: Text(_label(category)),
-                                  selected: category == _category,
-                                  selectedColor: cs.primaryContainer,
-                                  labelStyle: TextStyle(
-                                    color: category == _category
-                                        ? cs.onPrimaryContainer
-                                        : cs.onSurfaceVariant,
-                                  ),
-                                  showCheckmark: false,
-                                  materialTapTargetSize:
-                                      MaterialTapTargetSize.padded,
-                                  onSelected: (_) => _selectCategory(category),
-                                ),
+                            _navigate(Icons.chevron_left, '光标左移', 'left'),
+                            _navigate(Icons.chevron_right, '光标右移', 'right'),
+                            _navigate(Icons.arrow_upward, '光标上移 / 切换上层', 'up'),
+                            _navigate(
+                              Icons.arrow_downward,
+                              '光标下移 / 切换下层',
+                              'down',
+                            ),
+                            _navigate(Icons.north_east, '退出当前结构', 'out'),
+                            const Spacer(),
+                            _action(Icons.undo, '撤销', 'undo'),
+                            _action(Icons.redo, '重做', 'redo'),
+                            PopupMenuButton<String>(
+                              tooltip: _label('选择与剪贴板'),
+                              enabled: widget.enabled,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(
+                                minWidth: 36,
+                                minHeight: 36,
                               ),
+                              onSelected: (action) => widget.onCommand(
+                                action == 'selectAll' ? 'command' : 'clipboard',
+                                action,
+                              ),
+                              itemBuilder: (_) => [
+                                for (final entry in {
+                                  'selectAll': _label('全选'),
+                                  'copy': _label('复制 LaTeX'),
+                                  'cut': _label('剪切'),
+                                  'paste': _label('粘贴公式'),
+                                }.entries)
+                                  PopupMenuItem(
+                                    value: entry.key,
+                                    child: Text(entry.value),
+                                  ),
+                              ],
+                              icon: const Icon(Icons.more_horiz, size: 20),
+                            ),
+                            IconButton(
+                              onPressed: widget.onDismiss,
+                              tooltip: _label('收起数学键盘'),
+                              icon: const Icon(Icons.close, size: 20),
+                              padding: EdgeInsets.zero,
+                              visualDensity: VisualDensity.compact,
+                              constraints: const BoxConstraints(
+                                minWidth: 36,
+                                minHeight: 36,
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: widget.onPlot,
+                              tooltip: _label('绘图'),
+                              icon: const Icon(Icons.check, size: 21),
+                              padding: EdgeInsets.zero,
+                              visualDensity: VisualDensity.compact,
+                              constraints: const BoxConstraints(
+                                minWidth: 36,
+                                minHeight: 36,
+                              ),
+                              style: IconButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                foregroundColor: cs.primary,
+                              ),
+                            ),
                           ],
                         ),
                       ),
                     ),
-                    IconButton(
-                      tooltip: _label('全部符号分类'),
-                      icon: const Icon(Icons.apps, size: 20),
-                      onPressed: _showCategoryOrderDialog,
-                    ),
-                  ],
+                  ),
                 ),
               ),
-            ];
-            final compact =
-                constraints.hasBoundedHeight && constraints.maxHeight < 180;
-            final input = compact
-                ? Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ...heading,
-                      _keyArea(keys, pageCount, keysPerPage),
-                    ],
-                  )
-                : _keyArea(keys, pageCount, keysPerPage);
+            );
+            final categoryHeading = SizedBox(
+              height: 40,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      controller: _categoryScrollController,
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Row(
+                        children: [
+                          for (final category in _categoryOrder)
+                            Padding(
+                              key: _categoryKeys[category],
+                              padding: const EdgeInsets.only(right: 4),
+                              child: ChoiceChip(
+                                label: Text(_label(category)),
+                                selected: category == _category,
+                                selectedColor: cs.primaryContainer,
+                                labelStyle: TextStyle(
+                                  color: category == _category
+                                      ? cs.onPrimaryContainer
+                                      : cs.onSurfaceVariant,
+                                  fontSize: 12,
+                                ),
+                                showCheckmark: false,
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                                onSelected: (_) => _selectCategory(category),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: _label('全部符号分类'),
+                    icon: const Icon(Icons.apps, size: 20),
+                    onPressed: _showCategoryOrderDialog,
+                    visualDensity: VisualDensity.compact,
+                    constraints: const BoxConstraints(
+                      minWidth: 36,
+                      minHeight: 36,
+                    ),
+                  ),
+                ],
+              ),
+            );
+            if (constraints.hasBoundedHeight && constraints.maxHeight < 180) {
+              return Column(
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      controller: _keyScrollController,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          toolbar,
+                          categoryHeading,
+                          _keyArea(keys, pageCount, keysPerPage),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            }
             return Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (!compact) ...heading,
+                toolbar,
+                categoryHeading,
                 if (constraints.hasBoundedHeight)
                   Flexible(
                     child: SingleChildScrollView(
                       controller: _keyScrollController,
-                      child: input,
+                      child: _keyArea(keys, pageCount, keysPerPage),
                     ),
                   )
                 else
-                  input,
-                // Navigation remains reachable even when tall keys scroll.
-                SizedBox(
-                  height: 44,
-                  child: Row(
-                    children: [
-                      _navigate(Icons.chevron_left, '光标左移', 'left'),
-                      _navigate(Icons.chevron_right, '光标右移', 'right'),
-                      _navigate(Icons.arrow_upward, '光标上移 / 切换上层', 'up'),
-                      _navigate(Icons.arrow_downward, '光标下移 / 切换下层', 'down'),
-                      _navigate(Icons.north_east, '退出当前结构', 'out'),
-                      const Spacer(),
-                      TextButton(
-                        style: TextButton.styleFrom(
-                          minimumSize: const Size(60, 44),
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                        ),
-                        onPressed: widget.onPlot,
-                        child: Text(_label('绘图')),
-                      ),
-                    ],
-                  ),
-                ),
+                  _keyArea(keys, pageCount, keysPerPage),
               ],
             );
           },
@@ -450,8 +484,8 @@ class _MathKeyboardState extends State<MathKeyboard> {
         .toDouble();
     var height = preferredHeight;
     if (constraints.hasBoundedHeight) {
-      // Reserve room for the heading, footer, page controls, and grid padding.
-      const fixedHeight = 44.0 * 4 + 20;
+      // Reserve room for the compact toolbars and page controls.
+      const fixedHeight = 40.0 * 2 + 44 + 20;
       final rowCount = _category == '希腊字母' ? 5 : 4;
       final rowHeight = (constraints.maxHeight - fixedHeight) / rowCount;
       height = height < rowHeight
@@ -711,7 +745,9 @@ class _MathKeyboardState extends State<MathKeyboard> {
   Widget _navigate(IconData icon, String label, String direction) => IconButton(
     icon: Icon(icon, size: 20),
     tooltip: _label(label),
-    constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+    padding: EdgeInsets.zero,
+    visualDensity: VisualDensity.compact,
+    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
     onPressed: widget.enabled
         ? () => widget.onCommand('navigate', direction)
         : null,
@@ -720,7 +756,9 @@ class _MathKeyboardState extends State<MathKeyboard> {
   Widget _action(IconData icon, String label, String command) => IconButton(
     icon: Icon(icon, size: 20),
     tooltip: _label(label),
-    constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+    padding: EdgeInsets.zero,
+    visualDensity: VisualDensity.compact,
+    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
     onPressed: widget.enabled
         ? () => widget.onCommand('command', command)
         : null,

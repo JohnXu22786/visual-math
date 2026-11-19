@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -21,6 +22,9 @@ class MathFormulaField extends StatefulWidget {
   final String Function(String sourceText)? labelResolver;
   final Widget Function(BuildContext context, String message)? errorBuilder;
   final bool allowModeSwitch;
+
+  /// Whether to show the math-mode switch while mathematical input is active.
+  final bool showModeSwitch;
   final VoidCallback? onRevert;
   final VoidCallback? onReadyChanged;
   final VoidCallback? onCaretChanged;
@@ -43,6 +47,7 @@ class MathFormulaField extends StatefulWidget {
     this.errorBuilder,
     this.showWebView = true,
     this.allowModeSwitch = true,
+    this.showModeSwitch = true,
     this.onRevert,
     this.onReadyChanged,
     this.onCaretChanged,
@@ -603,7 +608,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
     final cs = Theme.of(context).colorScheme;
     final mathematicalMode = widget.mathematical;
     final usesFallback = _usesFallback;
-    final toggle = !widget.allowModeSwitch
+    final toggle = !widget.allowModeSwitch || !widget.showModeSwitch
         ? const SizedBox.shrink()
         : IconButton(
             icon: Icon(
@@ -644,19 +649,29 @@ class MathFormulaFieldState extends State<MathFormulaField>
                         ? GestureDetector(
                             behavior: HitTestBehavior.opaque,
                             onTap: activate,
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Padding(
-                                padding: const EdgeInsets.all(8),
-                                child: Math.tex(
-                                  widget.controller.text.isEmpty
-                                      ? r'\square'
-                                      : widget.controller.text,
-                                  textStyle: TextStyle(
-                                    fontSize: 18,
-                                    color: cs.onSurface,
+                            child: ScrollConfiguration(
+                              behavior: ScrollConfiguration.of(context)
+                                  .copyWith(
+                                    dragDevices: {
+                                      PointerDeviceKind.touch,
+                                      PointerDeviceKind.mouse,
+                                      PointerDeviceKind.trackpad,
+                                    },
                                   ),
-                                  onErrorFallback: (_) => Text(widget.label),
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(8),
+                                  child: Math.tex(
+                                    widget.controller.text.isEmpty
+                                        ? r'\square'
+                                        : widget.controller.text,
+                                    textStyle: TextStyle(
+                                      fontSize: 18,
+                                      color: cs.onSurface,
+                                    ),
+                                    onErrorFallback: (_) => Text(widget.label),
+                                  ),
                                 ),
                               ),
                             ),

@@ -19,6 +19,18 @@ Widget _buildTestApp({String? initialExpression}) {
   );
 }
 
+Future<void> _chooseFormulaAction(
+  WidgetTester tester,
+  int rowIndex,
+  String action,
+) async {
+  await tester.ensureVisible(find.byTooltip('公式操作').at(rowIndex));
+  await tester.tap(find.byTooltip('公式操作').at(rowIndex));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(action).last);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   editorInteractionTests();
@@ -59,7 +71,7 @@ void main() {
         await tester.tap(find.byTooltip('添加公式'));
         await tester.pump();
         await tester.enterText(find.byType(TextField).at(1), '2*A*x');
-        await tester.tap(find.byTooltip('绘制').first);
+        await _chooseFormulaAction(tester, 1, '绘制');
         await tester.pumpAndSettle();
         expect(controls(tester).parameters.keys, ['A']);
         final original = canvas(tester).curvePoints;
@@ -90,7 +102,7 @@ void main() {
       (tester) async {
         await tester.pumpWidget(_buildTestApp(initialExpression: 'A*x'));
         await tester.pumpAndSettle();
-        await tester.tap(find.byTooltip('绘制'));
+        await _chooseFormulaAction(tester, 0, '绘制');
         await tester.pumpAndSettle();
         controls(tester).onChanged(
           'A',
@@ -100,7 +112,7 @@ void main() {
         await tester.pump();
         await tester.enterText(find.byType(TextField), 'A*x+2');
         await tester.pump();
-        await tester.tap(find.byTooltip('绘制'));
+        await _chooseFormulaAction(tester, 0, '绘制');
         await tester.pumpAndSettle();
         final parameter = controls(tester).parameters['A']!;
         expect(
@@ -110,11 +122,11 @@ void main() {
         final point = canvas(tester).curvePoints.first;
         expect(point['y'], closeTo(2.5 * point['x']! + 2, 1e-9));
 
-        await tester.tap(find.byTooltip('隐藏公式'));
+        await _chooseFormulaAction(tester, 0, '隐藏公式');
         await tester.pumpAndSettle();
         expect(find.byType(MathParameterControls), findsNothing);
         expect(canvas(tester).curvePoints, isEmpty);
-        await tester.tap(find.byTooltip('显示公式'));
+        await _chooseFormulaAction(tester, 0, '显示公式');
         await tester.pumpAndSettle();
         expect(controls(tester).parameters['A']!.value, 2.5);
         expect(controls(tester).parameters['A']!.step, 0.25);
@@ -129,7 +141,7 @@ void main() {
           _buildTestApp(initialExpression: r'x^2+y^2=A+0*e+0*\pi'),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.byTooltip('绘制'));
+        await _chooseFormulaAction(tester, 0, '绘制');
         await tester.pumpAndSettle();
         expect(controls(tester).parameters.keys, ['A']);
         final before = canvas(tester).curvePoints
@@ -149,6 +161,30 @@ void main() {
   });
 
   group('MathDrawingPage - formula input', () {
+    testWidgets('math mode switch is present only while its keyboard is open', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: MathDrawingPage(
+            initialShowWebView: false,
+            initialMathematicalMode: true,
+          ),
+        ),
+      );
+      expect(find.byTooltip('切换到 LaTeX 源码输入'), findsNothing);
+
+      await tester.tap(find.byType(MathFormulaField).first);
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('切换到 LaTeX 源码输入'), findsOneWidget);
+
+      await tester.ensureVisible(find.byTooltip('收起数学键盘'));
+      await tester.tap(find.byTooltip('收起数学键盘'));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('切换到 LaTeX 源码输入'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('checkmark button plots formulas', (tester) async {
       await tester.pumpWidget(_buildTestApp());
       await tester.pump();
@@ -156,7 +192,7 @@ void main() {
       await tester.enterText(find.byType(TextField), 'x^2');
       await tester.pump();
 
-      await tester.tap(find.byIcon(Icons.check_circle_outline));
+      await _chooseFormulaAction(tester, 0, '绘制');
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
@@ -188,7 +224,7 @@ void main() {
       expect(find.byType(TextField), findsNWidgets(2));
 
       // Tap remove on first formula
-      await tester.tap(find.byIcon(Icons.remove_circle_outline).first);
+      await _chooseFormulaAction(tester, 0, '删除公式');
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
@@ -222,11 +258,10 @@ void main() {
       await tester.pump();
 
       // Tap eye to toggle
-      await tester.tap(find.byIcon(Icons.visibility));
-      await tester.pump();
-
-      // Should now show eye-off icon
-      expect(find.byIcon(Icons.visibility_off), findsOneWidget);
+      await _chooseFormulaAction(tester, 0, '隐藏公式');
+      await tester.tap(find.byTooltip('公式操作').first);
+      await tester.pumpAndSettle();
+      expect(find.text('显示公式'), findsOneWidget);
     });
 
     testWidgets('plotting across tabs keeps formulas alive', (tester) async {
@@ -238,7 +273,7 @@ void main() {
       await tester.pump();
 
       // Plot it
-      await tester.tap(find.byIcon(Icons.check_circle_outline));
+      await _chooseFormulaAction(tester, 0, '绘制');
       await tester.pumpAndSettle();
 
       // Switch to 3D tab
@@ -265,7 +300,7 @@ void main() {
 
       await tester.enterText(find.byType(TextField), 'x ^^ 2');
       await tester.pump();
-      await tester.tap(find.byIcon(Icons.check_circle_outline));
+      await _chooseFormulaAction(tester, 0, '绘制');
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
 
@@ -275,86 +310,31 @@ void main() {
   });
 
   group('MathDrawingPage - UI spacing', () {
-    // Helpers to measure the formula row's action buttons (the IconButtons
-    // inside the row that contains the formula TextField, excluding the
-    // TextField's own undo suffix icon.
-    List<Rect> rowButtonRects(WidgetTester tester, {int rowIndex = 0}) {
-      final row = find
-          .ancestor(
-            of: find.byType(TextField).at(rowIndex),
-            matching: find.byType(Row),
-          )
-          .first;
-      bool isMeasuredActionButton(Widget widget) {
-        if (widget is! IconButton || widget.icon is! Icon) return false;
-        return ![
-          Icons.undo,
-          Icons.calculate_outlined,
-          Icons.keyboard,
-        ].contains((widget.icon as Icon).icon);
-      }
-
-      final buttons = find.descendant(
-        of: row,
-        matching: find.byWidgetPredicate(isMeasuredActionButton),
-      );
-      return [
-        for (var i = 0; i < buttons.evaluate().length; i++)
-          tester.getRect(buttons.at(i)),
-      ];
-    }
-
-    Rect textFieldRect(WidgetTester tester, {int rowIndex = 0}) {
-      return tester.getRect(find.byType(TextField).at(rowIndex));
-    }
-
-    void expectUniformSpacing(
-      WidgetTester tester, {
-      required int rowIndex,
-      required double gap,
-    }) {
-      final tfRect = textFieldRect(tester, rowIndex: rowIndex);
-      final rects = rowButtonRects(tester, rowIndex: rowIndex);
-      expect(rects, isNotEmpty);
-
-      // Input -> first action button
-      expect(
-        rects.first.left - tfRect.right,
-        closeTo(gap, 0.01),
-        reason: 'Gap between text field and first action button',
-      );
-
-      // Every action button is a compact 24x24 block
-      for (final r in rects) {
-        expect(
-          r.width,
-          closeTo(24, 0.01),
-          reason: 'Action button should be 24 wide (compact block)',
-        );
-        expect(
-          r.height,
-          closeTo(24, 0.01),
-          reason: 'Action button should be 24 tall (compact block)',
-        );
-      }
-
-      // Uniform gaps between consecutive buttons
-      for (var i = 0; i < rects.length - 1; i++) {
-        expect(
-          rects[i + 1].left - rects[i].right,
-          closeTo(gap, 0.01),
-          reason: 'Gap between consecutive action buttons should be uniform',
-        );
-      }
-    }
-
     testWidgets(
-      'action buttons are compact 24x24 blocks with uniform 12px gaps',
+      'formula row keeps one overflow action and gives the field room',
       (tester) async {
+        tester.view.physicalSize = const Size(320, 640);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
         await tester.pumpWidget(_buildTestApp());
         await tester.pump();
 
-        expectUniformSpacing(tester, rowIndex: 0, gap: 12);
+        final action = find.byTooltip('公式操作');
+        expect(action, findsOneWidget);
+        expect(tester.getSize(find.byType(TextField)).width, greaterThan(180));
+        expect(
+          find.descendant(
+            of: find
+                .ancestor(
+                  of: find.byType(TextField),
+                  matching: find.byType(Row),
+                )
+                .first,
+            matching: find.byTooltip('公式操作'),
+          ),
+          findsOneWidget,
+        );
       },
     );
   });
@@ -380,6 +360,7 @@ void editorInteractionTests() {
       final editor = platform.activeEditors.single.controller;
       editor.emit({'type': 'focus', 'revision': 0});
       await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byTooltip('收起数学键盘'));
       await tester.tap(find.byTooltip('收起数学键盘'));
       await tester.pumpAndSettle();
 
@@ -389,14 +370,19 @@ void editorInteractionTests() {
     },
   );
 
-  testWidgets('switching a lower source row to math mode keeps it visible', (
-    tester,
-  ) async {
+  testWidgets('activating a lower math row keeps it visible', (tester) async {
     tester.view.physicalSize = const Size(320, 480);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    await tester.pumpWidget(_buildTestApp());
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: MathDrawingPage(
+          initialShowWebView: false,
+          initialMathematicalMode: true,
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
 
     for (var i = 1; i < 6; i++) {
@@ -407,7 +393,7 @@ void editorInteractionTests() {
     final lastField = find.byType(MathFormulaField).last;
     await tester.ensureVisible(lastField);
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('切换到数学键盘（内置公式预览）').last);
+    await tester.tap(lastField);
     await tester.pumpAndSettle();
 
     final formulaViewport = tester.getRect(find.byType(ListView).first);
@@ -449,11 +435,11 @@ void editorInteractionTests() {
           .toList();
       final gate = Completer<void>();
       platform.activeEditors.first.controller.snapshotGate = gate.future;
-      await tester.tap(find.byIcon(Icons.remove_circle_outline).first);
+      await _chooseFormulaAction(tester, 0, '删除公式');
       await tester.pumpAndSettle();
       await tester.tap(find.text('删除').last);
       await tester.pumpAndSettle();
-      await tester.tap(find.byIcon(Icons.remove_circle_outline).last);
+      await _chooseFormulaAction(tester, 2, '删除公式');
       await tester.pumpAndSettle();
       gate.complete();
       await tester.pumpAndSettle();
@@ -474,11 +460,11 @@ void editorInteractionTests() {
     final platform = await _delayedEditors(tester, rows: 2);
     final gate = Completer<void>();
     platform.activeEditors.first.controller.snapshotGate = gate.future;
-    await tester.tap(find.byIcon(Icons.remove_circle_outline).first);
+    await _chooseFormulaAction(tester, 0, '删除公式');
     await tester.pumpAndSettle();
     await tester.tap(find.text('删除').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.byIcon(Icons.remove_circle_outline).last);
+    await _chooseFormulaAction(tester, 1, '删除公式');
     await tester.pumpAndSettle();
     await tester.tap(find.text('删除').last);
     await tester.pumpAndSettle();
@@ -512,6 +498,7 @@ void editorInteractionTests() {
     await tester.tap(matrices);
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
+    await tester.ensureVisible(find.byTooltip('收起数学键盘'));
     await tester.tap(find.byTooltip('收起数学键盘'));
     await tester.pump();
   });
@@ -541,7 +528,7 @@ void editorInteractionTests() {
     await tester.pump();
     await tester.tap(find.byType(MathFormulaField).last);
     await tester.pump();
-    await tester.tap(find.byIcon(Icons.remove_circle_outline).first);
+    await _chooseFormulaAction(tester, 0, '删除公式');
     await tester.pumpAndSettle();
     await tester.tap(find.text('删除').last);
     await tester.pumpAndSettle();
@@ -552,6 +539,8 @@ void editorInteractionTests() {
     await tester.tap(find.text('3D'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('2D'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(MathFormulaField).first);
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('切换到 LaTeX 源码输入'));
     await tester.pumpAndSettle();
