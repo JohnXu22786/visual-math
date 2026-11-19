@@ -67,12 +67,12 @@ void main() {
       '退出当前结构',
       '撤销',
       '重做',
-      '选择与剪贴板',
       '收起数学键盘',
       '绘图',
     ].map((label) => tester.getRect(find.byTooltip(label))).toList();
 
     expect(toolbar.map((rect) => rect.center.dy).toSet(), hasLength(1));
+    expect(find.byTooltip('选择与剪贴板').hitTestable(), findsOneWidget);
     expect(find.text('绘图'), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -93,7 +93,6 @@ void main() {
       '退出当前结构',
       '撤销',
       '重做',
-      '选择与剪贴板',
       '收起数学键盘',
       '绘图',
     ];
@@ -105,6 +104,7 @@ void main() {
       expect(rect.left, greaterThanOrEqualTo(keyboard.left), reason: label);
       expect(rect.right, lessThanOrEqualTo(keyboard.right), reason: label);
     }
+    expect(find.byTooltip('选择与剪贴板').hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

@@ -300,12 +300,6 @@ class _MathKeyboardState extends State<MathKeyboard> {
               height: 40,
               child: LayoutBuilder(
                 builder: (context, toolbarConstraints) {
-                  final viewportWidth = toolbarConstraints.maxWidth < 360
-                      ? 408.0
-                      : toolbarConstraints.maxWidth;
-                  final contentWidth = viewportWidth < 408
-                      ? 408.0
-                      : viewportWidth;
                   return Semantics(
                     label: '${widget.activeLabel} · ${widget.location}',
                     child: ScrollConfiguration(
@@ -319,96 +313,54 @@ class _MathKeyboardState extends State<MathKeyboard> {
                       child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: SizedBox(
-                          width: viewportWidth,
-                          height: 40,
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: SizedBox(
-                              width: contentWidth,
-                              height: 40,
-                              child: Row(
-                                children: [
-                                  _navigate(Icons.chevron_left, '光标左移', 'left'),
-                                  _navigate(
-                                    Icons.chevron_right,
-                                    '光标右移',
-                                    'right',
-                                  ),
-                                  _navigate(
-                                    Icons.arrow_upward,
-                                    '光标上移 / 切换上层',
-                                    'up',
-                                  ),
-                                  _navigate(
-                                    Icons.arrow_downward,
-                                    '光标下移 / 切换下层',
-                                    'down',
-                                  ),
-                                  _navigate(Icons.north_east, '退出当前结构', 'out'),
-                                  const Spacer(),
-                                  _action(Icons.undo, '撤销', 'undo'),
-                                  _action(Icons.redo, '重做', 'redo'),
-                                  PopupMenuButton<String>(
-                                    tooltip: _label('选择与剪贴板'),
-                                    enabled: widget.enabled,
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(
-                                      minWidth: 36,
-                                      minHeight: 36,
-                                    ),
-                                    onSelected: (action) => widget.onCommand(
-                                      action == 'selectAll'
-                                          ? 'command'
-                                          : 'clipboard',
-                                      action,
-                                    ),
-                                    itemBuilder: (_) => [
-                                      for (final entry in {
-                                        'selectAll': _label('全选'),
-                                        'copy': _label('复制 LaTeX'),
-                                        'cut': _label('剪切'),
-                                        'paste': _label('粘贴公式'),
-                                      }.entries)
-                                        PopupMenuItem(
-                                          value: entry.key,
-                                          child: Text(entry.value),
-                                        ),
-                                    ],
-                                    icon: const Icon(
-                                      Icons.more_horiz,
-                                      size: 20,
-                                    ),
-                                  ),
-                                  IconButton(
-                                    onPressed: widget.onDismiss,
-                                    tooltip: _label('收起数学键盘'),
-                                    icon: const Icon(Icons.close, size: 20),
-                                    padding: EdgeInsets.zero,
-                                    visualDensity: VisualDensity.compact,
-                                    constraints: const BoxConstraints(
-                                      minWidth: 36,
-                                      minHeight: 36,
-                                    ),
-                                  ),
-                                  IconButton(
-                                    onPressed: widget.onPlot,
-                                    tooltip: _label('绘图'),
-                                    icon: const Icon(Icons.check, size: 21),
-                                    padding: EdgeInsets.zero,
-                                    visualDensity: VisualDensity.compact,
-                                    constraints: const BoxConstraints(
-                                      minWidth: 36,
-                                      minHeight: 36,
-                                    ),
-                                    style: IconButton.styleFrom(
-                                      backgroundColor: Colors.transparent,
-                                      foregroundColor: cs.primary,
-                                    ),
-                                  ),
-                                ],
+                          width: toolbarConstraints.maxWidth < 368
+                              ? 368
+                              : toolbarConstraints.maxWidth,
+                          child: Row(
+                            children: [
+                              _navigate(Icons.chevron_left, '光标左移', 'left'),
+                              _navigate(Icons.chevron_right, '光标右移', 'right'),
+                              _navigate(
+                                Icons.arrow_upward,
+                                '光标上移 / 切换上层',
+                                'up',
                               ),
-                            ),
+                              _navigate(
+                                Icons.arrow_downward,
+                                '光标下移 / 切换下层',
+                                'down',
+                              ),
+                              _navigate(Icons.north_east, '退出当前结构', 'out'),
+                              const Spacer(),
+                              _action(Icons.undo, '撤销', 'undo'),
+                              _action(Icons.redo, '重做', 'redo'),
+                              IconButton(
+                                onPressed: widget.onDismiss,
+                                tooltip: _label('收起数学键盘'),
+                                icon: const Icon(Icons.close, size: 20),
+                                padding: EdgeInsets.zero,
+                                visualDensity: VisualDensity.compact,
+                                constraints: const BoxConstraints(
+                                  minWidth: 36,
+                                  minHeight: 36,
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: widget.onPlot,
+                                tooltip: _label('绘图'),
+                                icon: const Icon(Icons.check, size: 21),
+                                padding: EdgeInsets.zero,
+                                visualDensity: VisualDensity.compact,
+                                constraints: const BoxConstraints(
+                                  minWidth: 36,
+                                  minHeight: 36,
+                                ),
+                                style: IconButton.styleFrom(
+                                  backgroundColor: Colors.transparent,
+                                  foregroundColor: cs.primary,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -451,6 +403,32 @@ class _MathKeyboardState extends State<MathKeyboard> {
                         ],
                       ),
                     ),
+                  ),
+                  PopupMenuButton<String>(
+                    tooltip: _label('选择与剪贴板'),
+                    enabled: widget.enabled,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: 36,
+                      minHeight: 36,
+                    ),
+                    onSelected: (action) => widget.onCommand(
+                      action == 'selectAll' ? 'command' : 'clipboard',
+                      action,
+                    ),
+                    itemBuilder: (_) => [
+                      for (final entry in {
+                        'selectAll': _label('全选'),
+                        'copy': _label('复制 LaTeX'),
+                        'cut': _label('剪切'),
+                        'paste': _label('粘贴公式'),
+                      }.entries)
+                        PopupMenuItem(
+                          value: entry.key,
+                          child: Text(entry.value),
+                        ),
+                    ],
+                    icon: const Icon(Icons.more_horiz, size: 20),
                   ),
                   IconButton(
                     tooltip: _label('全部符号分类'),
