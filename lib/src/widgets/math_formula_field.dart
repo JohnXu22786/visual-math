@@ -595,6 +595,11 @@ class MathFormulaFieldState extends State<MathFormulaField>
     }
   }
 
+  Future<void> switchToSourceMode() async {
+    if (!widget.mathematical) return;
+    await _toggle();
+  }
+
   @override
   void dispose() {
     widget.controller.removeListener(_sourceChanged);

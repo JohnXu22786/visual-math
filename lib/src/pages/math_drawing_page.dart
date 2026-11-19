@@ -1598,7 +1598,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                 case 'math_keyboard':
                   _openMathKeyboard(f);
                 case 'source_mode':
-                  _setMode(false, f);
+                  unawaited(f.editorKey.currentState?.switchToSourceMode());
               }
             },
             itemBuilder: (context) => [
