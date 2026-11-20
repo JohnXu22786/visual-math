@@ -1,0 +1,20 @@
+name: visual_math_sdk_consumer
+description: Independent host example for the Visual Math display API.
+publish_to: none
+
+environment:
+  sdk: '>=3.13.7 <4.0.0'
+  flutter: '>=3.47.8'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  visual_math:
+    path: ../..
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
