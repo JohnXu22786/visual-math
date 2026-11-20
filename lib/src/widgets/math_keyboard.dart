@@ -27,6 +27,7 @@ class MathKeyboard extends StatefulWidget {
   /// provided by the parent. The default matches a typical phone keyboard.
   final double keyScale;
   final String Function(String sourceText)? labelResolver;
+  final String? plotLabel;
   final Widget Function(BuildContext context, Widget dialog)? dialogBuilder;
   const MathKeyboard({
     super.key,
@@ -42,6 +43,7 @@ class MathKeyboard extends StatefulWidget {
     this.preferenceNamespace = '',
     this.keyScale = 1,
     this.labelResolver,
+    this.plotLabel,
     this.dialogBuilder,
   });
 
@@ -356,6 +358,25 @@ class _MathKeyboardState extends State<MathKeyboard> {
                                 ),
                               _toolbarButton(
                                 IconButton(
+                                  onPressed: widget.onPlot,
+                                  tooltip: widget.plotLabel ?? _label('绘图'),
+                                  icon: const Icon(Icons.check, size: 21),
+                                  padding: EdgeInsets.zero,
+                                  visualDensity: VisualDensity.standard,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 36,
+                                    minHeight: 36,
+                                  ),
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    foregroundColor: cs.primary,
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                ),
+                              ),
+                              _toolbarButton(
+                                IconButton(
                                   onPressed: widget.onDismiss,
                                   tooltip: _label('收起数学键盘'),
                                   icon: const Icon(
@@ -369,25 +390,6 @@ class _MathKeyboardState extends State<MathKeyboard> {
                                     minHeight: 36,
                                   ),
                                   style: IconButton.styleFrom(
-                                    tapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                  ),
-                                ),
-                              ),
-                              _toolbarButton(
-                                IconButton(
-                                  onPressed: widget.onPlot,
-                                  tooltip: _label('绘图'),
-                                  icon: const Icon(Icons.check, size: 21),
-                                  padding: EdgeInsets.zero,
-                                  visualDensity: VisualDensity.standard,
-                                  constraints: const BoxConstraints(
-                                    minWidth: 36,
-                                    minHeight: 36,
-                                  ),
-                                  style: IconButton.styleFrom(
-                                    backgroundColor: Colors.transparent,
-                                    foregroundColor: cs.primary,
                                     tapTargetSize:
                                         MaterialTapTargetSize.shrinkWrap,
                                   ),

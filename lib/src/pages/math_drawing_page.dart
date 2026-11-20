@@ -635,13 +635,6 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   // Formula management
   // ==================================================================
 
-  bool get _canPlot {
-    return _formulas.any((f) {
-      final text = f.controller.text.trim();
-      return text != f.committedText;
-    });
-  }
-
   /// Plot all visible formulas that have changes.
   Future<void> _plotAll() async {
     final view = _currentView;
@@ -1332,6 +1325,9 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       onDismiss: _dismissKeyboard,
       onCancel: _cancelCurrentFormulaEdit,
       onPlot: _plotAll,
+      plotLabel: widget.options.presentation.labels.resolve(
+        widget.options.presentation.labels.plotFormula,
+      ),
       labelResolver: widget.options.presentation.labels.resolve,
       dialogBuilder: widget.options.presentation.buildDialog,
       persistenceEnabled: widget.options.persistence.enabled,
@@ -1603,10 +1599,6 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                   _toggleVisibility(index);
                 case 'domain':
                   _editDomain(f, index);
-                case 'plot':
-                  _plotAll();
-                case 'delete':
-                  _confirmRemove(f);
                 case 'math_keyboard':
                   _openMathKeyboard(f);
                 case 'source_mode':
@@ -1658,32 +1650,6 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                   title: Text('设置定义域'),
                 ),
               ),
-              PopupMenuItem(
-                value: 'plot',
-                enabled: _canPlot,
-                child: ListTile(
-                  dense: true,
-                  leading: Icon(Icons.check),
-                  title: Text(
-                    widget.options.presentation.labels.resolve(
-                      widget.options.presentation.labels.plotFormula,
-                    ),
-                  ),
-                ),
-              ),
-              if (_formulas.length > 1)
-                PopupMenuItem(
-                  value: 'delete',
-                  child: ListTile(
-                    dense: true,
-                    leading: Icon(Icons.delete_outline, color: cs.error),
-                    title: Text(
-                      widget.options.presentation.labels.resolve(
-                        widget.options.presentation.labels.removeFormulaTooltip,
-                      ),
-                    ),
-                  ),
-                ),
             ],
           ),
         ],

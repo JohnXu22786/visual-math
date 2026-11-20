@@ -14,17 +14,27 @@ Widget _app(MathWorkspaceOptions options) => MaterialApp(
   ),
 );
 
-Future<void> _selectFormulaAction(
-  WidgetTester tester,
-  String action, {
-  int rowIndex = 0,
-}) async {
-  await tester.ensureVisible(find.byTooltip('公式操作').at(rowIndex));
-  await tester.tap(find.byTooltip('公式操作').at(rowIndex));
-  await tester.pumpAndSettle();
-  await tester.tap(find.text(action).last);
-  await tester.pumpAndSettle();
-}
+Widget _testDeleteActions(
+  BuildContext context,
+  Widget defaultContent,
+  MathWorkspaceRegionActions actions,
+) => Row(
+  mainAxisSize: MainAxisSize.min,
+  children: [
+    defaultContent,
+    IconButton(
+      tooltip: 'Host plot',
+      onPressed: actions.plot,
+      icon: const Icon(Icons.check),
+    ),
+    for (var index = 0; index < actions.formulaCount; index++)
+      IconButton(
+        tooltip: 'Host delete ${index + 1}',
+        onPressed: () => actions.removeFormula(index),
+        icon: const Icon(Icons.delete),
+      ),
+  ],
+);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -373,7 +383,10 @@ void main() {
     expect(find.bySemanticsLabel(RegExp('Plane')), findsOneWidget);
     await tester.tap(find.byTooltip('公式操作').first);
     await tester.pumpAndSettle();
-    expect(find.text('Plot expression'), findsOneWidget);
+    expect(find.text('Plot expression'), findsNothing);
+    await tester.tap(find.text('打开数学键盘'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Plot expression'), findsOneWidget);
     semantics.dispose();
   });
 
@@ -450,6 +463,7 @@ void main() {
         home: MathDrawingPage(
           options: MathWorkspaceOptions(
             show3D: false,
+            canvas2DActionsBuilder: _testDeleteActions,
             presentation: MathWorkspacePresentation(
               responsiveBreakpoint: 500,
               dialogBuilder: (_, dialog) => Column(
@@ -469,13 +483,14 @@ void main() {
 
     await tester.tap(find.byTooltip('添加公式'));
     await tester.pumpAndSettle();
-    await _selectFormulaAction(tester, '删除公式', rowIndex: 1);
+    await tester.tap(find.byTooltip('Host delete 2'));
     await tester.pumpAndSettle();
     expect(find.text('Host dialog'), findsOneWidget);
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
 
-    await _selectFormulaAction(tester, '绘制');
+    await tester.tap(find.byTooltip('Host plot'));
+    await tester.pumpAndSettle();
 
     expect(find.textContaining('Host error:'), findsOneWidget);
     expect(find.byType(MathCanvas), findsOneWidget);

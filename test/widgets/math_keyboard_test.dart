@@ -115,6 +115,12 @@ void main() {
     final left = tester.getRect(find.byTooltip('光标左移'));
     final right = tester.getRect(find.byTooltip('光标右移'));
     expect(right.left - left.right, closeTo(2, 0.1));
+    final cancel = tester.getRect(find.byTooltip('丢弃未提交更改'));
+    final apply = tester.getRect(find.byTooltip('绘图'));
+    final hide = tester.getRect(find.byTooltip('收起数学键盘'));
+    expect(apply.left - cancel.right, closeTo(2, 0.1));
+    expect(hide.left, greaterThan(apply.right));
+    expect(keyboard.right - hide.right, closeTo(1, 0.1));
     expect(find.byTooltip('全选、复制、剪切与粘贴').hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

@@ -36,6 +36,49 @@ Future<void> _chooseFormulaAction(
   await tester.pumpAndSettle();
 }
 
+Future<void> _plotWithKeyboard(WidgetTester tester, int rowIndex) async {
+  final apply = find.byTooltip('绘制');
+  if (apply.evaluate().isEmpty) {
+    await tester.ensureVisible(find.byTooltip('公式操作').at(rowIndex));
+    await tester.tap(find.byTooltip('公式操作').at(rowIndex));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('打开数学键盘'));
+    await tester.pumpAndSettle();
+  }
+  await tester.ensureVisible(apply);
+  await tester.tap(apply);
+  await tester.pumpAndSettle();
+  final hide = find.byTooltip('收起数学键盘');
+  if (hide.evaluate().isNotEmpty) {
+    await tester.tap(hide);
+    await tester.pumpAndSettle();
+  }
+  await tester.tap(find.byTooltip('公式操作').at(rowIndex));
+  await tester.pumpAndSettle();
+  final sourceMode = find.text('切换到 LaTeX 输入');
+  if (sourceMode.evaluate().isNotEmpty) {
+    await tester.tap(sourceMode);
+    await tester.pumpAndSettle();
+  }
+}
+
+Widget _testDeleteActions(
+  BuildContext context,
+  Widget defaultContent,
+  MathWorkspaceRegionActions actions,
+) => Row(
+  mainAxisSize: MainAxisSize.min,
+  children: [
+    defaultContent,
+    for (var index = 0; index < actions.formulaCount; index++)
+      IconButton(
+        tooltip: '测试删除公式 ${index + 1}',
+        onPressed: () => actions.removeFormula(index),
+        icon: const Icon(Icons.delete),
+      ),
+  ],
+);
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   editorInteractionTests();
@@ -68,7 +111,7 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.enterText(find.byType(TextField).first, 'x^2');
-      await _chooseFormulaAction(tester, 0, '绘制');
+      await _plotWithKeyboard(tester, 0);
       await tester.pumpAndSettle();
 
       final menu = find.byTooltip('更多画布工具与定积分面积');
@@ -100,7 +143,7 @@ void main() {
         await tester.tap(find.byTooltip('添加公式'));
         await tester.pump();
         await tester.enterText(find.byType(TextField).at(1), '2*A*x');
-        await _chooseFormulaAction(tester, 1, '绘制');
+        await _plotWithKeyboard(tester, 1);
         await tester.pumpAndSettle();
         expect(controls(tester).parameters.keys, ['A']);
         final original = canvas(tester).curvePoints;
@@ -131,7 +174,7 @@ void main() {
       (tester) async {
         await tester.pumpWidget(_buildTestApp(initialExpression: 'A*x'));
         await tester.pumpAndSettle();
-        await _chooseFormulaAction(tester, 0, '绘制');
+        await _plotWithKeyboard(tester, 0);
         await tester.pumpAndSettle();
         controls(tester).onChanged(
           'A',
@@ -141,7 +184,7 @@ void main() {
         await tester.pump();
         await tester.enterText(find.byType(TextField), 'A*x+2');
         await tester.pump();
-        await _chooseFormulaAction(tester, 0, '绘制');
+        await _plotWithKeyboard(tester, 0);
         await tester.pumpAndSettle();
         final parameter = controls(tester).parameters['A']!;
         expect(
@@ -170,7 +213,7 @@ void main() {
           _buildTestApp(initialExpression: r'x^2+y^2=A+0*e+0*\pi'),
         );
         await tester.pumpAndSettle();
-        await _chooseFormulaAction(tester, 0, '绘制');
+        await _plotWithKeyboard(tester, 0);
         await tester.pumpAndSettle();
         expect(controls(tester).parameters.keys, ['A']);
         final before = canvas(tester).curvePoints
@@ -289,7 +332,7 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.enterText(find.byType(TextField).first, 'x^2');
-      await _chooseFormulaAction(tester, 0, '绘制');
+      await _plotWithKeyboard(tester, 0);
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).first, 'x^3');
       await tester.pump();
@@ -320,7 +363,7 @@ void main() {
       await tester.enterText(find.byType(TextField), 'x^2');
       await tester.pump();
 
-      await _chooseFormulaAction(tester, 0, '绘制');
+      await _plotWithKeyboard(tester, 0);
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
@@ -340,31 +383,18 @@ void main() {
       expect(find.byType(TextField), findsNWidgets(2));
     });
 
-    testWidgets('remove button with confirmation removes formula', (
+    testWidgets('formula menu keeps row controls without plot or delete', (
       tester,
     ) async {
       await tester.pumpWidget(_buildTestApp());
       await tester.pump();
 
-      // Add a second formula
-      await tester.tap(find.byIcon(Icons.add));
-      await tester.pump();
-      expect(find.byType(TextField), findsNWidgets(2));
-
-      // Tap remove on first formula
-      await _chooseFormulaAction(tester, 0, '删除公式');
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
-
-      // Confirmation dialog should appear
-      expect(find.text('删除'), findsWidgets);
-
-      // Confirm deletion
-      await tester.tap(find.text('删除').last);
-      await tester.pump();
-
-      // Now 1 formula should remain
-      expect(find.byType(TextField), findsOneWidget);
+      await tester.tap(find.byTooltip('公式操作').first);
+      await tester.pumpAndSettle();
+      expect(find.text('设置定义域'), findsOneWidget);
+      expect(find.text('隐藏公式'), findsOneWidget);
+      expect(find.text('绘制'), findsNothing);
+      expect(find.text('删除公式'), findsNothing);
     });
 
     testWidgets('add button only on first row', (tester) async {
@@ -401,7 +431,7 @@ void main() {
       await tester.pump();
 
       // Plot it
-      await _chooseFormulaAction(tester, 0, '绘制');
+      await _plotWithKeyboard(tester, 0);
       await tester.pumpAndSettle();
 
       // Switch to 3D tab
@@ -428,7 +458,11 @@ void main() {
 
       await tester.enterText(find.byType(TextField), 'x ^^ 2');
       await tester.pump();
-      await _chooseFormulaAction(tester, 0, '绘制');
+      await tester.tap(find.byTooltip('公式操作').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('打开数学键盘'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('绘制'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
 
@@ -508,6 +542,9 @@ void editorInteractionTests() {
         home: MathDrawingPage(
           initialShowWebView: false,
           initialMathematicalMode: true,
+          options: MathWorkspaceOptions(
+            canvas2DActionsBuilder: _testDeleteActions,
+          ),
         ),
       ),
     );
@@ -563,11 +600,11 @@ void editorInteractionTests() {
           .toList();
       final gate = Completer<void>();
       platform.activeEditors.first.controller.snapshotGate = gate.future;
-      await _chooseFormulaAction(tester, 0, '删除公式');
+      await tester.tap(find.byTooltip('测试删除公式 1'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('删除').last);
       await tester.pumpAndSettle();
-      await _chooseFormulaAction(tester, 2, '删除公式');
+      await tester.tap(find.byTooltip('测试删除公式 3'));
       await tester.pumpAndSettle();
       gate.complete();
       await tester.pumpAndSettle();
@@ -588,11 +625,11 @@ void editorInteractionTests() {
     final platform = await _delayedEditors(tester, rows: 2);
     final gate = Completer<void>();
     platform.activeEditors.first.controller.snapshotGate = gate.future;
-    await _chooseFormulaAction(tester, 0, '删除公式');
+    await tester.tap(find.byTooltip('测试删除公式 1'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('删除').last);
     await tester.pumpAndSettle();
-    await _chooseFormulaAction(tester, 1, '删除公式');
+    await tester.tap(find.byTooltip('测试删除公式 2'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('删除').last);
     await tester.pumpAndSettle();
@@ -614,6 +651,9 @@ void editorInteractionTests() {
         home: MathDrawingPage(
           initialShowWebView: false,
           initialMathematicalMode: true,
+          options: MathWorkspaceOptions(
+            canvas2DActionsBuilder: _testDeleteActions,
+          ),
         ),
       ),
     );
@@ -638,6 +678,9 @@ void editorInteractionTests() {
         home: MathDrawingPage(
           initialShowWebView: false,
           initialMathematicalMode: true,
+          options: MathWorkspaceOptions(
+            canvas2DActionsBuilder: _testDeleteActions,
+          ),
         ),
       ),
     );
@@ -656,7 +699,7 @@ void editorInteractionTests() {
     await tester.pump();
     await tester.tap(find.byType(MathFormulaField).last);
     await tester.pump();
-    await _chooseFormulaAction(tester, 0, '删除公式');
+    await tester.tap(find.byTooltip('测试删除公式 1'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('删除').last);
     await tester.pumpAndSettle();
@@ -685,6 +728,9 @@ void editorInteractionTests() {
         home: MathDrawingPage(
           initialShowWebView: false,
           initialMathematicalMode: true,
+          options: MathWorkspaceOptions(
+            canvas2DActionsBuilder: _testDeleteActions,
+          ),
         ),
       ),
     );
@@ -715,7 +761,14 @@ Future<_DelayedEditorPlatform> _delayedEditors(
     () => InAppWebViewPlatform.instance = original ?? _DelayedEditorPlatform(),
   );
   await tester.pumpWidget(
-    const MaterialApp(home: MathDrawingPage(initialMathematicalMode: true)),
+    MaterialApp(
+      home: MathDrawingPage(
+        initialMathematicalMode: true,
+        options: MathWorkspaceOptions(
+          canvas2DActionsBuilder: _testDeleteActions,
+        ),
+      ),
+    ),
   );
   for (var i = 1; i < rows; i++) {
     await tester.tap(find.byIcon(Icons.add));
