@@ -81,6 +81,43 @@ void main() {
   });
 
   group('MathCanvas - initial state', () {
+    testWidgets('initial plot reports coordinates before ready', (
+      tester,
+    ) async {
+      final events = <String>[];
+      List<Map<String, double>>? points;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MathCanvas(
+            initialExpression: 'x',
+            onCoordinateUpdate: (value) {
+              points = value;
+              events.add('coordinates');
+            },
+            onReady: () => events.add('ready'),
+          ),
+        ),
+      );
+      expect(points, isNotEmpty);
+      expect(events, ['coordinates', 'ready']);
+    });
+
+    testWidgets('invalid initial expression reports error and becomes ready', (
+      tester,
+    ) async {
+      final events = <String>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MathCanvas(
+            initialExpression: 'x ^^ 2',
+            onError: (_) => events.add('error'),
+            onReady: () => events.add('ready'),
+          ),
+        ),
+      );
+      expect(events, ['error', 'ready']);
+    });
+
     testWidgets('canvas is ready callback fires', (tester) async {
       bool ready = false;
       await tester.pumpWidget(
