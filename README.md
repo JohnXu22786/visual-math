@@ -318,6 +318,8 @@ requirements described below; it is not the canvas used by
 
 ## Platform behavior
 
+For the v0.3 validation snapshot and current limitations, see the [platform validation record](docs/roadmap/v0.3-platform-validation.md).
+
 The example's release builds passed CI on Linux x64, Web, Android APK, Windows
 x64, macOS x64 and ARM64, and unsigned iOS ARM64. These are build results; they
 do not claim identical runtime behavior on each target.
