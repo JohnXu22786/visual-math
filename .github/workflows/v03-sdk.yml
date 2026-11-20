@@ -37,6 +37,9 @@ jobs:
           cache: true
       - name: Resolve package dependencies
         run: flutter pub get
+      - name: Resolve consumer dependencies for package analysis
+        working-directory: examples/sdk_consumer
+        run: flutter pub get
       - name: Analyze package
         run: flutter analyze --fatal-warnings --fatal-infos
       - name: Test package
