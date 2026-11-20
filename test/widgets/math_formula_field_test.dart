@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart' as foundation;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
@@ -22,6 +23,50 @@ Future<void> _withTargetPlatformOverride(
 }
 
 void main() {
+  testWidgets('long formula previews drag horizontally with a mouse', (
+    tester,
+  ) async {
+    final source = TextEditingController(text: List.filled(24, 'x').join('+'));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 180,
+              child: MathFormulaField(
+                controller: source,
+                showWebView: false,
+                mathematical: true,
+                label: '公式 1',
+                onModeChanged: (_) {},
+                onActivate: () {},
+                onChanged: () {},
+                onSubmitted: () {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final scrollable = find.byWidgetPredicate(
+      (widget) =>
+          widget is Scrollable && widget.axisDirection == AxisDirection.right,
+    );
+    final position = tester.state<ScrollableState>(scrollable).position;
+    expect(position.maxScrollExtent, greaterThan(0));
+    await tester.drag(
+      scrollable,
+      const Offset(-100, 0),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pumpAndSettle();
+    expect(position.pixels, greaterThan(0));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    source.dispose();
+  });
+
   testWidgets(
     'math input row keeps the regular source height for a tall rendered formula',
     (tester) async {

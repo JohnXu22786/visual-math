@@ -248,6 +248,29 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     widget.onMathematicalModeChanged?.call(mathematical);
   }
 
+  void _openMathKeyboard(_FormulaState formula) {
+    _setMode(true, formula);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(formula.editorKey.currentState?.activate());
+    });
+  }
+
+  void _revertFormula(_FormulaState formula) {
+    if (formula.controller.text == formula.committedText) return;
+    formula.controller.text = formula.committedText;
+    setState(() {});
+    _syncController();
+    final index = _formulas.indexOf(formula);
+    if (index >= 0) {
+      widget.controller?.onFormulaEdited?.call(index, formula.controller.text);
+    }
+  }
+
+  void _cancelCurrentFormulaEdit() {
+    final formula = _activeFormula;
+    if (formula != null) _revertFormula(formula);
+  }
+
   void _ensureFormulaVisible(_FormulaState formula) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final rowContext = formula.rowKey.currentContext;
@@ -611,13 +634,6 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   // ==================================================================
   // Formula management
   // ==================================================================
-
-  bool get _canPlot {
-    return _formulas.any((f) {
-      final text = f.controller.text.trim();
-      return text != f.committedText;
-    });
-  }
 
   /// Plot all visible formulas that have changes.
   Future<void> _plotAll() async {
@@ -1177,13 +1193,23 @@ class _MathDrawingPageState extends State<MathDrawingPage>
             (constraints.maxHeight - (hasViewSelector ? 48 : 0))
                 .clamp(0.0, double.infinity)
                 .toDouble();
+        final shortScreen = availableHeight < 560;
         final formulaListBaseHeight =
             availableHeight *
             (_keyboardVisible
-                ? (compact ? 0.24 : 0.28)
+                ? (shortScreen
+                      ? 0.28
+                      : compact
+                      ? 0.22
+                      : 0.25)
                 : (compact ? 0.32 : 0.4));
         final keyboardBaseHeight = _keyboardVisible
-            ? availableHeight * (compact ? 0.5 : 0.56)
+            ? availableHeight *
+                  (shortScreen
+                      ? 0.46
+                      : compact
+                      ? 0.48
+                      : 0.52)
             : 0.0;
         final keyboardMaxHeight = keyboardBaseHeight;
 
@@ -1201,7 +1227,10 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                 widget.options.formulaEditorBuilder != null ||
                 widget.options.parameterControlsBuilder != null)
               ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: formulaListBaseHeight),
+                constraints: BoxConstraints(
+                  maxHeight: formulaListBaseHeight,
+                  minHeight: 0,
+                ),
                 child: _buildFormulaPanel(cs),
               ),
             Expanded(child: _buildAvailableCanvases(cs)),
@@ -1294,7 +1323,11 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       ),
       onCommand: _sendEditorCommand,
       onDismiss: _dismissKeyboard,
+      onCancel: _cancelCurrentFormulaEdit,
       onPlot: _plotAll,
+      plotLabel: widget.options.presentation.labels.resolve(
+        widget.options.presentation.labels.plotFormula,
+      ),
       labelResolver: widget.options.presentation.labels.resolve,
       dialogBuilder: widget.options.presentation.buildDialog,
       persistenceEnabled: widget.options.persistence.enabled,
@@ -1525,6 +1558,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
               controller: f.controller,
               mathematical: _mathMode,
               allowModeSwitch: true,
+              showModeSwitch: _keyboardVisible,
               showWebView: widget.initialShowWebView,
               label: widget.options.presentation.labels.withIndex(
                 widget.options.presentation.labels.formulaLabel,
@@ -1550,97 +1584,75 @@ class _MathDrawingPageState extends State<MathDrawingPage>
               onCaretChanged: () {
                 if (mounted && _activeFormula == f) setState(() {});
               },
-              onRevert: hasChanged
-                  ? () {
-                      f.controller.text = f.committedText;
-                      setState(() {});
-                    }
-                  : null,
+              onRevert: hasChanged ? () => _revertFormula(f) : null,
             ),
           ),
 
-          // ---- Action buttons ----
-          // Each action button carries a uniform 12px leading gap. This also
-          // matches the left-side gap between the color circle and the input.
-          _buildActionButton(
-            icon: Icons.tune,
-            iconSize: 18,
-            color: cs.onSurfaceVariant,
-            tooltip: '设置定义域',
-            onPressed: () => _editDomain(f, index),
-          ),
-          _buildActionButton(
-            icon: f.visible ? Icons.visibility : Icons.visibility_off,
-            iconSize: 20,
-            color: f.visible ? cs.onSurface : cs.onSurfaceVariant,
-            tooltip: f.visible
-                ? widget.options.presentation.labels.resolve(
-                    widget.options.presentation.labels.hideFormula,
-                  )
-                : widget.options.presentation.labels.resolve(
-                    widget.options.presentation.labels.showFormula,
+          PopupMenuButton<String>(
+            tooltip: '公式操作',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+            icon: const Icon(Icons.more_horiz),
+            onSelected: (action) {
+              switch (action) {
+                case 'visibility':
+                  _toggleVisibility(index);
+                case 'domain':
+                  _editDomain(f, index);
+                case 'math_keyboard':
+                  _openMathKeyboard(f);
+                case 'source_mode':
+                  unawaited(f.editorKey.currentState?.switchToSourceMode());
+              }
+            },
+            itemBuilder: (context) => [
+              if (!_mathMode &&
+                  (widget.options.showKeyboard ||
+                      widget.options.keyboardBuilder != null))
+                const PopupMenuItem(
+                  value: 'math_keyboard',
+                  child: ListTile(
+                    dense: true,
+                    leading: Icon(Icons.keyboard),
+                    title: Text('打开数学键盘'),
                   ),
-            onPressed: () => _toggleVisibility(index),
-          ),
-
-          // ---- Remove formula (X) button ----
-          if (_formulas.length > 1)
-            _buildActionButton(
-              icon: Icons.remove_circle_outline,
-              iconSize: 16,
-              color: cs.error.withValues(alpha: 0.7),
-              tooltip: widget.options.presentation.labels.resolve(
-                widget.options.presentation.labels.removeFormulaTooltip,
+                ),
+              if (_mathMode && !_keyboardVisible)
+                const PopupMenuItem(
+                  value: 'source_mode',
+                  child: ListTile(
+                    dense: true,
+                    leading: Icon(Icons.code),
+                    title: Text('切换到 LaTeX 输入'),
+                  ),
+                ),
+              PopupMenuItem(
+                value: 'visibility',
+                child: ListTile(
+                  dense: true,
+                  leading: Icon(
+                    f.visible ? Icons.visibility_off : Icons.visibility,
+                  ),
+                  title: Text(
+                    widget.options.presentation.labels.resolve(
+                      f.visible
+                          ? widget.options.presentation.labels.hideFormula
+                          : widget.options.presentation.labels.showFormula,
+                    ),
+                  ),
+                ),
               ),
-              onPressed: () => _confirmRemove(f),
-            ),
-
-          // ---- Plot (✓) button ----
-          _buildActionButton(
-            icon: Icons.check_circle_outline,
-            iconSize: 20,
-            color: hasChanged
-                ? cs.primary
-                : cs.onSurface.withValues(alpha: 0.2),
-            tooltip: widget.options.presentation.labels.resolve(
-              widget.options.presentation.labels.plotFormula,
-            ),
-            onPressed: _canPlot ? _plotAll : null,
+              const PopupMenuItem(
+                value: 'domain',
+                child: ListTile(
+                  dense: true,
+                  leading: Icon(Icons.tune),
+                  title: Text('设置定义域'),
+                ),
+              ),
+            ],
           ),
         ],
-      ),
-    );
-  }
-
-  /// A compact 24x24 action button for a formula row, with a uniform 12px
-  /// leading gap.
-  ///
-  /// Uses [MaterialTapTargetSize.shrinkWrap] + `fixedSize` instead of the
-  /// `constraints` parameter: with Material 3, `constraints` is translated
-  /// into the style's minimum/maximum size, while the button's outer block
-  /// is padded up to the tap-target minimum (48dp minus the visual-density
-  /// adjustment), so a `constraints`-only 24x24 still occupies a 40x40
-  /// block and silently widens the right side of every formula row.
-  Widget _buildActionButton({
-    required IconData icon,
-    required double iconSize,
-    required Color color,
-    required String tooltip,
-    required VoidCallback? onPressed,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 12),
-      child: IconButton(
-        icon: Icon(icon, size: iconSize, color: color),
-        tooltip: tooltip,
-        onPressed: onPressed,
-        padding: EdgeInsets.zero,
-        visualDensity: VisualDensity.compact,
-        style: IconButton.styleFrom(
-          minimumSize: const Size(24, 24),
-          fixedSize: const Size(24, 24),
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
       ),
     );
   }
@@ -1653,14 +1665,9 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     final defaultActions = _workspaceRegion(
       widget.options.canvas2DActionsBuilder,
       widget.options.show2DCanvasActions
-          ? Column(
+          ? Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _floatingControl(
-                  icon: Icons.area_chart,
-                  tooltip: '定积分与面积',
-                  onPressed: _showDefiniteIntegralDialog,
-                ),
                 _floatingControl(
                   icon: Icons.filter_center_focus,
                   tooltip: widget.options.presentation.labels.resolve(
@@ -1702,6 +1709,21 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                       _canvasKey.currentState?.zoomOut();
                     }
                   },
+                ),
+                PopupMenuButton<String>(
+                  tooltip: '更多画布工具与定积分面积',
+                  icon: const Icon(Icons.more_vert),
+                  onSelected: (_) => _showDefiniteIntegralDialog(),
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: 'area',
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(Icons.area_chart),
+                        title: Text('定积分与面积'),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             )
@@ -2494,6 +2516,8 @@ class _DomainEditorDialogState extends State<_DomainEditorDialog> {
       GlobalKey<MathFormulaFieldState>();
   late final TextEditingController _lower;
   late final TextEditingController _upper;
+  late final String _initialLower;
+  late final String _initialUpper;
   late bool _mathematical;
   late bool _includeLower;
   late bool _includeUpper;
@@ -2505,6 +2529,8 @@ class _DomainEditorDialogState extends State<_DomainEditorDialog> {
     super.initState();
     _lower = TextEditingController(text: widget.lowerExpression);
     _upper = TextEditingController(text: widget.upperExpression);
+    _initialLower = widget.lowerExpression;
+    _initialUpper = widget.upperExpression;
     _mathematical = widget.mathematical;
     _includeLower = widget.includeLower;
     _includeUpper = widget.includeUpper;
@@ -2533,6 +2559,11 @@ class _DomainEditorDialogState extends State<_DomainEditorDialog> {
     _editingLower = true;
     _keyboardVisible = _mathematical;
   });
+
+  void _cancelEndpointEdit() {
+    final controller = _editingLower ? _lower : _upper;
+    controller.text = _editingLower ? _initialLower : _initialUpper;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2751,6 +2782,7 @@ class _DomainEditorDialogState extends State<_DomainEditorDialog> {
                         },
                         onDismiss: () =>
                             setState(() => _keyboardVisible = false),
+                        onCancel: _cancelEndpointEdit,
                         onPlot: _apply,
                       ),
                     ),

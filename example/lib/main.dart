@@ -291,6 +291,7 @@ class HostOwnedCompositionPage extends StatefulWidget {
 
 class _HostOwnedCompositionPageState extends State<HostOwnedCompositionPage> {
   final _formulaController = TextEditingController(text: 'a*x + b');
+  String _committedFormula = 'a*x + b';
   final _formulaKey = GlobalKey<MathFormulaFieldState>();
   final _canvasKey = GlobalKey<MathCanvasState>();
   Map<String, MathParameter> _parameters = {
@@ -325,6 +326,7 @@ class _HostOwnedCompositionPageState extends State<HostOwnedCompositionPage> {
     }
     final names = parsed.parameters.where((name) => name != 'x' && name != 'y');
     setState(() {
+      _committedFormula = source;
       _error = null;
       _parameters = {
         for (final name in names) name: _parameters[name] ?? MathParameter(),
@@ -350,6 +352,10 @@ class _HostOwnedCompositionPageState extends State<HostOwnedCompositionPage> {
   void _changeParameter(String name, MathParameter parameter) {
     setState(() => _parameters = {..._parameters, name: parameter});
     _plot();
+  }
+
+  void _cancelFormulaEdit() {
+    _formulaController.text = _committedFormula;
   }
 
   @override
@@ -401,6 +407,7 @@ class _HostOwnedCompositionPageState extends State<HostOwnedCompositionPage> {
             supportsStructuredEditing: false,
             onCommand: _command,
             onDismiss: () {},
+            onCancel: _cancelFormulaEdit,
             onPlot: _plot,
             persistenceEnabled: false,
           ),
