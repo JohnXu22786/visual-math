@@ -408,3 +408,10 @@ This package is licensed under the GNU Affero General Public License v3.0 only
 the same license. See [NOTICE.md](NOTICE.md) for source revisions and the
 history-transfer boundary. Vendored MathLive assets retain their upstream
 license files.
+
+### v0.3 embedded display contract
+
+The supported embedded 2D and 3D surface, ownership rules and limitations are
+specified in [the v0.3 SDK contract](docs/roadmap/v0.3-sdk-contract.md). A
+separate host app using the public import is in
+[`examples/sdk_consumer`](examples/sdk_consumer/README.md).
