@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.4
+
+- Maintenance release for the 0.1 version line.
+
 ## 0.1.3
 
 - Show characteristic point options as enabled by default, including before a formula is plotted.
