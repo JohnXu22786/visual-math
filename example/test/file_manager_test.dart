@@ -54,7 +54,10 @@ void main() {
     await tester.enterText(find.byType(SearchBar), 'Beta');
     await tester.pumpAndSettle();
     expect(find.text('Alpha'), findsNothing);
-    expect(find.byWidgetPredicate((w) => w is Text && w.data == 'Beta'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate((w) => w is Text && w.data == 'Beta'),
+      findsOneWidget,
+    );
     await tester.enterText(find.byType(SearchBar), '');
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('网格视图'));
