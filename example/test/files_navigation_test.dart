@@ -47,7 +47,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(home: ExampleMenu(documentStorage: storage)),
     );
-    await tester.tap(find.text('Customized workspace'));
+    await tester.tap(find.text('2D 绘图'));
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
@@ -63,10 +63,10 @@ void main() {
     await tester.tap(find.text('继续'));
     await tester.pump();
     expect(storage.document.name, 'New graph');
-    expect(storage.document.drawing.formulas.single.rawExpression, 'x^2');
+    expect(storage.document.drawing.formulas.single.rawExpression, isEmpty);
     await tester.pageBack();
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Files'));
+    await tester.tap(find.text('文件').last);
     await tester.pumpAndSettle();
     expect(find.text('New graph'), findsOneWidget);
     debugDefaultTargetPlatformOverride = null;
@@ -96,7 +96,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(home: ExampleMenu(documentStorage: storage)),
     );
-    await tester.tap(find.text('Files'));
+    await tester.tap(find.text('文件').last);
     await tester.pumpAndSettle();
     expect(find.text('Saved graph'), findsOneWidget);
     await tester.tap(find.text('Saved graph'));
