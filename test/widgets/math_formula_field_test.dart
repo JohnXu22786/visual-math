@@ -235,6 +235,107 @@ void main() {
     },
   );
 
+  testWidgets('recreated MathLive editor initializes and accepts commands', (
+    tester,
+  ) async {
+    final originalPlatform = InAppWebViewPlatform.instance;
+    final platform = _EditorPlatform();
+    InAppWebViewPlatform.instance = platform;
+    addTearDown(
+      () =>
+          InAppWebViewPlatform.instance = originalPlatform ?? _EditorPlatform(),
+    );
+    final source = TextEditingController(text: 'x');
+    final key = GlobalKey<MathFormulaFieldState>();
+    Widget app(bool showWebView) => MaterialApp(
+      home: Scaffold(
+        body: MathFormulaField(
+          key: key,
+          controller: source,
+          showWebView: showWebView,
+          mathematical: true,
+          onModeChanged: (_) {},
+          onActivate: () {},
+          onChanged: () {},
+          onSubmitted: () {},
+          label: '公式 1',
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(app(true));
+    final first = platform.editor!;
+    final firstController = first
+        .controllerFromPlatform<InAppWebViewController>(first.controller);
+    first.params.onWebViewCreated!(firstController);
+    first.params.onLoadStop!(firstController, null);
+    await tester.pump();
+    first.controller.sendMessage({'type': 'ready', 'revision': -1});
+    await tester.pumpAndSettle();
+    expect(key.currentState!.ready, isTrue);
+    final state = key.currentState;
+    final stalledCommand = Completer<void>();
+    first.controller.evaluationBlocker = stalledCommand;
+    first.controller.evaluationResponse = {
+      'revision': key.currentState!.revision,
+      'latex': 'stale result',
+      'edited': true,
+      'sequence': 1,
+    };
+    final oldCommand = key.currentState!.command('insert', '+old');
+    await tester.pump();
+
+    await tester.pumpWidget(app(false));
+    expect(key.currentState, same(state));
+    expect(key.currentState!.ready, isTrue);
+    stalledCommand.complete();
+    await oldCommand;
+    expect(source.text, 'x');
+    await key.currentState!.command('insert', '+fallback');
+    expect(source.text, 'x+fallback');
+
+    await tester.pumpWidget(app(true));
+    final replacement = platform.editor!;
+    expect(replacement, isNot(same(first)));
+    final replacementController = replacement
+        .controllerFromPlatform<InAppWebViewController>(replacement.controller);
+    replacement.params.onWebViewCreated!(replacementController);
+    replacement.params.onLoadStop!(replacementController, null);
+    await tester.pump();
+    expect(key.currentState!.ready, isFalse);
+
+    first.controller.sendMessage({'type': 'ready', 'revision': -1});
+    await tester.pump();
+    expect(key.currentState!.ready, isFalse);
+
+    replacement.controller.sendMessage({'type': 'ready', 'revision': -1});
+    await tester.pumpAndSettle();
+    expect(key.currentState!.ready, isTrue);
+    expect(
+      replacement.controller.scripts.where(
+        (script) =>
+            script.contains('setSource') && script.contains('x+fallback'),
+      ),
+      hasLength(1),
+    );
+    expect(
+      replacement.controller.scripts.where(
+        (script) => script.contains('.theme('),
+      ),
+      hasLength(1),
+    );
+    await key.currentState!.command('insert', '+native');
+    expect(
+      replacement.controller.scripts.where(
+        (script) => script.contains('.command('),
+      ),
+      hasLength(1),
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    source.dispose();
+  });
+
   testWidgets('initial synchronization uses the latest source revision', (
     tester,
   ) async {
@@ -1135,6 +1236,7 @@ class _EditorController extends PlatformInAppWebViewController {
   String? cutSelectionResponse;
   String? blockedEvaluationSource;
   Completer<void>? evaluationBlocker;
+  dynamic evaluationResponse;
   JavaScriptHandlerCallback? _javascriptHandler;
   _EditorController()
     : super.implementation(
@@ -1153,7 +1255,7 @@ class _EditorController extends PlatformInAppWebViewController {
       await evaluationBlocker!.future;
     }
     if (source.contains('cutSelection')) return cutSelectionResponse;
-    return null;
+    return evaluationResponse;
   }
 
   @override
