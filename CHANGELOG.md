@@ -2,7 +2,9 @@
 
 ## 0.1.4
 
-- Maintenance release for the 0.1 version line.
+- Add derivative analysis, definite integral tools, and host-driven SDK controls with initial 3D scene inputs.
+- Improve workspace layout, math keyboard controls, and characteristic point defaults.
+- Refresh the example app and consumer documentation.
 
 ## 0.1.3
 

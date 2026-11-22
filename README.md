@@ -133,10 +133,67 @@ Scaffold(
 )
 ```
 
+A host can update a graph from its own numeric controls. `setExpression`
+accepts parameter values, while `setViewport` controls the visible bounds:
+
+```dart
+final graphKey = GlobalKey<MathCanvasState>();
+
+MathCanvas(key: graphKey, initialExpression: '2*x + 1');
+
+// Call from the host's slider or form callback:
+graphKey.currentState?.setExpression('a*x + b', {
+  'a': slope,
+  'b': intercept,
+});
+```
+
 For a 3D-only screen, use `MathCanvas3D()` in the same way. Its canvas
 supports the package's built-in pointer interactions; add `Math3DToolbar` or
 your own controls when the user needs construction tools. The two examples are
 also runnable from the repository's `example/` app.
+
+The host can provide its own starting scene and camera, then update them
+through the canvas state while it is mounted. `onSceneUpdated` returns an
+immutable copy of the scene after user edits; the existing no-argument
+`onSceneChanged` callback remains available:
+
+```dart
+final canvasKey = GlobalKey<MathCanvas3DState>();
+
+MathCanvas3D(
+  key: canvasKey,
+  initialObjects: const [
+    Object3D.point(Point3D(1, 2, 3), label: 'P'),
+  ],
+  initialCamera: const Camera3D(distance: 12),
+  onSceneUpdated: (objects) => saveScene(objects),
+);
+
+// In response to values from the host's own controls:
+canvasKey.currentState?.setObjects(nextObjects);
+canvasKey.currentState?.setCamera(nextCamera);
+```
+
+### Compose host-owned formula controls
+
+The `example/` app includes a **Host-owned controls demo** reachable from its
+Graphs screen. It combines `MathFormulaField`, `MathKeyboard`,
+`MathParameterControls`, and `MathCanvas` without `MathDrawingPage`. The host
+owns and disposes the formula `TextEditingController`, owns parameter values,
+and connects widget callbacks to `MathFormulaFieldState.command` and
+`MathCanvasState.setFormulas`. `MathFormulaField.onChanged` and the parameter
+control callback replot from the current host values; the keyboard's `onPlot`
+callback uses the same path. The example disables the keyboard's optional
+category-order persistence.
+
+For the same wiring, keep the controller and parameter map in a host `State`,
+then pass those values into the controls. A formula field's `onChanged` reports
+editing changes; `MathKeyboard.onCommand` forwards its `(kind, value)` pair to
+the mounted formula field state; `MathParameterControls.onChanged` returns the
+updated named `MathParameter`; and `MathCanvasState.setFormulas` replaces the
+plotted entries. The host should dispose controllers it created; Flutter
+manages the lifecycle of widget state associated with its `GlobalKey`s.
 
 ### Customize the complete workspace
 
