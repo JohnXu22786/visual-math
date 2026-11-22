@@ -318,7 +318,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('设置定义域'));
+    await tester.tap(find.byTooltip('公式操作').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('设置定义域').last);
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('包含左端点；点击改为开区间'));
     await tester.pumpAndSettle();

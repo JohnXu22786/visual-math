@@ -8,9 +8,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/math_3d_object.dart';
 import '../models/math_3d_scene.dart';
 import '../models/math_3d_tool.dart';
+import '../models/definite_integral.dart';
 import '../models/math_drawing_controller.dart';
 import '../models/math_drawing_state.dart';
-import '../models/math_expression.dart' show MathExpression;
+import '../models/math_expression.dart' show MathExpression, MathExpressionType;
+import '../models/math_local_analysis.dart';
 import '../models/math_expression_3d.dart';
 import '../models/math_parameter.dart';
 import '../models/formula_entry.dart';
@@ -79,6 +81,9 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   /// All formula rows (each is equal).
   final List<_FormulaState> _formulas = [];
   final ScrollController _formulaScroll = ScrollController();
+  final TextEditingController _analysisXController = TextEditingController(
+    text: '0',
+  );
   _FormulaState? _activeFormula;
   bool _mathMode = true;
   bool _keyboardVisible = false;
@@ -87,6 +92,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   final Map<String, MathParameter> _parameters = {};
   Set<String> _activeParameterNames = {};
   List<FormulaEntry> _plottedFormulas = [];
+  String? _analysisFormulaIdentity;
   String? _plotError;
   List<Object3D> _lastReportedScene = const [];
 
@@ -196,6 +202,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       f.domainMaxController.dispose();
     }
     _formulaScroll.dispose();
+    _analysisXController.dispose();
     _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     widget.controller?.detach();
@@ -239,6 +246,29 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       );
     }
     widget.onMathematicalModeChanged?.call(mathematical);
+  }
+
+  void _openMathKeyboard(_FormulaState formula) {
+    _setMode(true, formula);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(formula.editorKey.currentState?.activate());
+    });
+  }
+
+  void _revertFormula(_FormulaState formula) {
+    if (formula.controller.text == formula.committedText) return;
+    formula.controller.text = formula.committedText;
+    setState(() {});
+    _syncController();
+    final index = _formulas.indexOf(formula);
+    if (index >= 0) {
+      widget.controller?.onFormulaEdited?.call(index, formula.controller.text);
+    }
+  }
+
+  void _cancelCurrentFormulaEdit() {
+    final formula = _activeFormula;
+    if (formula != null) _revertFormula(formula);
   }
 
   void _ensureFormulaVisible(_FormulaState formula) {
@@ -553,8 +583,6 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                 _toolInstruction),
       parameters: {for (final name in parameterNames) name: _parameters[name]!},
       editorReady: editor?.ready ?? _fallbackEditorAvailable,
-      supportsStructuralNavigation:
-          editor?.supportsStructuralNavigation ?? false,
       supportsStructuredEditing: editor?.supportsStructuredEditing ?? false,
       activeFormulaLabel: _activeFormula == null
           ? null
@@ -606,13 +634,6 @@ class _MathDrawingPageState extends State<MathDrawingPage>
   // ==================================================================
   // Formula management
   // ==================================================================
-
-  bool get _canPlot {
-    return _formulas.any((f) {
-      final text = f.controller.text.trim();
-      return text != f.committedText;
-    });
-  }
 
   /// Plot all visible formulas that have changes.
   Future<void> _plotAll() async {
@@ -730,6 +751,12 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         _parameters.putIfAbsent(name, MathParameter.new);
       }
       _plottedFormulas = entries;
+      if (!entries.any((entry) => entry.identity == _analysisFormulaIdentity)) {
+        _analysisFormulaIdentity = entries
+            .where((entry) => entry.parsed?.type == MathExpressionType.explicit)
+            .firstOrNull
+            ?.identity;
+      }
       for (final f in _formulas) {
         f.committedText = f.controller.text.trim();
       }
@@ -780,6 +807,9 @@ class _MathDrawingPageState extends State<MathDrawingPage>
               _resolveDomainEndpoint(entry.domainMaxExpression) == null,
         ),
     ];
+    if (mounted) {
+      setState(() => _plottedFormulas = entries);
+    }
     _canvasKey.currentState?.setFormulas(entries);
   }
 
@@ -1163,13 +1193,23 @@ class _MathDrawingPageState extends State<MathDrawingPage>
             (constraints.maxHeight - (hasViewSelector ? 48 : 0))
                 .clamp(0.0, double.infinity)
                 .toDouble();
+        final shortScreen = availableHeight < 560;
         final formulaListBaseHeight =
             availableHeight *
             (_keyboardVisible
-                ? (compact ? 0.24 : 0.28)
+                ? (shortScreen
+                      ? 0.28
+                      : compact
+                      ? 0.22
+                      : 0.25)
                 : (compact ? 0.32 : 0.4));
         final keyboardBaseHeight = _keyboardVisible
-            ? availableHeight * (compact ? 0.5 : 0.56)
+            ? availableHeight *
+                  (shortScreen
+                      ? 0.46
+                      : compact
+                      ? 0.48
+                      : 0.52)
             : 0.0;
         final keyboardMaxHeight = keyboardBaseHeight;
 
@@ -1187,7 +1227,10 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                 widget.options.formulaEditorBuilder != null ||
                 widget.options.parameterControlsBuilder != null)
               ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: formulaListBaseHeight),
+                constraints: BoxConstraints(
+                  maxHeight: formulaListBaseHeight,
+                  minHeight: 0,
+                ),
                 child: _buildFormulaPanel(cs),
               ),
             Expanded(child: _buildAvailableCanvases(cs)),
@@ -1270,8 +1313,6 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     final editor = _activeEditor;
     return MathKeyboard(
       enabled: editor?.ready ?? _fallbackEditorAvailable,
-      supportsStructuralNavigation:
-          editor?.supportsStructuralNavigation ?? false,
       supportsStructuredEditing: editor?.supportsStructuredEditing ?? false,
       activeLabel: widget.options.presentation.labels.withIndex(
         widget.options.presentation.labels.formulaLabel,
@@ -1282,7 +1323,11 @@ class _MathDrawingPageState extends State<MathDrawingPage>
       ),
       onCommand: _sendEditorCommand,
       onDismiss: _dismissKeyboard,
+      onCancel: _cancelCurrentFormulaEdit,
       onPlot: _plotAll,
+      plotLabel: widget.options.presentation.labels.resolve(
+        widget.options.presentation.labels.plotFormula,
+      ),
       labelResolver: widget.options.presentation.labels.resolve,
       dialogBuilder: widget.options.presentation.buildDialog,
       persistenceEnabled: widget.options.persistence.enabled,
@@ -1513,6 +1558,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
               controller: f.controller,
               mathematical: _mathMode,
               allowModeSwitch: true,
+              showModeSwitch: _keyboardVisible,
               showWebView: widget.initialShowWebView,
               label: widget.options.presentation.labels.withIndex(
                 widget.options.presentation.labels.formulaLabel,
@@ -1538,97 +1584,75 @@ class _MathDrawingPageState extends State<MathDrawingPage>
               onCaretChanged: () {
                 if (mounted && _activeFormula == f) setState(() {});
               },
-              onRevert: hasChanged
-                  ? () {
-                      f.controller.text = f.committedText;
-                      setState(() {});
-                    }
-                  : null,
+              onRevert: hasChanged ? () => _revertFormula(f) : null,
             ),
           ),
 
-          // ---- Action buttons ----
-          // Each action button carries a uniform 12px leading gap. This also
-          // matches the left-side gap between the color circle and the input.
-          _buildActionButton(
-            icon: Icons.tune,
-            iconSize: 18,
-            color: cs.onSurfaceVariant,
-            tooltip: '设置定义域',
-            onPressed: () => _editDomain(f, index),
-          ),
-          _buildActionButton(
-            icon: f.visible ? Icons.visibility : Icons.visibility_off,
-            iconSize: 20,
-            color: f.visible ? cs.onSurface : cs.onSurfaceVariant,
-            tooltip: f.visible
-                ? widget.options.presentation.labels.resolve(
-                    widget.options.presentation.labels.hideFormula,
-                  )
-                : widget.options.presentation.labels.resolve(
-                    widget.options.presentation.labels.showFormula,
+          PopupMenuButton<String>(
+            tooltip: '公式操作',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+            icon: const Icon(Icons.more_horiz),
+            onSelected: (action) {
+              switch (action) {
+                case 'visibility':
+                  _toggleVisibility(index);
+                case 'domain':
+                  _editDomain(f, index);
+                case 'math_keyboard':
+                  _openMathKeyboard(f);
+                case 'source_mode':
+                  unawaited(f.editorKey.currentState?.switchToSourceMode());
+              }
+            },
+            itemBuilder: (context) => [
+              if (!_mathMode &&
+                  (widget.options.showKeyboard ||
+                      widget.options.keyboardBuilder != null))
+                const PopupMenuItem(
+                  value: 'math_keyboard',
+                  child: ListTile(
+                    dense: true,
+                    leading: Icon(Icons.keyboard),
+                    title: Text('打开数学键盘'),
                   ),
-            onPressed: () => _toggleVisibility(index),
-          ),
-
-          // ---- Remove formula (X) button ----
-          if (_formulas.length > 1)
-            _buildActionButton(
-              icon: Icons.remove_circle_outline,
-              iconSize: 16,
-              color: cs.error.withValues(alpha: 0.7),
-              tooltip: widget.options.presentation.labels.resolve(
-                widget.options.presentation.labels.removeFormulaTooltip,
+                ),
+              if (_mathMode && !_keyboardVisible)
+                const PopupMenuItem(
+                  value: 'source_mode',
+                  child: ListTile(
+                    dense: true,
+                    leading: Icon(Icons.code),
+                    title: Text('切换到 LaTeX 输入'),
+                  ),
+                ),
+              PopupMenuItem(
+                value: 'visibility',
+                child: ListTile(
+                  dense: true,
+                  leading: Icon(
+                    f.visible ? Icons.visibility_off : Icons.visibility,
+                  ),
+                  title: Text(
+                    widget.options.presentation.labels.resolve(
+                      f.visible
+                          ? widget.options.presentation.labels.hideFormula
+                          : widget.options.presentation.labels.showFormula,
+                    ),
+                  ),
+                ),
               ),
-              onPressed: () => _confirmRemove(f),
-            ),
-
-          // ---- Plot (✓) button ----
-          _buildActionButton(
-            icon: Icons.check_circle_outline,
-            iconSize: 20,
-            color: hasChanged
-                ? cs.primary
-                : cs.onSurface.withValues(alpha: 0.2),
-            tooltip: widget.options.presentation.labels.resolve(
-              widget.options.presentation.labels.plotFormula,
-            ),
-            onPressed: _canPlot ? _plotAll : null,
+              const PopupMenuItem(
+                value: 'domain',
+                child: ListTile(
+                  dense: true,
+                  leading: Icon(Icons.tune),
+                  title: Text('设置定义域'),
+                ),
+              ),
+            ],
           ),
         ],
-      ),
-    );
-  }
-
-  /// A compact 24x24 action button for a formula row, with a uniform 12px
-  /// leading gap.
-  ///
-  /// Uses [MaterialTapTargetSize.shrinkWrap] + `fixedSize` instead of the
-  /// `constraints` parameter: with Material 3, `constraints` is translated
-  /// into the style's minimum/maximum size, while the button's outer block
-  /// is padded up to the tap-target minimum (48dp minus the visual-density
-  /// adjustment), so a `constraints`-only 24x24 still occupies a 40x40
-  /// block and silently widens the right side of every formula row.
-  Widget _buildActionButton({
-    required IconData icon,
-    required double iconSize,
-    required Color color,
-    required String tooltip,
-    required VoidCallback? onPressed,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 12),
-      child: IconButton(
-        icon: Icon(icon, size: iconSize, color: color),
-        tooltip: tooltip,
-        onPressed: onPressed,
-        padding: EdgeInsets.zero,
-        visualDensity: VisualDensity.compact,
-        style: IconButton.styleFrom(
-          minimumSize: const Size(24, 24),
-          fixedSize: const Size(24, 24),
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
       ),
     );
   }
@@ -1641,7 +1665,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     final defaultActions = _workspaceRegion(
       widget.options.canvas2DActionsBuilder,
       widget.options.show2DCanvasActions
-          ? Column(
+          ? Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 _floatingControl(
@@ -1686,6 +1710,21 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                     }
                   },
                 ),
+                PopupMenuButton<String>(
+                  tooltip: '更多画布工具与定积分面积',
+                  icon: const Icon(Icons.more_vert),
+                  onSelected: (_) => _showDefiniteIntegralDialog(),
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: 'area',
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(Icons.area_chart),
+                        title: Text('定积分与面积'),
+                      ),
+                    ),
+                  ],
+                ),
               ],
             )
           : const SizedBox.shrink(),
@@ -1723,6 +1762,9 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                 child: MathCanvas(
                   key: _canvasKey,
                   initialExpression: null,
+                  localAnalysis: _selectedLocalDerivative,
+                  localAnalysisColor:
+                      _selectedAnalysisFormula?.color ?? Colors.deepOrange,
                   allowTouchGestures: widget
                       .options
                       .presentation
@@ -1740,6 +1782,7 @@ class _MathDrawingPageState extends State<MathDrawingPage>
                   onViewportChange: (_, __, ___, ____) {
                     _syncController();
                     widget.controller?.onViewportChanged?.call(_makeSnapshot());
+                    if (mounted) setState(() {});
                   },
                   onError: (msg) {
                     debugPrint('[MathDrawing] Canvas error: $msg');
@@ -1765,7 +1808,269 @@ class _MathDrawingPageState extends State<MathDrawingPage>
             widget.options.canvas2DOverlayBuilder,
             defaultOverlay,
           ),
+          Positioned(left: 8, top: 8, child: _buildLocalAnalysisPanel(cs)),
         ],
+      ),
+    );
+  }
+
+  List<FormulaEntry> get _analysisFormulas => _plottedFormulas
+      .where(
+        (formula) =>
+            formula.visible &&
+            formula.parsed?.type == MathExpressionType.explicit,
+      )
+      .toList(growable: false);
+
+  FormulaEntry? get _selectedAnalysisFormula {
+    final formulas = _analysisFormulas;
+    for (final formula in formulas) {
+      if (formula.identity == _analysisFormulaIdentity) return formula;
+    }
+    return formulas.firstOrNull;
+  }
+
+  LocalDerivativeResult? get _selectedLocalDerivative {
+    final formula = _selectedAnalysisFormula;
+    final x = double.tryParse(_analysisXController.text.trim());
+    final expression = formula?.parsed;
+    if (formula == null || expression == null || x == null || !x.isFinite) {
+      return null;
+    }
+    final unresolvedDomain =
+        (formula.domainMinExpression.isNotEmpty && formula.domainMin == null) ||
+        (formula.domainMaxExpression.isNotEmpty && formula.domainMax == null);
+    if (unresolvedDomain) {
+      return LocalDerivativeResult(
+        x: x,
+        y: null,
+        derivative: null,
+        secondDerivative: null,
+        status: LocalDerivativeStatus.undefined,
+        step: 0,
+      );
+    }
+    if ((formula.domainMin != null &&
+            (x < formula.domainMin! ||
+                (x == formula.domainMin && !formula.includeDomainMin))) ||
+        (formula.domainMax != null &&
+            (x > formula.domainMax! ||
+                (x == formula.domainMax && !formula.includeDomainMax)))) {
+      return LocalDerivativeResult(
+        x: x,
+        y: null,
+        derivative: null,
+        secondDerivative: null,
+        status: LocalDerivativeStatus.undefined,
+        step: 0,
+      );
+    }
+    return MathLocalAnalysis.derivativeAt(
+      expression,
+      x,
+      domainMin: formula.domainMin,
+      domainMax: formula.domainMax,
+    );
+  }
+
+  Widget _buildLocalAnalysisPanel(ColorScheme colorScheme) {
+    final formulas = _analysisFormulas;
+    final selected = _selectedAnalysisFormula;
+    final result = _selectedLocalDerivative;
+    final panelWidth = dart_math
+        .max(180, dart_math.min(300, MediaQuery.sizeOf(context).width - 32))
+        .toDouble();
+    final unresolvedDomain =
+        selected != null &&
+        ((selected.domainMinExpression.isNotEmpty &&
+                selected.domainMin == null) ||
+            (selected.domainMaxExpression.isNotEmpty &&
+                selected.domainMax == null));
+    final visibleBounds = _canvasKey.currentState?.visibleBounds;
+    final criticalPoints = selected?.parsed == null || unresolvedDomain
+        ? const <LocalCriticalPoint>[]
+        : MathLocalAnalysis.criticalPoints(
+                selected!.parsed!,
+                xMin: dart_math
+                    .max(
+                      _canvasKey.currentState?.viewport.$1 ?? -10,
+                      selected.domainMin ?? double.negativeInfinity,
+                    )
+                    .toDouble(),
+                xMax: dart_math
+                    .min(
+                      _canvasKey.currentState?.viewport.$3 ?? 10,
+                      selected.domainMax ?? double.infinity,
+                    )
+                    .toDouble(),
+              )
+              .where(
+                (point) =>
+                    visibleBounds == null ||
+                    (point.y >= visibleBounds.$2 &&
+                        point.y <= visibleBounds.$4),
+              )
+              .toList();
+    String derivativeDescription() {
+      if (result == null) return '请输入有限的 x 值';
+      return switch (result.status) {
+        LocalDerivativeStatus.estimated =>
+          'f(${result.x}) ≈ ${result.y!.toStringAsPrecision(5)}，f′(${result.x}) ≈ ${result.derivative!.toStringAsPrecision(5)}',
+        LocalDerivativeStatus.undefined => '该点附近函数值未定义或超出定义域',
+        LocalDerivativeStatus.possibleVerticalTangent => '数值样本提示可能存在竖直切线',
+        LocalDerivativeStatus.unstable => '附近采样不稳定，无法可靠估计导数',
+      };
+    }
+
+    String criticalLabel(LocalCriticalPoint point) => switch (point.kind) {
+      LocalCriticalPointKind.localMinimum => '局部极小值',
+      LocalCriticalPointKind.localMaximum => '局部极大值',
+      LocalCriticalPointKind.possibleStationaryInflection => '可能的驻点拐点',
+    };
+
+    return SizedBox(
+      width: panelWidth,
+      child: Card(
+        color: colorScheme.surface.withValues(alpha: 0.96),
+        elevation: 3,
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('导数与局部性质', style: Theme.of(context).textTheme.titleSmall),
+              if (formulas.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    '绘制显式函数后可分析导数与临界点。',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                )
+              else ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: _openLocalAnalysisDialog,
+                    icon: const Icon(Icons.tune, size: 18),
+                    label: const Text('选择函数与分析位置'),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  derivativeDescription(),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                Text(
+                  result?.hasFiniteTangent == true
+                      ? '切线与法线为步长 ${result!.step.toStringAsPrecision(2)} 的数值估计。'
+                      : result?.status ==
+                            LocalDerivativeStatus.possibleVerticalTangent
+                      ? '步长 ${result!.step.toStringAsPrecision(2)} 的样本提示可能存在竖直切线。'
+                      : '导数未能可靠估计，切线与法线不可用。',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                if (criticalPoints.isNotEmpty) ...[
+                  const Divider(height: 12),
+                  Text(
+                    '当前视窗内的采样分类',
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 72),
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        for (final point in criticalPoints)
+                          Text(
+                            '${criticalLabel(point)}：x ≈ ${point.x.toStringAsPrecision(4)}, y ≈ ${point.y.toStringAsPrecision(4)}',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openLocalAnalysisDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, refreshDialog) {
+          final formulas = _analysisFormulas;
+          final selected = _selectedAnalysisFormula;
+          return AlertDialog(
+            title: const Text('导数与局部性质'),
+            content: SizedBox(
+              width: 320,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  DropdownButton<String>(
+                    isExpanded: true,
+                    value: selected?.identity,
+                    items: [
+                      for (final formula in formulas)
+                        DropdownMenuItem(
+                          value: formula.identity,
+                          child: Text(
+                            formula.rawExpression,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                    onChanged: (identity) {
+                      setState(() => _analysisFormulaIdentity = identity);
+                      refreshDialog(() {});
+                    },
+                  ),
+                  Row(
+                    children: [
+                      const Text('x = '),
+                      SizedBox(
+                        width: 120,
+                        child: TextField(
+                          controller: _analysisXController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                            signed: true,
+                          ),
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            hintText: '分析位置',
+                          ),
+                          onChanged: (_) {
+                            setState(() {});
+                            refreshDialog(() {});
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '数值结果显示在画布左上角；切线与法线会同步绘制。',
+                    style: Theme.of(dialogContext).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('完成'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -1807,6 +2112,275 @@ class _MathDrawingPageState extends State<MathDrawingPage>
         ),
       ),
     );
+  }
+
+  Future<void> _showDefiniteIntegralDialog() async {
+    final functions = _plottedFormulas
+        .where(
+          (entry) =>
+              entry.parsed?.isValid == true &&
+              entry.parsed!.type == MathExpressionType.explicit,
+        )
+        .map((entry) {
+          final values = {
+            for (final name in entry.parsed!.parameters)
+              if (_parameters.containsKey(name)) name: _parameters[name]!.value,
+          };
+          final lower = _resolveDomainEndpoint(entry.domainMinExpression);
+          final upper = _resolveDomainEndpoint(entry.domainMaxExpression);
+          return entry.copyWith(
+            parsed: entry.parsed!.withParameters(values),
+            parameterValues: values,
+            domainMin: lower,
+            domainMax: upper,
+            clearDomainMin:
+                entry.domainMinExpression.isNotEmpty && lower == null,
+            clearDomainMax:
+                entry.domainMaxExpression.isNotEmpty && upper == null,
+          );
+        })
+        .toList();
+    if (functions.isEmpty) {
+      _showError('请先绘制至少一个显式函数，再计算定积分。');
+      return;
+    }
+
+    final lowerController = TextEditingController(text: '0');
+    final upperController = TextEditingController(text: '1');
+    var kind = DefiniteIntegralKind.signedIntegral;
+    var firstIndex = 0;
+    var secondIndex = functions.length > 1 ? 1 : 0;
+    DefiniteIntegralResult? result;
+    String? inputError;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final labels = widget.options.presentation.labels;
+          Widget functionPicker(
+            String title,
+            int selected,
+            ValueChanged<int> onChanged,
+          ) => DropdownButtonFormField<int>(
+            initialValue: selected,
+            decoration: InputDecoration(labelText: title),
+            items: [
+              for (var i = 0; i < functions.length; i++)
+                DropdownMenuItem(
+                  value: i,
+                  child: Text(functions[i].rawExpression),
+                ),
+            ],
+            onChanged: (value) {
+              if (value != null) onChanged(value);
+            },
+          );
+
+          return widget.options.presentation.buildDialog(
+            dialogContext,
+            AlertDialog(
+              title: const Text('定积分与面积'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    DropdownButtonFormField<DefiniteIntegralKind>(
+                      initialValue: kind,
+                      decoration: const InputDecoration(labelText: '计算类型'),
+                      items: const [
+                        DropdownMenuItem(
+                          value: DefiniteIntegralKind.signedIntegral,
+                          child: Text('定积分（带符号）'),
+                        ),
+                        DropdownMenuItem(
+                          value: DefiniteIntegralKind.areaUnderCurve,
+                          child: Text('曲线与 x 轴围成的面积'),
+                        ),
+                        DropdownMenuItem(
+                          value: DefiniteIntegralKind.areaBetweenCurves,
+                          child: Text('两曲线之间的面积'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) {
+                          setDialogState(() {
+                            kind = value;
+                            result = null;
+                            inputError = null;
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    functionPicker('函数', firstIndex, (value) {
+                      setDialogState(() {
+                        firstIndex = value;
+                        result = null;
+                      });
+                    }),
+                    if (kind == DefiniteIntegralKind.areaBetweenCurves) ...[
+                      const SizedBox(height: 8),
+                      functionPicker('第二个函数', secondIndex, (value) {
+                        setDialogState(() {
+                          secondIndex = value;
+                          result = null;
+                        });
+                      }),
+                    ],
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: lowerController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                              signed: true,
+                            ),
+                            decoration: const InputDecoration(labelText: '下限'),
+                            onChanged: (_) => setDialogState(() {
+                              result = null;
+                              inputError = null;
+                            }),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: upperController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                              signed: true,
+                            ),
+                            decoration: const InputDecoration(labelText: '上限'),
+                            onChanged: (_) => setDialogState(() {
+                              result = null;
+                              inputError = null;
+                            }),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (inputError != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        inputError!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ],
+                    if (result != null) ...[
+                      const SizedBox(height: 12),
+                      _buildIntegralResult(result!),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text(labels.resolve(labels.cancel)),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final lower = double.tryParse(lowerController.text.trim());
+                    final upper = double.tryParse(upperController.text.trim());
+                    if (lower == null ||
+                        upper == null ||
+                        !lower.isFinite ||
+                        !upper.isFinite ||
+                        upper <= lower) {
+                      setDialogState(() {
+                        inputError = '请输入有限数值，且下限必须小于上限。';
+                        result = null;
+                      });
+                      return;
+                    }
+                    final first = functions[firstIndex];
+                    final second =
+                        kind == DefiniteIntegralKind.areaBetweenCurves
+                        ? functions[secondIndex]
+                        : null;
+                    final domainMessage =
+                        _integralDomainError(first, lower, upper) ??
+                        (second == null
+                            ? null
+                            : _integralDomainError(second, lower, upper));
+                    if (domainMessage != null) {
+                      setDialogState(() {
+                        inputError = domainMessage;
+                        result = null;
+                      });
+                      return;
+                    }
+                    setDialogState(() {
+                      inputError = null;
+                      result = calculateDefiniteIntegral(
+                        function: first.parsed!,
+                        secondFunction: second?.parsed,
+                        parameterValues: first.parameterValues,
+                        secondParameterValues:
+                            second?.parameterValues ?? const {},
+                        kind: kind,
+                        lowerBound: lower,
+                        upperBound: upper,
+                      );
+                    });
+                  },
+                  child: const Text('计算'),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    lowerController.dispose();
+    upperController.dispose();
+  }
+
+  String? _integralDomainError(
+    FormulaEntry formula,
+    double lower,
+    double upper,
+  ) {
+    if (formula.domainMin != null && lower < formula.domainMin!) {
+      return '积分区间超出函数 ${formula.rawExpression} 的定义域。';
+    }
+    if (formula.domainMax != null && upper > formula.domainMax!) {
+      return '积分区间超出函数 ${formula.rawExpression} 的定义域。';
+    }
+    if (formula.domainMin != null &&
+        lower == formula.domainMin &&
+        !formula.includeDomainMin) {
+      return '积分下限位于函数 ${formula.rawExpression} 未包含的定义域端点。';
+    }
+    if (formula.domainMax != null &&
+        upper == formula.domainMax &&
+        !formula.includeDomainMax) {
+      return '积分上限位于函数 ${formula.rawExpression} 未包含的定义域端点。';
+    }
+    return null;
+  }
+
+  Widget _buildIntegralResult(DefiniteIntegralResult result) {
+    final message = switch (result.status) {
+      DefiniteIntegralStatus.converged =>
+        '结果：${result.value!.toStringAsPrecision(10)}\n估计绝对误差：${result.estimatedAbsoluteError.toStringAsPrecision(3)}',
+      DefiniteIntegralStatus.didNotConverge =>
+        !result.estimatedAbsoluteError.isFinite
+            ? '表达式可能包含未采样的间断或未解析的快速振荡，无法确认区间有效性或误差。${result.value == null ? '未提供数值估计。' : '当前数值仅供参考：${result.value!.toStringAsPrecision(10)}'}'
+            : '未达到误差要求。当前估计：${result.value!.toStringAsPrecision(10)}\n估计绝对误差：${result.estimatedAbsoluteError.toStringAsPrecision(3)}',
+      DefiniteIntegralStatus.invalidFunction => '函数在区间内包含无效或非有限取值，无法给出可靠结果。',
+      DefiniteIntegralStatus.numericalOverflow => '积分估计超出可表示的数值范围，无法给出有限结果。',
+      DefiniteIntegralStatus.invalidBounds => '积分上下限无效。',
+      DefiniteIntegralStatus.invalidOptions => '数值积分设置无效。',
+      DefiniteIntegralStatus.invalidExpression => '请选择有效的显式函数。',
+    };
+    return Text(message, style: Theme.of(context).textTheme.bodyMedium);
   }
 
   // ==================================================================
@@ -1942,6 +2516,8 @@ class _DomainEditorDialogState extends State<_DomainEditorDialog> {
       GlobalKey<MathFormulaFieldState>();
   late final TextEditingController _lower;
   late final TextEditingController _upper;
+  late final String _initialLower;
+  late final String _initialUpper;
   late bool _mathematical;
   late bool _includeLower;
   late bool _includeUpper;
@@ -1953,6 +2529,8 @@ class _DomainEditorDialogState extends State<_DomainEditorDialog> {
     super.initState();
     _lower = TextEditingController(text: widget.lowerExpression);
     _upper = TextEditingController(text: widget.upperExpression);
+    _initialLower = widget.lowerExpression;
+    _initialUpper = widget.upperExpression;
     _mathematical = widget.mathematical;
     _includeLower = widget.includeLower;
     _includeUpper = widget.includeUpper;
@@ -1981,6 +2559,11 @@ class _DomainEditorDialogState extends State<_DomainEditorDialog> {
     _editingLower = true;
     _keyboardVisible = _mathematical;
   });
+
+  void _cancelEndpointEdit() {
+    final controller = _editingLower ? _lower : _upper;
+    controller.text = _editingLower ? _initialLower : _initialUpper;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2178,12 +2761,6 @@ class _DomainEditorDialogState extends State<_DomainEditorDialog> {
                                     : _upperEditorKey.currentState)
                                 ?.ready ??
                             false,
-                        supportsStructuralNavigation:
-                            (_editingLower
-                                    ? _lowerEditorKey.currentState
-                                    : _upperEditorKey.currentState)
-                                ?.supportsStructuralNavigation ??
-                            false,
                         supportsStructuredEditing:
                             (_editingLower
                                     ? _lowerEditorKey.currentState
@@ -2205,6 +2782,7 @@ class _DomainEditorDialogState extends State<_DomainEditorDialog> {
                         },
                         onDismiss: () =>
                             setState(() => _keyboardVisible = false),
+                        onCancel: _cancelEndpointEdit,
                         onPlot: _apply,
                       ),
                     ),

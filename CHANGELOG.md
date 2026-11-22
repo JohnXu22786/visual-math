@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.4
+
+- Add derivative analysis, definite integral tools, and host-driven SDK controls with initial 3D scene inputs.
+- Improve workspace layout, math keyboard controls, and characteristic point defaults.
+- Refresh the example app and consumer documentation.
+
 ## 0.1.3
 
 - Show characteristic point options as enabled by default, including before a formula is plotted.

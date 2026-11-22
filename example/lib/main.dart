@@ -149,22 +149,7 @@ class _VisualMathShellState extends State<_VisualMathShell> {
     final content = IndexedStack(index: _selectedIndex, children: pages);
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(titles[_selectedIndex]),
-        actions: _selectedIndex == 0
-            ? [
-                IconButton(
-                  tooltip: widget.isEnglish ? 'Examples' : '示例',
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const ExampleMenu(),
-                    ),
-                  ),
-                  icon: const Icon(Icons.widgets_outlined),
-                ),
-              ]
-            : null,
-      ),
+      appBar: AppBar(title: Text(titles[_selectedIndex])),
       body: Row(
         children: [
           if (wide) ...[
@@ -236,41 +221,198 @@ class _HomeDestination extends StatelessWidget {
   final ValueChanged<bool> onMathematicalModeChanged;
 
   @override
-  Widget build(BuildContext context) => MathDrawingPage(
-    initialMathematicalMode: mathematicalMode,
-    onMathematicalModeChanged: onMathematicalModeChanged,
-    options: MathWorkspaceOptions(
-      persistence: const MathWorkspacePersistence(enabled: false),
-      showScaffold: false,
-      showAppBar: false,
-      presentation: MathWorkspacePresentation(
-        labels: MathWorkspaceLabels(
-          pageTitle: isEnglish ? 'Graphs' : '数学绘图',
-          addFormula: isEnglish ? 'Add formula' : '添加公式',
-          view2D: isEnglish ? 'Graphs' : '图像',
-          view3D: isEnglish ? 'Geometry' : '几何',
-          removeFormulaTitle: isEnglish ? 'Remove formula' : '删除公式',
-          confirmRemoveFormula: isEnglish
-              ? 'Remove formula {index}?'
-              : '确定要删除"公式 {index}"吗？',
-          selectColorTitle: isEnglish ? 'Select color' : '选择颜色',
-          cancel: isEnglish ? 'Cancel' : '取消',
-          removeFormula: isEnglish ? 'Remove' : '删除',
-          removeFormulaTooltip: isEnglish ? 'Remove formula' : '删除公式',
-          hideFormula: isEnglish ? 'Hide formula' : '隐藏公式',
-          showFormula: isEnglish ? 'Show formula' : '显示公式',
-          plotFormula: isEnglish ? 'Plot' : '绘制',
-          fit2DCanvas: isEnglish ? 'Fit graph' : '缩放至适合',
-          zoomIn: isEnglish ? 'Zoom in' : '放大',
-          zoomOut: isEnglish ? 'Zoom out' : '缩小',
-          formulaLabel: isEnglish ? 'Formula {index}' : '公式 {index}',
-          formulaColorLabel: isEnglish
-              ? 'Formula color {index}'
-              : '公式颜色 {index}',
-          translate: isEnglish ? _englishWorkspaceLabel : null,
+  Widget build(BuildContext context) => Column(
+    children: [
+      Align(
+        alignment: Alignment.centerRight,
+        child: TextButton.icon(
+          key: const ValueKey('host-owned-composition'),
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const HostOwnedCompositionPage(),
+            ),
+          ),
+          icon: const Icon(Icons.widgets_outlined),
+          label: Text(isEnglish ? 'Host-owned controls demo' : '宿主控件组合示例'),
         ),
-        responsiveBreakpoint: 720,
       ),
+      Expanded(
+        child: MathDrawingPage(
+          initialMathematicalMode: mathematicalMode,
+          onMathematicalModeChanged: onMathematicalModeChanged,
+          options: MathWorkspaceOptions(
+            persistence: const MathWorkspacePersistence(enabled: false),
+            showScaffold: false,
+            showAppBar: false,
+            presentation: MathWorkspacePresentation(
+              labels: MathWorkspaceLabels(
+                pageTitle: isEnglish ? 'Graphs' : '数学绘图',
+                addFormula: isEnglish ? 'Add formula' : '添加公式',
+                view2D: isEnglish ? 'Graphs' : '图像',
+                view3D: isEnglish ? 'Geometry' : '几何',
+                removeFormulaTitle: isEnglish ? 'Remove formula' : '删除公式',
+                confirmRemoveFormula: isEnglish
+                    ? 'Remove formula {index}?'
+                    : '确定要删除"公式 {index}"吗？',
+                selectColorTitle: isEnglish ? 'Select color' : '选择颜色',
+                cancel: isEnglish ? 'Cancel' : '取消',
+                removeFormula: isEnglish ? 'Remove' : '删除',
+                removeFormulaTooltip: isEnglish ? 'Remove formula' : '删除公式',
+                hideFormula: isEnglish ? 'Hide formula' : '隐藏公式',
+                showFormula: isEnglish ? 'Show formula' : '显示公式',
+                plotFormula: isEnglish ? 'Plot' : '绘制',
+                fit2DCanvas: isEnglish ? 'Fit graph' : '缩放至适合',
+                zoomIn: isEnglish ? 'Zoom in' : '放大',
+                zoomOut: isEnglish ? 'Zoom out' : '缩小',
+                formulaLabel: isEnglish ? 'Formula {index}' : '公式 {index}',
+                formulaColorLabel: isEnglish
+                    ? 'Formula color {index}'
+                    : '公式颜色 {index}',
+                translate: isEnglish ? _englishWorkspaceLabel : null,
+              ),
+              responsiveBreakpoint: 720,
+            ),
+          ),
+        ),
+      ),
+    ],
+  );
+}
+
+/// Demonstrates composing the exported editor, keyboard, parameter controls,
+/// and canvas while this example owns the editing and parameter state.
+class HostOwnedCompositionPage extends StatefulWidget {
+  const HostOwnedCompositionPage({super.key});
+
+  @override
+  State<HostOwnedCompositionPage> createState() =>
+      _HostOwnedCompositionPageState();
+}
+
+class _HostOwnedCompositionPageState extends State<HostOwnedCompositionPage> {
+  final _formulaController = TextEditingController(text: 'a*x + b');
+  String _committedFormula = 'a*x + b';
+  final _formulaKey = GlobalKey<MathFormulaFieldState>();
+  final _canvasKey = GlobalKey<MathCanvasState>();
+  Map<String, MathParameter> _parameters = {
+    'a': MathParameter(value: 1, min: -3, max: 3, step: .1),
+    'b': MathParameter(value: 0, min: -5, max: 5, step: .1),
+  };
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _plot());
+  }
+
+  @override
+  void dispose() {
+    _formulaController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _plot() async {
+    final source = _formulaController.text.trim();
+    final parsed = MathExpression.fromInput(
+      source,
+      parameterValues: {
+        for (final entry in _parameters.entries) entry.key: entry.value.value,
+      },
+    );
+    if (!parsed.isValid) {
+      setState(() => _error = parsed.parseError ?? 'Invalid formula');
+      return;
+    }
+    final names = parsed.parameters.where((name) => name != 'x' && name != 'y');
+    setState(() {
+      _committedFormula = source;
+      _error = null;
+      _parameters = {
+        for (final name in names) name: _parameters[name] ?? MathParameter(),
+      };
+    });
+    await _canvasKey.currentState?.setFormulas([
+      FormulaEntry(
+        rawExpression: source,
+        parsed: parsed,
+        parameterValues: {
+          for (final name in names)
+            name: (_parameters[name] ?? MathParameter()).value,
+        },
+      ),
+    ]);
+  }
+
+  Future<void> _command(String kind, String value) async {
+    await _formulaKey.currentState?.command(kind, value);
+    if (mounted) setState(() {});
+  }
+
+  void _changeParameter(String name, MathParameter parameter) {
+    setState(() => _parameters = {..._parameters, name: parameter});
+    _plot();
+  }
+
+  void _cancelFormulaEdit() {
+    _formulaController.text = _committedFormula;
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Host-owned controls')),
+    body: Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: MathFormulaField(
+                    key: _formulaKey,
+                    controller: _formulaController,
+                    mathematical: false,
+                    showWebView: false,
+                    label: 'Formula',
+                    onModeChanged: (_) {},
+                    onActivate: () {},
+                    onChanged: _plot,
+                    onSubmitted: _plot,
+                  ),
+                ),
+                if (_error case final error?)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Text(
+                      error,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ),
+                MathParameterControls(
+                  parameters: _parameters,
+                  onChanged: _changeParameter,
+                ),
+              ],
+            ),
+          ),
+        ),
+        Expanded(child: MathCanvas(key: _canvasKey)),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 280),
+          child: MathKeyboard(
+            activeLabel: 'Formula',
+            supportsStructuredEditing: false,
+            onCommand: _command,
+            onDismiss: () {},
+            onCancel: _cancelFormulaEdit,
+            onPlot: _plot,
+            persistenceEnabled: false,
+          ),
+        ),
+      ],
     ),
   );
 }
@@ -402,6 +544,25 @@ class _SettingsDestinationState extends State<_SettingsDestination> {
               ),
             ],
           ),
+        ),
+        const SizedBox(height: 24),
+        const Divider(),
+        ListTile(
+          dense: true,
+          leading: Icon(Icons.code, color: theme.colorScheme.onSurfaceVariant),
+          title: Text(
+            isEnglish ? 'Developer examples' : '开发者示例',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          trailing: Icon(
+            Icons.chevron_right,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          onTap: () => Navigator.of(
+            context,
+          ).push(MaterialPageRoute<void>(builder: (_) => const ExampleMenu())),
         ),
       ],
     );

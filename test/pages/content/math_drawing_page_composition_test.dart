@@ -14,6 +14,28 @@ Widget _app(MathWorkspaceOptions options) => MaterialApp(
   ),
 );
 
+Widget _testDeleteActions(
+  BuildContext context,
+  Widget defaultContent,
+  MathWorkspaceRegionActions actions,
+) => Row(
+  mainAxisSize: MainAxisSize.min,
+  children: [
+    defaultContent,
+    IconButton(
+      tooltip: 'Host plot',
+      onPressed: actions.plot,
+      icon: const Icon(Icons.check),
+    ),
+    for (var index = 0; index < actions.formulaCount; index++)
+      IconButton(
+        tooltip: 'Host delete ${index + 1}',
+        onPressed: () => actions.removeFormula(index),
+        icon: const Icon(Icons.delete),
+      ),
+  ],
+);
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -103,27 +125,33 @@ void main() {
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({
-      'math_drawing_mathematical_input': false,
+      'math_drawing_mathematical_input': true,
     });
     await tester.pumpWidget(
-      _app(
-        const MathWorkspaceOptions(
-          show3D: false,
-          persistence: MathWorkspacePersistence(namespace: 'host-a'),
+      const MaterialApp(
+        home: MathDrawingPage(
+          initialMathematicalMode: true,
+          initialShowWebView: false,
+          options: MathWorkspaceOptions(
+            show3D: false,
+            persistence: MathWorkspacePersistence(namespace: 'host-a'),
+          ),
         ),
       ),
     );
     await tester.pump();
 
-    await tester.tap(find.byTooltip('切换到数学键盘（内置公式预览）'));
+    await tester.tap(find.byType(MathFormulaField).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('切换到 LaTeX 源码输入'));
     await tester.pumpAndSettle();
     final preferences = await SharedPreferences.getInstance();
 
     expect(
       preferences.getBool('visual_math.host-a.math_drawing_mathematical_input'),
-      isTrue,
+      isFalse,
     );
-    expect(preferences.getBool('math_drawing_mathematical_input'), isFalse);
+    expect(preferences.getBool('math_drawing_mathematical_input'), isTrue);
   });
 
   testWidgets('unsupported platform uses source editor without WebView', (
@@ -159,7 +187,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: MathDrawingPage(
-          initialMathematicalMode: false,
+          initialMathematicalMode: true,
           initialShowWebView: false,
           options: const MathWorkspaceOptions(
             persistence: MathWorkspacePersistence(enabled: false),
@@ -168,7 +196,9 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byTooltip('切换到数学键盘（内置公式预览）'));
+    await tester.tap(find.byType(MathFormulaField).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('切换到 LaTeX 源码输入'));
     await tester.pumpAndSettle();
 
     final preferences = await SharedPreferences.getInstance();
@@ -351,6 +381,11 @@ void main() {
     expect(find.text('Plane'), findsOneWidget);
     expect(find.text('Space'), findsOneWidget);
     expect(find.bySemanticsLabel(RegExp('Plane')), findsOneWidget);
+    await tester.tap(find.byTooltip('公式操作').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Plot expression'), findsNothing);
+    await tester.tap(find.text('打开数学键盘'));
+    await tester.pumpAndSettle();
     expect(find.byTooltip('Plot expression'), findsOneWidget);
     semantics.dispose();
   });
@@ -428,6 +463,7 @@ void main() {
         home: MathDrawingPage(
           options: MathWorkspaceOptions(
             show3D: false,
+            canvas2DActionsBuilder: _testDeleteActions,
             presentation: MathWorkspacePresentation(
               responsiveBreakpoint: 500,
               dialogBuilder: (_, dialog) => Column(
@@ -447,13 +483,13 @@ void main() {
 
     await tester.tap(find.byTooltip('添加公式'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('删除公式').last);
+    await tester.tap(find.byTooltip('Host delete 2'));
     await tester.pumpAndSettle();
     expect(find.text('Host dialog'), findsOneWidget);
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('绘制').first);
+    await tester.tap(find.byTooltip('Host plot'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Host error:'), findsOneWidget);

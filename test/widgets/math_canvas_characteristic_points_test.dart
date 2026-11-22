@@ -1010,7 +1010,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('设置定义域'));
+    await tester.tap(find.byTooltip('公式操作').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('设置定义域').last);
     await tester.pumpAndSettle();
 
     expect(find.text('数学键盘输入'), findsOneWidget);
@@ -1035,7 +1037,7 @@ void main() {
     expect(find.byTooltip('收起数学键盘'), findsOneWidget);
     expect(find.byTooltip('光标左移'), findsOneWidget);
     expect(find.byTooltip('光标上移 / 切换上层'), findsOneWidget);
-    expect(find.text('绘图'), findsOneWidget);
+    expect(find.byTooltip('绘图'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     tester.view.physicalSize = const Size(480, 640);
@@ -1044,7 +1046,7 @@ void main() {
     expect(find.text('常用'), findsOneWidget);
     expect(find.byTooltip('收起数学键盘'), findsOneWidget);
     expect(find.byTooltip('光标左移'), findsOneWidget);
-    expect(find.text('绘图'), findsOneWidget);
+    expect(find.byTooltip('绘图'), findsOneWidget);
     final lastRowKey = find.byTooltip('⌫');
     await tester.ensureVisible(lastRowKey);
     await tester.pumpAndSettle();
