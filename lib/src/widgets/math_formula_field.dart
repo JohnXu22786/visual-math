@@ -193,6 +193,18 @@ class MathFormulaFieldState extends State<MathFormulaField>
     widget.onReadyChanged?.call();
   }
 
+  Future<void> _markReady() async {
+    if (!mounted || _failure != null || _ready) return;
+    _loadTimer?.cancel();
+    _ready = true;
+    await _syncSource();
+    if (!mounted || _failure != null) return;
+    await _syncTheme();
+    if (!mounted || _failure != null) return;
+    setState(() {});
+    widget.onReadyChanged?.call();
+  }
+
   Future<void> _syncSource() {
     final source = widget.controller.text;
     final version = _revision;
@@ -722,6 +734,9 @@ class MathFormulaFieldState extends State<MathFormulaField>
                                         args[0] as Map,
                                       );
                                       acceptSnapshot(message);
+                                      if (message['type'] == 'ready') {
+                                        unawaited(_markReady());
+                                      }
                                       if (message['revision'] == _revision &&
                                           (message['type'] == 'focus' ||
                                               message['type'] == 'tap') &&
@@ -734,18 +749,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
                                     },
                                   );
                                 },
-                                onLoadStop: (controller, _) async {
-                                  if (!mounted || _failure != null) return;
-                                  _loadTimer?.cancel();
-                                  _ready = true;
-                                  await _syncSource();
-                                  if (!mounted) return;
-                                  await _syncTheme();
-                                  if (mounted) {
-                                    setState(() {});
-                                    widget.onReadyChanged?.call();
-                                  }
-                                },
+                                onLoadStop: (_, _) {},
                                 onReceivedError: (_, request, error) {
                                   if (request.isForMainFrame == true &&
                                       mounted) {

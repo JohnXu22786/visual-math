@@ -110,6 +110,116 @@ void main() {
   );
 
   testWidgets(
+    'document load without MathLive mount stays pending and falls back on timeout',
+    (tester) async {
+      final originalPlatform = InAppWebViewPlatform.instance;
+      final platform = _EditorPlatform();
+      InAppWebViewPlatform.instance = platform;
+      addTearDown(
+        () => InAppWebViewPlatform.instance =
+            originalPlatform ?? _EditorPlatform(),
+      );
+      final source = TextEditingController(text: 'x');
+      final key = GlobalKey<MathFormulaFieldState>();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MathFormulaField(
+              key: key,
+              controller: source,
+              mathematical: true,
+              onModeChanged: (_) {},
+              onActivate: () {},
+              onChanged: () {},
+              onSubmitted: () {},
+              label: '公式 1',
+            ),
+          ),
+        ),
+      );
+      final native = platform.editor!;
+      final controller = native.controllerFromPlatform<InAppWebViewController>(
+        native.controller,
+      );
+      native.params.onWebViewCreated!(controller);
+      native.params.onLoadStop!(controller, null);
+      await tester.pump();
+      final editor = key.currentState!;
+
+      expect(editor.ready, isFalse);
+      await editor.command('insert', '+y');
+      expect(source.text, 'x');
+      expect(
+        native.controller.scripts.where(
+          (script) => script.contains('.command('),
+        ),
+        isEmpty,
+      );
+
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pump();
+      expect(editor.failed, isTrue);
+      expect(editor.ready, isTrue);
+      await editor.command('insert', '+y');
+      expect(source.text, 'x+y');
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      source.dispose();
+    },
+  );
+
+  testWidgets('MathLive mount message enables native keyboard routing', (
+    tester,
+  ) async {
+    final originalPlatform = InAppWebViewPlatform.instance;
+    final platform = _EditorPlatform();
+    InAppWebViewPlatform.instance = platform;
+    addTearDown(
+      () =>
+          InAppWebViewPlatform.instance = originalPlatform ?? _EditorPlatform(),
+    );
+    final source = TextEditingController(text: 'x');
+    final key = GlobalKey<MathFormulaFieldState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MathFormulaField(
+            key: key,
+            controller: source,
+            mathematical: true,
+            onModeChanged: (_) {},
+            onActivate: () {},
+            onChanged: () {},
+            onSubmitted: () {},
+            label: '公式 1',
+          ),
+        ),
+      ),
+    );
+    final native = platform.editor!;
+    final controller = native.controllerFromPlatform<InAppWebViewController>(
+      native.controller,
+    );
+    native.params.onWebViewCreated!(controller);
+    native.params.onLoadStop!(controller, null);
+    await tester.pump();
+    expect(key.currentState!.ready, isFalse);
+
+    native.controller.sendMessage({'type': 'ready', 'revision': -1});
+    await tester.pumpAndSettle();
+    expect(key.currentState!.ready, isTrue);
+    await key.currentState!.command('insert', '+y');
+    expect(
+      native.controller.scripts.where((script) => script.contains('.command(')),
+      hasLength(1),
+    );
+    expect(source.text, 'x');
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    source.dispose();
+  });
+
+  testWidgets(
     'theme changes recolor the retained native editor without reimport',
     (tester) async {
       final originalPlatform = InAppWebViewPlatform.instance;
@@ -152,6 +262,7 @@ void main() {
       );
       native.params.onWebViewCreated!(controller);
       native.params.onLoadStop!(controller, null);
+      native.controller.sendMessage({'type': 'ready', 'revision': -1});
       await tester.pumpAndSettle();
       final state = key.currentState;
       final element = tester.element(find.byType(InAppWebView));
@@ -209,6 +320,7 @@ void main() {
           '{"latex":"x","selection":"selection-1"}';
       native.params.onWebViewCreated!(controller);
       native.params.onLoadStop!(controller, null);
+      native.controller.sendMessage({'type': 'ready', 'revision': -1});
       await tester.pumpAndSettle();
       final editor = key.currentState!;
 
@@ -820,6 +932,7 @@ class _NativeEditor extends PlatformInAppWebViewWidget {
 class _EditorController extends PlatformInAppWebViewController {
   final scripts = <String>[];
   String? cutSelectionResponse;
+  JavaScriptHandlerCallback? _javascriptHandler;
   _EditorController()
     : super.implementation(
         const PlatformInAppWebViewControllerCreationParams(id: 0),
@@ -839,7 +952,10 @@ class _EditorController extends PlatformInAppWebViewController {
   void addJavaScriptHandler({
     required String handlerName,
     required JavaScriptHandlerCallback callback,
-  }) {}
+  }) => _javascriptHandler = callback;
+
+  void sendMessage(Map<String, dynamic> message) =>
+      _javascriptHandler?.call([message]);
 
   @override
   void dispose({bool isKeepAlive = false}) {}
