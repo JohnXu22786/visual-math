@@ -917,6 +917,7 @@ Future<_DelayedEditorPlatform> _delayedEditors(
     );
     native.params.onWebViewCreated!(controller);
     native.params.onLoadStop!(controller, null);
+    native.controller.emit({'type': 'ready', 'revision': -1});
   }
   await tester.pumpAndSettle();
   return platform;
