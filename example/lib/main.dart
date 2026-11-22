@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:visual_math/visual_math.dart';
+
+import 'update_checker.dart';
+
+part 'settings_destination.dart';
 
 void main() => runApp(const VisualMathExampleApp());
 
@@ -429,144 +434,6 @@ class _FilesDestination extends StatelessWidget {
       style: Theme.of(context).textTheme.titleMedium,
     ),
   );
-}
-
-class _SettingsDestination extends StatefulWidget {
-  const _SettingsDestination({
-    required this.isEnglish,
-    required this.isActive,
-    required this.themeMode,
-    required this.mathematicalMode,
-    required this.onThemeModeChanged,
-    required this.onLanguageChanged,
-    required this.onMathematicalModeChanged,
-  });
-
-  final bool isEnglish;
-  final bool isActive;
-  final ThemeMode themeMode;
-  final bool mathematicalMode;
-  final ValueChanged<ThemeMode> onThemeModeChanged;
-  final ValueChanged<bool> onLanguageChanged;
-  final ValueChanged<bool> onMathematicalModeChanged;
-
-  @override
-  State<_SettingsDestination> createState() => _SettingsDestinationState();
-}
-
-class _SettingsDestinationState extends State<_SettingsDestination> {
-  static const _mathModeKey = 'math_drawing_mathematical_input';
-
-  @override
-  void initState() {
-    super.initState();
-    _refreshMathematicalMode();
-  }
-
-  @override
-  void didUpdateWidget(_SettingsDestination oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!oldWidget.isActive && widget.isActive) _refreshMathematicalMode();
-  }
-
-  Future<void> _refreshMathematicalMode() async {
-    final preferences = await SharedPreferences.getInstance();
-    final value = preferences.getBool(_mathModeKey) ?? widget.mathematicalMode;
-    if (mounted && value != widget.mathematicalMode) {
-      widget.onMathematicalModeChanged(value);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isEnglish = widget.isEnglish;
-    final theme = Theme.of(context);
-    return ListView(
-      padding: const EdgeInsets.all(24),
-      children: [
-        Text(
-          isEnglish ? 'Appearance' : '外观',
-          style: theme.textTheme.titleLarge,
-        ),
-        const SizedBox(height: 8),
-        SegmentedButton<ThemeMode>(
-          segments: [
-            ButtonSegment(
-              value: ThemeMode.system,
-              label: Text(isEnglish ? 'System' : '跟随系统'),
-            ),
-            ButtonSegment(
-              value: ThemeMode.light,
-              label: Text(isEnglish ? 'Light' : '浅色'),
-            ),
-            ButtonSegment(
-              value: ThemeMode.dark,
-              label: Text(isEnglish ? 'Dark' : '深色'),
-            ),
-          ],
-          selected: {widget.themeMode},
-          onSelectionChanged: (selection) =>
-              widget.onThemeModeChanged(selection.first),
-        ),
-        const SizedBox(height: 24),
-        Text(isEnglish ? 'Language' : '语言', style: theme.textTheme.titleLarge),
-        RadioGroup<bool>(
-          groupValue: isEnglish,
-          onChanged: (value) {
-            if (value != null) widget.onLanguageChanged(value);
-          },
-          child: Column(
-            children: [
-              RadioListTile<bool>(value: false, title: const Text('中文')),
-              RadioListTile<bool>(value: true, title: const Text('English')),
-            ],
-          ),
-        ),
-        const SizedBox(height: 24),
-        Text(
-          isEnglish ? 'Math input' : '数学输入',
-          style: theme.textTheme.titleLarge,
-        ),
-        RadioGroup<bool>(
-          groupValue: widget.mathematicalMode,
-          onChanged: (value) {
-            if (value != null) widget.onMathematicalModeChanged(value);
-          },
-          child: Column(
-            children: [
-              RadioListTile<bool>(
-                value: true,
-                title: Text(isEnglish ? 'Math editor' : '数学编辑器'),
-              ),
-              RadioListTile<bool>(
-                value: false,
-                title: Text(isEnglish ? 'Text input' : '文本输入'),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 24),
-        const Divider(),
-        ListTile(
-          dense: true,
-          leading: Icon(Icons.code, color: theme.colorScheme.onSurfaceVariant),
-          title: Text(
-            isEnglish ? 'Developer examples' : '开发者示例',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          trailing: Icon(
-            Icons.chevron_right,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-          onTap: () => Navigator.of(
-            context,
-          ).push(MaterialPageRoute<void>(builder: (_) => const ExampleMenu())),
-        ),
-      ],
-    );
-  }
 }
 
 class ExampleMenu extends StatelessWidget {
