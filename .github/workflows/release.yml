@@ -86,10 +86,19 @@ jobs:
               body = json.dumps(data).encode() if data is not None else None
               req = urllib.request.Request(url, data=body, headers=headers, method="PATCH" if body else "GET")
               with urllib.request.urlopen(req) as response:
+                  if body:
+                      return None
                   return json.load(response)
 
           release = request(f"{api}/releases/tags/{urllib.parse.quote(tag, safe='')}")
-          assets = release["assets"]
+          assets = []
+          for page in range(1, 101):
+              page_assets = request(f"{release['assets_url']}?per_page=100&page={page}")
+              assets.extend(page_assets)
+              if len(page_assets) < 100:
+                  break
+          else:
+              raise SystemExit("Release asset list exceeded the 10,000 asset safety limit")
           renames = {
               "example-android-apk.apk": f"visual-math-android-apk-release-{tag}.apk",
               "example-ios-unsigned.ipa": f"visual-math-ios-unsigned-release-{tag}.ipa",
