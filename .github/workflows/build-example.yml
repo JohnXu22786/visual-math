@@ -296,7 +296,7 @@ jobs:
         working-directory: example
         env:
           RELEASE_TAG: ${{ inputs.ref || github.ref_name }}
-        run: cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/visual-math-android-release-${RELEASE_TAG}.apk"
+        run: cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/visual-math-android-apk-release-${RELEASE_TAG}.apk"
       - if: matrix.target == 'windows'
         name: Archive Windows build
         shell: pwsh

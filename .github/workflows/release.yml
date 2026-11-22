@@ -91,7 +91,7 @@ jobs:
           release = request(f"{api}/releases/tags/{urllib.parse.quote(tag, safe='')}")
           assets = release["assets"]
           renames = {
-              "example-android-apk.apk": f"visual-math-android-release-{tag}.apk",
+              "example-android-apk.apk": f"visual-math-android-apk-release-{tag}.apk",
               "example-ios-unsigned.ipa": f"visual-math-ios-unsigned-release-{tag}.ipa",
               "example-linux-x64.zip": f"visual-math-linux-x64-release-{tag}.zip",
               "example-macos-arm64.zip": f"visual-math-macos-arm64-release-{tag}.zip",
