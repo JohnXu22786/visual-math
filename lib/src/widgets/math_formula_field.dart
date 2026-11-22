@@ -66,6 +66,8 @@ class MathFormulaField extends StatefulWidget {
 
 class MathFormulaFieldState extends State<MathFormulaField>
     with AutomaticKeepAliveClientMixin {
+  static const Duration _initialLoadTimeout = Duration(seconds: 10);
+
   // The math container adds a one-pixel border on both sides; keep the full
   // row at the same 48dp height as the source TextField.
   static const double _formulaInputHeight = 46;
@@ -86,6 +88,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
   String _lastSource = '';
   late TextSelection _lastSelection;
   int? _preferredVerticalColumn;
+  Timer? _loadTimer;
   String? _failure;
   String _label(String source) => widget.labelResolver?.call(source) ?? source;
   ColorScheme? _colorScheme;
@@ -94,9 +97,11 @@ class MathFormulaFieldState extends State<MathFormulaField>
   final List<TextEditingValue> _fallbackRedo = [];
   String get location => _location;
   int get revision => _revision;
-  bool get _usesFallback => !widget.showWebView || !MathFormulaField.supported;
+  bool get _usesFallback =>
+      !widget.showWebView || !MathFormulaField.supported || _failure != null;
+  bool get failed => _failure != null;
   bool get ready => (_ready && _failure == null) || _usesFallback;
-  bool get supportsStructuredEditing => !_usesFallback;
+  bool get supportsStructuredEditing => !_usesFallback && _failure == null;
 
   @override
   void initState() {
@@ -174,13 +179,18 @@ class MathFormulaFieldState extends State<MathFormulaField>
       try {
         await action();
       } catch (_) {
-        if (mounted) {
-          setState(() => _failure = _label('公式编辑器加载失败，可切换到源码继续编辑。'));
-        }
-        widget.onReadyChanged?.call();
+        _markFailed();
       }
     });
     return _pending;
+  }
+
+  void _markFailed() {
+    if (!mounted || _failure != null) return;
+    _loadTimer?.cancel();
+    _ready = false;
+    setState(() => _failure = _label('公式编辑器加载失败，已切换到内置键盘。'));
+    widget.onReadyChanged?.call();
   }
 
   Future<void> _syncSource() {
@@ -602,6 +612,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
 
   @override
   void dispose() {
+    _loadTimer?.cancel();
     widget.controller.removeListener(_sourceChanged);
     _sourceFocus.dispose();
     super.dispose();
@@ -650,7 +661,10 @@ class MathFormulaFieldState extends State<MathFormulaField>
                 Expanded(
                   child: SizedBox(
                     height: _formulaInputHeight,
-                    child: !widget.showWebView || !MathFormulaField.supported
+                    child:
+                        !widget.showWebView ||
+                            !MathFormulaField.supported ||
+                            _failure != null
                         ? GestureDetector(
                             behavior: HitTestBehavior.opaque,
                             onTap: activate,
@@ -693,6 +707,10 @@ class MathFormulaFieldState extends State<MathFormulaField>
                                 ),
                                 onWebViewCreated: (controller) {
                                   _web = controller;
+                                  _loadTimer?.cancel();
+                                  _loadTimer = Timer(_initialLoadTimeout, () {
+                                    if (!_ready) _markFailed();
+                                  });
                                   controller.addJavaScriptHandler(
                                     handlerName: 'StroomMathEditor',
                                     callback: (args) {
@@ -717,7 +735,8 @@ class MathFormulaFieldState extends State<MathFormulaField>
                                   );
                                 },
                                 onLoadStop: (controller, _) async {
-                                  if (!mounted) return;
+                                  if (!mounted || _failure != null) return;
+                                  _loadTimer?.cancel();
                                   _ready = true;
                                   await _syncSource();
                                   if (!mounted) return;
@@ -730,12 +749,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
                                 onReceivedError: (_, request, error) {
                                   if (request.isForMainFrame == true &&
                                       mounted) {
-                                    setState(
-                                      () => _failure = _label(
-                                        '公式编辑器加载失败，可切换到源码继续编辑。',
-                                      ),
-                                    );
-                                    widget.onReadyChanged?.call();
+                                    _markFailed();
                                   }
                                 },
                               ),

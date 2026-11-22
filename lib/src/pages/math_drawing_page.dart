@@ -1367,16 +1367,20 @@ class _MathDrawingPageState extends State<MathDrawingPage>
     ),
   );
 
-  MathFormulaFieldState? get _activeEditor =>
-      _activeFormula?.editorKey.currentState ?? _fallbackEditorKey.currentState;
+  MathFormulaFieldState? get _activeEditor => _editorFor(_activeFormula);
+
+  MathFormulaFieldState? _editorFor(_FormulaState? formula) {
+    final editor = formula?.editorKey.currentState;
+    if (editor != null && !editor.failed) return editor;
+    return _fallbackEditorKey.currentState ?? editor;
+  }
 
   bool get _fallbackEditorAvailable =>
       _keyboardVisible && _activeFormula != null;
 
   Future<void> _sendEditorCommand(String kind, String value) async {
     final formula = _activeFormula;
-    final editor =
-        formula?.editorKey.currentState ?? _fallbackEditorKey.currentState;
+    final editor = _editorFor(formula);
     if (kind == 'clipboard') {
       try {
         await editor?.clipboard(
