@@ -392,6 +392,75 @@ void main() {
     source.dispose();
   });
 
+  testWidgets('late WebView creation cannot replace the current instance', (
+    tester,
+  ) async {
+    final originalPlatform = InAppWebViewPlatform.instance;
+    final platform = _EditorPlatform();
+    InAppWebViewPlatform.instance = platform;
+    addTearDown(
+      () =>
+          InAppWebViewPlatform.instance = originalPlatform ?? _EditorPlatform(),
+    );
+    final source = TextEditingController(text: 'x');
+    final key = GlobalKey<MathFormulaFieldState>();
+    Widget app(bool showWebView) => MaterialApp(
+      home: Scaffold(
+        body: MathFormulaField(
+          key: key,
+          controller: source,
+          showWebView: showWebView,
+          mathematical: true,
+          onModeChanged: (_) {},
+          onActivate: () {},
+          onChanged: () {},
+          onSubmitted: () {},
+          label: '公式 1',
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(app(true));
+    final oldEditor = platform.editor!;
+    await tester.pumpWidget(app(false));
+    await tester.pumpWidget(app(true));
+    final currentEditor = platform.editor!;
+    expect(currentEditor, isNot(same(oldEditor)));
+
+    final oldController = oldEditor
+        .controllerFromPlatform<InAppWebViewController>(oldEditor.controller);
+    oldEditor.params.onWebViewCreated!(oldController);
+    oldEditor.controller.sendMessage({'type': 'ready', 'revision': -1});
+    await tester.pump();
+    expect(key.currentState!.ready, isFalse);
+    expect(oldEditor.controller.scripts, isEmpty);
+
+    final currentController = currentEditor
+        .controllerFromPlatform<InAppWebViewController>(
+          currentEditor.controller,
+        );
+    currentEditor.params.onWebViewCreated!(currentController);
+    currentEditor.params.onLoadStop!(currentController, null);
+    currentEditor.controller.sendMessage({'type': 'ready', 'revision': -1});
+    await tester.pumpAndSettle();
+
+    expect(key.currentState!.ready, isTrue);
+    expect(
+      currentEditor.controller.scripts.where(
+        (script) => script.contains('setSource'),
+      ),
+      hasLength(1),
+    );
+    expect(
+      currentEditor.controller.scripts.where(
+        (script) => script.contains('.theme('),
+      ),
+      hasLength(1),
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+    source.dispose();
+  });
+
   testWidgets('initial synchronization uses the latest theme', (tester) async {
     final originalPlatform = InAppWebViewPlatform.instance;
     final platform = _EditorPlatform();

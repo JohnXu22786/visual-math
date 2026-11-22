@@ -706,6 +706,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
     final cs = Theme.of(context).colorScheme;
     final mathematicalMode = widget.mathematical;
     final usesFallback = _usesFallback;
+    final webViewGeneration = _webViewGeneration;
     final toggle = !widget.allowModeSwitch || !widget.showModeSwitch
         ? const SizedBox.shrink()
         : IconButton(
@@ -788,20 +789,25 @@ class MathFormulaFieldState extends State<MathFormulaField>
                                   supportZoom: false,
                                 ),
                                 onWebViewCreated: (controller) {
-                                  final generation = _webViewGeneration;
+                                  if (!mounted ||
+                                      webViewGeneration != _webViewGeneration) {
+                                    return;
+                                  }
                                   _web = controller;
                                   _loadTimer?.cancel();
                                   _loadTimer = Timer(_initialLoadTimeout, () {
-                                    if (generation == _webViewGeneration &&
+                                    if (webViewGeneration ==
+                                            _webViewGeneration &&
                                         !_ready) {
-                                      _markFailed(generation);
+                                      _markFailed(webViewGeneration);
                                     }
                                   });
                                   controller.addJavaScriptHandler(
                                     handlerName: 'StroomMathEditor',
                                     callback: (args) {
                                       if (!mounted ||
-                                          generation != _webViewGeneration ||
+                                          webViewGeneration !=
+                                              _webViewGeneration ||
                                           args.isEmpty ||
                                           args[0] is! Map)
                                         return null;
@@ -810,7 +816,9 @@ class MathFormulaFieldState extends State<MathFormulaField>
                                       );
                                       acceptSnapshot(message);
                                       if (message['type'] == 'ready') {
-                                        unawaited(_markReady(generation));
+                                        unawaited(
+                                          _markReady(webViewGeneration),
+                                        );
                                       }
                                       if (message['revision'] == _revision &&
                                           (message['type'] == 'focus' ||
@@ -827,10 +835,12 @@ class MathFormulaFieldState extends State<MathFormulaField>
                                 onLoadStop: (_, _) {},
                                 onReceivedError:
                                     (webController, request, error) {
-                                      if (identical(webController, _web) &&
+                                      if (webViewGeneration ==
+                                              _webViewGeneration &&
+                                          identical(webController, _web) &&
                                           request.isForMainFrame == true &&
                                           mounted) {
-                                        _markFailed(_webViewGeneration);
+                                        _markFailed(webViewGeneration);
                                       }
                                     },
                               ),
