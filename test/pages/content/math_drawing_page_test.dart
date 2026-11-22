@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' as foundation;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -748,6 +749,139 @@ void editorInteractionTests() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('stalled MathLive load falls back to keyboard editing', (
+    tester,
+  ) async {
+    final previousTargetPlatform =
+        foundation.debugDefaultTargetPlatformOverride;
+    foundation.debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    try {
+      final platform = await _unloadedEditorPage(tester);
+      final native = platform.editors.single;
+      final controller = native.controllerFromPlatform<InAppWebViewController>(
+        native.controller,
+      );
+      native.params.onWebViewCreated!(controller);
+
+      await tester.tap(find.text('Activate loading formula'));
+      await tester.pump();
+      expect(
+        find.descendant(
+          of: find.byType(MathFormulaField).first,
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.pump(const Duration(seconds: 10));
+      expect(
+        find.descendant(
+          of: find.byType(MathFormulaField).first,
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsNothing,
+      );
+      expect(find.text('Editor ready: true'), findsOneWidget);
+      expect(find.text('Structured: false'), findsOneWidget);
+
+      await tester.tap(find.text('Insert loading formula'));
+      await tester.pump();
+      expect(find.text('Loading formula: x+'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    } finally {
+      foundation.debugDefaultTargetPlatformOverride = previousTargetPlatform;
+    }
+  });
+
+  testWidgets(
+    'MathLive main-frame load failure falls back to keyboard editing',
+    (tester) async {
+      final previousTargetPlatform =
+          foundation.debugDefaultTargetPlatformOverride;
+      foundation.debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      try {
+        final platform = await _unloadedEditorPage(tester);
+        final native = platform.editors.single;
+        final controller = native
+            .controllerFromPlatform<InAppWebViewController>(native.controller);
+        native.params.onWebViewCreated!(controller);
+
+        await tester.tap(find.text('Activate loading formula'));
+        await tester.pump();
+        native.params.onReceivedError!(
+          controller,
+          WebResourceRequest(isForMainFrame: true, url: WebUri('about:blank')),
+          WebResourceError(
+            description: 'network error',
+            type: WebResourceErrorType.CANNOT_CONNECT_TO_HOST,
+          ),
+        );
+        await tester.pump();
+
+        expect(
+          find.descendant(
+            of: find.byType(MathFormulaField).first,
+            matching: find.byType(CircularProgressIndicator),
+          ),
+          findsNothing,
+        );
+        expect(find.text('Editor ready: true'), findsOneWidget);
+        expect(find.text('Structured: false'), findsOneWidget);
+
+        await tester.tap(find.text('Insert loading formula'));
+        await tester.pump();
+        expect(find.text('Loading formula: x+'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      } finally {
+        foundation.debugDefaultTargetPlatformOverride = previousTargetPlatform;
+      }
+    },
+  );
+}
+
+Future<_DelayedEditorPlatform> _unloadedEditorPage(WidgetTester tester) async {
+  final original = InAppWebViewPlatform.instance;
+  final platform = _DelayedEditorPlatform();
+  InAppWebViewPlatform.instance = platform;
+  addTearDown(
+    () => InAppWebViewPlatform.instance = original ?? _DelayedEditorPlatform(),
+  );
+
+  await tester.pumpWidget(
+    MaterialApp(
+      home: MathDrawingPage(
+        initialExpression: 'x',
+        initialMathematicalMode: true,
+        options: MathWorkspaceOptions(
+          formulaEditorBuilder: (context, defaultContent, actions) => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              defaultContent,
+              TextButton(
+                onPressed: () => actions.activateFormula(0),
+                child: const Text('Activate loading formula'),
+              ),
+            ],
+          ),
+          keyboardBuilder: (context, _, actions) => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Loading formula: ${actions.formulaExpression(0)}'),
+              Text('Editor ready: ${actions.editorReady}'),
+              Text('Structured: ${actions.supportsStructuredEditing}'),
+              TextButton(
+                onPressed: () => actions.sendEditorCommand('insert', '+'),
+                child: const Text('Insert loading formula'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+  platform.activeEditors = platform.editors;
+  return platform;
 }
 
 Future<_DelayedEditorPlatform> _delayedEditors(
