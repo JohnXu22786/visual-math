@@ -85,6 +85,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
   bool _applyingFallbackNavigation = false;
   bool _hasUnsupportedSyntax = false;
   int _revision = 0;
+  int _webViewGeneration = 0;
   int _sequence = -1;
   String _lastSource = '';
   late TextSelection _lastSelection;
@@ -142,6 +143,10 @@ class MathFormulaFieldState extends State<MathFormulaField>
   @override
   void didUpdateWidget(MathFormulaField oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.showWebView != widget.showWebView) {
+      _resetWebView();
+      widget.onReadyChanged?.call();
+    }
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller.removeListener(_sourceChanged);
       widget.controller.addListener(_sourceChanged);
@@ -178,19 +183,36 @@ class MathFormulaFieldState extends State<MathFormulaField>
   }
 
   Future<void> _enqueue(Future<void> Function() action) {
+    final generation = _webViewGeneration;
     _pending = _pending.then((_) async {
-      if (!mounted) return;
+      if (!mounted || generation != _webViewGeneration) return;
       try {
         await action();
       } catch (_) {
-        _markFailed();
+        if (generation == _webViewGeneration) _markFailed(generation);
       }
     });
     return _pending;
   }
 
-  void _markFailed() {
-    if (!mounted || _failure != null) return;
+  void _resetWebView() {
+    _webViewGeneration++;
+    _pending = Future.value();
+    _web = null;
+    _loadTimer?.cancel();
+    _loadTimer = null;
+    _ready = false;
+    _initializing = false;
+    _failure = null;
+    _sequence = -1;
+  }
+
+  void _markFailed([int? generation]) {
+    if (!mounted ||
+        (generation != null && generation != _webViewGeneration) ||
+        _failure != null) {
+      return;
+    }
     _loadTimer?.cancel();
     _initializing = false;
     _ready = false;
@@ -198,32 +220,44 @@ class MathFormulaFieldState extends State<MathFormulaField>
     widget.onReadyChanged?.call();
   }
 
-  Future<void> _markReady() async {
-    if (!mounted || _failure != null || _ready || _initializing) return;
+  Future<void> _markReady(int generation) async {
+    if (!mounted ||
+        generation != _webViewGeneration ||
+        _failure != null ||
+        _ready ||
+        _initializing) {
+      return;
+    }
     _initializing = true;
     try {
       while (true) {
         final revision = _revision;
         await _syncSource(duringInitialization: true);
-        if (!mounted || _failure != null) return;
+        if (!mounted || generation != _webViewGeneration || _failure != null) {
+          return;
+        }
         if (revision != _revision) continue;
         final colors = _colorScheme;
         await _syncTheme(duringInitialization: true);
-        if (!mounted || _failure != null) return;
+        if (!mounted || generation != _webViewGeneration || _failure != null) {
+          return;
+        }
         if (revision == _revision && identical(colors, _colorScheme)) break;
       }
+      if (generation != _webViewGeneration) return;
       _loadTimer?.cancel();
       _ready = true;
       setState(() {});
       widget.onReadyChanged?.call();
     } finally {
-      _initializing = false;
+      if (generation == _webViewGeneration) _initializing = false;
     }
   }
 
   Future<void> _syncSource({bool duringInitialization = false}) {
     final source = widget.controller.text;
     final version = _revision;
+    final generation = _webViewGeneration;
     return _enqueue(() async {
       if (_failure != null ||
           (!_ready && !duringInitialization) ||
@@ -233,7 +267,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
       final result = await _web!.evaluateJavascript(
         source: 'window.stroomMath.setSource(${jsonEncode(source)}, $version)',
       );
-      _acceptResult(result);
+      if (generation == _webViewGeneration) _acceptResult(result);
     });
   }
 
@@ -280,13 +314,14 @@ class MathFormulaFieldState extends State<MathFormulaField>
       _fallbackCommand(kind, value);
       return Future.value();
     }
+    final generation = _webViewGeneration;
     return _enqueue(() async {
       if (!_ready || _failure != null) return;
       final result = await _web!.evaluateJavascript(
         source:
             'window.stroomMath.command(${jsonEncode(kind)}, ${jsonEncode(value)})',
       );
-      _acceptResult(result);
+      if (generation == _webViewGeneration) _acceptResult(result);
     });
   }
 
@@ -526,13 +561,16 @@ class MathFormulaFieldState extends State<MathFormulaField>
       return;
     }
     if (action == 'paste') {
+      final generation = _webViewGeneration;
       dynamic capturedValue;
       await _enqueue(() async {
         if (!_ready || _failure != null) return;
-        capturedValue = await _web!.evaluateJavascript(
+        final result = await _web!.evaluateJavascript(
           source: 'window.stroomMath.capturePaste()',
         );
+        if (generation == _webViewGeneration) capturedValue = result;
       });
+      if (!mounted || generation != _webViewGeneration) return;
       final clipboardText = clipboardReader != null
           ? await clipboardReader()
           : (await Clipboard.getData(Clipboard.kTextPlain))?.text;
@@ -549,28 +587,36 @@ class MathFormulaFieldState extends State<MathFormulaField>
         return;
       }
       await _enqueue(() async {
-        if (!_ready || _failure != null || !(isTargetActive?.call() ?? true)) {
+        if (generation != _webViewGeneration ||
+            !_ready ||
+            _failure != null ||
+            !(isTargetActive?.call() ?? true)) {
           return;
         }
-        _acceptResult(
-          await _web!.evaluateJavascript(
-            source:
-                'window.stroomMath.pasteIfUnchanged('
-                '$revision, $sequence, ${jsonEncode(latex)}, '
-                '${jsonEncode(selection)}, ${jsonEncode(clipboardText)})',
-          ),
+        final result = await _web!.evaluateJavascript(
+          source:
+              'window.stroomMath.pasteIfUnchanged('
+              '$revision, $sequence, ${jsonEncode(latex)}, '
+              '${jsonEncode(selection)}, ${jsonEncode(clipboardText)})',
         );
+        if (generation == _webViewGeneration) _acceptResult(result);
       });
       return;
     }
+    final generation = _webViewGeneration;
     dynamic capturedSelection;
     await _enqueue(() async {
       if (!_ready) return;
-      capturedSelection = await _web!.evaluateJavascript(
+      final result = await _web!.evaluateJavascript(
         source: 'window.stroomMath.cutSelection()',
       );
+      if (generation == _webViewGeneration) capturedSelection = result;
     });
-    if (capturedSelection is! String) return;
+    if (!mounted ||
+        generation != _webViewGeneration ||
+        capturedSelection is! String) {
+      return;
+    }
     final selection = Map<String, dynamic>.from(
       jsonDecode(capturedSelection) as Map,
     );
@@ -584,27 +630,31 @@ class MathFormulaFieldState extends State<MathFormulaField>
     }
     if (action == 'cut' &&
         mounted &&
+        generation == _webViewGeneration &&
         (isTargetActive?.call() ?? true) &&
         selectionToken is String) {
       await _enqueue(() async {
-        if (!_ready) return;
-        _acceptResult(
-          await _web!.evaluateJavascript(
-            source:
-                'window.stroomMath.deleteSelection('
-                '${jsonEncode(selectionToken)}, ${jsonEncode(latex)})',
-          ),
+        if (generation != _webViewGeneration || !_ready) return;
+        final result = await _web!.evaluateJavascript(
+          source:
+              'window.stroomMath.deleteSelection('
+              '${jsonEncode(selectionToken)}, ${jsonEncode(latex)})',
         );
+        if (generation == _webViewGeneration) _acceptResult(result);
       });
     }
   }
 
-  Future<void> flush() => _enqueue(() async {
-    if (!_ready) return;
-    _acceptResult(
-      await _web!.evaluateJavascript(source: 'window.stroomMath.snapshot()'),
-    );
-  });
+  Future<void> flush() {
+    final generation = _webViewGeneration;
+    return _enqueue(() async {
+      if (!_ready) return;
+      final result = await _web!.evaluateJavascript(
+        source: 'window.stroomMath.snapshot()',
+      );
+      if (generation == _webViewGeneration) _acceptResult(result);
+    });
+  }
 
   Future<void> activate() async {
     super.activate();
@@ -656,6 +706,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
     final cs = Theme.of(context).colorScheme;
     final mathematicalMode = widget.mathematical;
     final usesFallback = _usesFallback;
+    final webViewGeneration = _webViewGeneration;
     final toggle = !widget.allowModeSwitch || !widget.showModeSwitch
         ? const SizedBox.shrink()
         : IconButton(
@@ -738,15 +789,25 @@ class MathFormulaFieldState extends State<MathFormulaField>
                                   supportZoom: false,
                                 ),
                                 onWebViewCreated: (controller) {
+                                  if (!mounted ||
+                                      webViewGeneration != _webViewGeneration) {
+                                    return;
+                                  }
                                   _web = controller;
                                   _loadTimer?.cancel();
                                   _loadTimer = Timer(_initialLoadTimeout, () {
-                                    if (!_ready) _markFailed();
+                                    if (webViewGeneration ==
+                                            _webViewGeneration &&
+                                        !_ready) {
+                                      _markFailed(webViewGeneration);
+                                    }
                                   });
                                   controller.addJavaScriptHandler(
                                     handlerName: 'StroomMathEditor',
                                     callback: (args) {
                                       if (!mounted ||
+                                          webViewGeneration !=
+                                              _webViewGeneration ||
                                           args.isEmpty ||
                                           args[0] is! Map)
                                         return null;
@@ -755,7 +816,9 @@ class MathFormulaFieldState extends State<MathFormulaField>
                                       );
                                       acceptSnapshot(message);
                                       if (message['type'] == 'ready') {
-                                        unawaited(_markReady());
+                                        unawaited(
+                                          _markReady(webViewGeneration),
+                                        );
                                       }
                                       if (message['revision'] == _revision &&
                                           (message['type'] == 'focus' ||
@@ -770,12 +833,16 @@ class MathFormulaFieldState extends State<MathFormulaField>
                                   );
                                 },
                                 onLoadStop: (_, _) {},
-                                onReceivedError: (_, request, error) {
-                                  if (request.isForMainFrame == true &&
-                                      mounted) {
-                                    _markFailed();
-                                  }
-                                },
+                                onReceivedError:
+                                    (webController, request, error) {
+                                      if (webViewGeneration ==
+                                              _webViewGeneration &&
+                                          identical(webController, _web) &&
+                                          request.isForMainFrame == true &&
+                                          mounted) {
+                                        _markFailed(webViewGeneration);
+                                      }
+                                    },
                               ),
                               if (!_ready || _failure != null)
                                 Center(
