@@ -168,6 +168,199 @@ void main() {
     },
   );
 
+  testWidgets(
+    'initial MathLive synchronization timeout falls back to usable keyboard',
+    (tester) async {
+      final originalPlatform = InAppWebViewPlatform.instance;
+      final platform = _EditorPlatform();
+      InAppWebViewPlatform.instance = platform;
+      addTearDown(
+        () => InAppWebViewPlatform.instance =
+            originalPlatform ?? _EditorPlatform(),
+      );
+      final source = TextEditingController(text: 'x');
+      final key = GlobalKey<MathFormulaFieldState>();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MathFormulaField(
+              key: key,
+              controller: source,
+              mathematical: true,
+              onModeChanged: (_) {},
+              onActivate: () {},
+              onChanged: () {},
+              onSubmitted: () {},
+              label: '公式 1',
+            ),
+          ),
+        ),
+      );
+      final native = platform.editor!;
+      final controller = native.controllerFromPlatform<InAppWebViewController>(
+        native.controller,
+      );
+      native.params.onWebViewCreated!(controller);
+      native.params.onLoadStop!(controller, null);
+      await tester.pump();
+      final editor = key.currentState!;
+      final stalledEvaluation = Completer<void>();
+      native.controller.evaluationBlocker = stalledEvaluation;
+
+      native.controller.sendMessage({'type': 'ready', 'revision': -1});
+      await tester.pump();
+
+      expect(editor.ready, isFalse);
+      expect(editor.failed, isFalse);
+      expect(
+        native.controller.scripts.where(
+          (script) => script.contains('setSource'),
+        ),
+        hasLength(1),
+      );
+
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pump();
+
+      expect(editor.failed, isTrue);
+      expect(editor.ready, isTrue);
+      await editor.command('insert', '+y');
+      await editor.command('insert', '+z');
+      expect(source.text, 'x+y+z');
+
+      stalledEvaluation.complete();
+      await tester.pump();
+      await tester.pumpWidget(const SizedBox.shrink());
+      source.dispose();
+    },
+  );
+
+  testWidgets('initial synchronization uses the latest source revision', (
+    tester,
+  ) async {
+    final originalPlatform = InAppWebViewPlatform.instance;
+    final platform = _EditorPlatform();
+    InAppWebViewPlatform.instance = platform;
+    addTearDown(
+      () =>
+          InAppWebViewPlatform.instance = originalPlatform ?? _EditorPlatform(),
+    );
+    final source = TextEditingController(text: 'x');
+    final key = GlobalKey<MathFormulaFieldState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MathFormulaField(
+            key: key,
+            controller: source,
+            mathematical: true,
+            onModeChanged: (_) {},
+            onActivate: () {},
+            onChanged: () {},
+            onSubmitted: () {},
+            label: '公式 1',
+          ),
+        ),
+      ),
+    );
+    final native = platform.editor!;
+    final controller = native.controllerFromPlatform<InAppWebViewController>(
+      native.controller,
+    );
+    native.params.onWebViewCreated!(controller);
+    native.params.onLoadStop!(controller, null);
+    await tester.pump();
+    final stalledEvaluation = Completer<void>();
+    native.controller.evaluationBlocker = stalledEvaluation;
+
+    native.controller.sendMessage({'type': 'ready', 'revision': -1});
+    await tester.pump();
+    source.text = 'x+y';
+    stalledEvaluation.complete();
+    await tester.pumpAndSettle();
+
+    expect(key.currentState!.ready, isTrue);
+    expect(
+      native.controller.scripts.where(
+        (script) => script.contains('setSource') && script.contains('x+y'),
+      ),
+      hasLength(1),
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    source.dispose();
+  });
+
+  testWidgets('initial synchronization uses the latest theme', (tester) async {
+    final originalPlatform = InAppWebViewPlatform.instance;
+    final platform = _EditorPlatform();
+    InAppWebViewPlatform.instance = platform;
+    addTearDown(
+      () =>
+          InAppWebViewPlatform.instance = originalPlatform ?? _EditorPlatform(),
+    );
+    final source = TextEditingController(text: 'x');
+    final key = GlobalKey<MathFormulaFieldState>();
+    final light = ColorScheme.fromSeed(seedColor: Colors.blue);
+    final dark = ColorScheme.fromSeed(
+      seedColor: Colors.red,
+      brightness: Brightness.dark,
+    );
+    Widget app(ColorScheme colors) => MaterialApp(
+      theme: ThemeData(colorScheme: colors),
+      home: Scaffold(
+        body: MathFormulaField(
+          key: key,
+          controller: source,
+          mathematical: true,
+          onModeChanged: (_) {},
+          onActivate: () {},
+          onChanged: () {},
+          onSubmitted: () {},
+          label: '公式 1',
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(app(light));
+    final native = platform.editor!;
+    final controller = native.controllerFromPlatform<InAppWebViewController>(
+      native.controller,
+    );
+    native.params.onWebViewCreated!(controller);
+    native.params.onLoadStop!(controller, null);
+    await tester.pump();
+    final stalledEvaluation = Completer<void>();
+    native.controller.blockedEvaluationSource = '.theme(';
+    native.controller.evaluationBlocker = stalledEvaluation;
+
+    native.controller.sendMessage({'type': 'ready', 'revision': -1});
+    await tester.pump();
+    expect(key.currentState!.ready, isFalse);
+    expect(
+      native.controller.scripts.where((script) => script.contains('.theme(')),
+      hasLength(1),
+    );
+    expect(native.controller.scripts.last, contains(_css(light.onSurface)));
+    expect(native.controller.scripts.last, contains(_css(light.primary)));
+    await tester.pumpWidget(app(dark));
+    await tester.pump(const Duration(seconds: 1));
+    stalledEvaluation.complete();
+    await tester.pump();
+
+    expect(key.currentState!.ready, isTrue);
+    final themeScripts = native.controller.scripts.where(
+      (script) => script.contains('.theme('),
+    );
+    expect(themeScripts, isNotEmpty);
+    expect(themeScripts.last, contains(_css(dark.onSurface)));
+    expect(themeScripts.last, contains(_css(dark.primary)));
+
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox.shrink());
+    source.dispose();
+  });
+
   testWidgets('MathLive mount message enables native keyboard routing', (
     tester,
   ) async {
@@ -208,6 +401,14 @@ void main() {
     native.controller.sendMessage({'type': 'ready', 'revision': -1});
     await tester.pumpAndSettle();
     expect(key.currentState!.ready, isTrue);
+    expect(
+      native.controller.scripts.where((script) => script.contains('setSource')),
+      hasLength(1),
+    );
+    expect(
+      native.controller.scripts.where((script) => script.contains('.theme(')),
+      hasLength(1),
+    );
     await key.currentState!.command('insert', '+y');
     expect(
       native.controller.scripts.where((script) => script.contains('.command(')),
@@ -932,6 +1133,8 @@ class _NativeEditor extends PlatformInAppWebViewWidget {
 class _EditorController extends PlatformInAppWebViewController {
   final scripts = <String>[];
   String? cutSelectionResponse;
+  String? blockedEvaluationSource;
+  Completer<void>? evaluationBlocker;
   JavaScriptHandlerCallback? _javascriptHandler;
   _EditorController()
     : super.implementation(
@@ -944,6 +1147,11 @@ class _EditorController extends PlatformInAppWebViewController {
     ContentWorld? contentWorld,
   }) async {
     scripts.add(source);
+    if (evaluationBlocker != null &&
+        (blockedEvaluationSource == null ||
+            source.contains(blockedEvaluationSource!))) {
+      await evaluationBlocker!.future;
+    }
     if (source.contains('cutSelection')) return cutSelectionResponse;
     return null;
   }

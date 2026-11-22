@@ -79,6 +79,7 @@ class MathFormulaFieldState extends State<MathFormulaField>
   final FocusNode _sourceFocus = FocusNode();
   Future<void> _pending = Future.value();
   bool _ready = false;
+  bool _initializing = false;
   bool _receiving = false;
   bool _applyingFallbackEdit = false;
   bool _applyingFallbackNavigation = false;
@@ -121,12 +122,15 @@ class MathFormulaFieldState extends State<MathFormulaField>
     }
   }
 
-  Future<void> _syncTheme() {
-    if (!_ready) return Future.value();
+  Future<void> _syncTheme({bool duringInitialization = false}) {
+    if (_failure != null || (!_ready && !duringInitialization)) {
+      return Future.value();
+    }
     final colors = _colorScheme!;
     String css(Color color) =>
         '#${color.toARGB32().toRadixString(16).substring(2)}';
     return _enqueue(() async {
+      if (_failure != null || (!_ready && !duringInitialization)) return;
       await _web!.evaluateJavascript(
         source:
             'window.stroomMath.theme(${jsonEncode(css(colors.onSurface))},'
@@ -188,28 +192,44 @@ class MathFormulaFieldState extends State<MathFormulaField>
   void _markFailed() {
     if (!mounted || _failure != null) return;
     _loadTimer?.cancel();
+    _initializing = false;
     _ready = false;
     setState(() => _failure = _label('公式编辑器加载失败，已切换到内置键盘。'));
     widget.onReadyChanged?.call();
   }
 
   Future<void> _markReady() async {
-    if (!mounted || _failure != null || _ready) return;
-    _loadTimer?.cancel();
-    _ready = true;
-    await _syncSource();
-    if (!mounted || _failure != null) return;
-    await _syncTheme();
-    if (!mounted || _failure != null) return;
-    setState(() {});
-    widget.onReadyChanged?.call();
+    if (!mounted || _failure != null || _ready || _initializing) return;
+    _initializing = true;
+    try {
+      while (true) {
+        final revision = _revision;
+        await _syncSource(duringInitialization: true);
+        if (!mounted || _failure != null) return;
+        if (revision != _revision) continue;
+        final colors = _colorScheme;
+        await _syncTheme(duringInitialization: true);
+        if (!mounted || _failure != null) return;
+        if (revision == _revision && identical(colors, _colorScheme)) break;
+      }
+      _loadTimer?.cancel();
+      _ready = true;
+      setState(() {});
+      widget.onReadyChanged?.call();
+    } finally {
+      _initializing = false;
+    }
   }
 
-  Future<void> _syncSource() {
+  Future<void> _syncSource({bool duringInitialization = false}) {
     final source = widget.controller.text;
     final version = _revision;
     return _enqueue(() async {
-      if (!_ready || version != _revision) return;
+      if (_failure != null ||
+          (!_ready && !duringInitialization) ||
+          version != _revision) {
+        return;
+      }
       final result = await _web!.evaluateJavascript(
         source: 'window.stroomMath.setSource(${jsonEncode(source)}, $version)',
       );
