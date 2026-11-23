@@ -278,27 +278,37 @@ jobs:
       - if: matrix.target == 'linux'
         name: Archive Linux build
         working-directory: example
+        env:
+          RELEASE_TAG: ${{ inputs.ref || github.ref_name }}
         run: |
           cd build/linux/x64/release/bundle
-          zip -r "$GITHUB_WORKSPACE/example-linux-x64.zip" .
+          zip -r "$GITHUB_WORKSPACE/visual-math-linux-x64-release-${RELEASE_TAG}.zip" .
       - if: matrix.target == 'web'
         name: Archive Web build
         working-directory: example
+        env:
+          RELEASE_TAG: ${{ inputs.ref || github.ref_name }}
         run: |
           cd build/web
-          zip -r "$GITHUB_WORKSPACE/example-web.zip" .
+          zip -r "$GITHUB_WORKSPACE/visual-math-web-release-${RELEASE_TAG}.zip" .
       - if: matrix.target == 'apk'
         name: Stage Android APK
         working-directory: example
-        run: cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/example-android-apk.apk"
+        env:
+          RELEASE_TAG: ${{ inputs.ref || github.ref_name }}
+        run: cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/visual-math-android-apk-release-${RELEASE_TAG}.apk"
       - if: matrix.target == 'windows'
         name: Archive Windows build
         shell: pwsh
         working-directory: example
-        run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "$env:GITHUB_WORKSPACE/example-windows-x64.zip"
+        env:
+          RELEASE_TAG: ${{ inputs.ref || github.ref_name }}
+        run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "$env:GITHUB_WORKSPACE/visual-math-windows-x64-release-$env:RELEASE_TAG.zip"
       - if: matrix.target == 'macos'
         name: Archive macOS build
         working-directory: example
+        env:
+          RELEASE_TAG: ${{ inputs.ref || github.ref_name }}
         run: |
           app_path="$(find build/macos/Build/Products/Release -maxdepth 1 -type d -name '*.app' -print -quit)"
           if [ -z "$app_path" ]; then
@@ -306,10 +316,12 @@ jobs:
             find build/macos/Build/Products/Release -maxdepth 2 -print
             exit 1
           fi
-          ditto -c -k --keepParent "$app_path" "$GITHUB_WORKSPACE/example-${{ matrix.artifact }}.zip"
+          ditto -c -k --keepParent "$app_path" "$GITHUB_WORKSPACE/visual-math-${{ matrix.artifact }}-release-${RELEASE_TAG}.zip"
       - if: matrix.target == 'ios'
         name: Package unsigned iOS app
         working-directory: example
+        env:
+          RELEASE_TAG: ${{ inputs.ref || github.ref_name }}
         run: |
           app_path="$(find build/ios/iphoneos -maxdepth 1 -type d -name '*.app' -print -quit)"
           if [ -z "$app_path" ]; then
@@ -320,10 +332,10 @@ jobs:
           mkdir -p build/ios/ipa/Payload
           cp -R "$app_path" build/ios/ipa/Payload/
           cd build/ios/ipa
-          zip -r "$GITHUB_WORKSPACE/example-ios-unsigned.ipa" Payload/
+          zip -r "$GITHUB_WORKSPACE/visual-math-ios-unsigned-release-${RELEASE_TAG}.ipa" Payload/
       - uses: actions/upload-artifact@v4
         with:
-          name: example-${{ matrix.artifact }}
-          path: example-${{ matrix.artifact }}.*
+          name: visual-math-${{ matrix.artifact }}-release-${{ inputs.ref || github.ref_name }}
+          path: visual-math-${{ matrix.artifact }}-release-${{ inputs.ref || github.ref_name }}.*
           if-no-files-found: error
           retention-days: 7
