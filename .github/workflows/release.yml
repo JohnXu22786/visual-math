@@ -23,17 +23,42 @@ permissions:
   contents: read
 
 jobs:
+  verify-release-tag:
+    if: ${{ github.event_name == 'release' || (github.ref == 'refs/heads/main' && !inputs.rename_legacy_assets) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - name: Confirm target is a published release tag
+        shell: bash
+        run: |
+          release_json="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json tagName,isDraft,publishedAt)"
+          if ! jq -e --arg tag "$RELEASE_TAG" '.tagName == $tag and .isDraft == false and .publishedAt != null' <<< "$release_json" > /dev/null; then
+            echo '::error::The requested tag is not an existing published release.'
+            exit 1
+          fi
+
   build-example:
-    if: ${{ github.event_name == 'release' || !inputs.rename_legacy_assets }}
+    needs: verify-release-tag
+    if: ${{ github.event_name == 'release' || (github.ref == 'refs/heads/main' && !inputs.rename_legacy_assets) }}
     uses: ./.github/workflows/build-example.yml
     permissions:
       contents: read
     with:
       ref: ${{ github.event.release.tag_name || inputs.tag }}
+      require_android_signing: true
+    secrets:
+      KEYSTORE: ${{ secrets.KEYSTORE }}
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
   upload-release-assets:
     name: Upload example builds to GitHub Release
-    if: ${{ github.event_name == 'release' || !inputs.rename_legacy_assets }}
+    if: ${{ github.event_name == 'release' || (github.ref == 'refs/heads/main' && !inputs.rename_legacy_assets) }}
     needs: build-example
     runs-on: ubuntu-latest
     permissions:
@@ -51,6 +76,7 @@ jobs:
         run: gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"
       - name: Upload build assets
         run: gh release upload "$RELEASE_TAG" release-assets/* --repo "$GITHUB_REPOSITORY"
+
   rename-legacy-assets:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.rename_legacy_assets }}
     runs-on: ubuntu-latest
