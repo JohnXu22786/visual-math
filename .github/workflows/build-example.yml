@@ -12,15 +12,15 @@ on:
         required: false
         default: false
         type: boolean
-  secrets:
-    KEYSTORE:
-      required: false
-    KEYSTORE_PASSWORD:
-      required: false
-    KEY_ALIAS:
-      required: false
-    KEY_PASSWORD:
-      required: false
+    secrets:
+      KEYSTORE:
+        required: false
+      KEYSTORE_PASSWORD:
+        required: false
+      KEY_ALIAS:
+        required: false
+      KEY_PASSWORD:
+        required: false
 
 permissions:
   contents: read
