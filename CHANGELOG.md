@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.5
+
+- Maintenance release for the 0.1 version line.
+
 ## 0.1.4
 
 - Add derivative analysis, definite integral tools, and host-driven SDK controls with initial 3D scene inputs.
