@@ -135,6 +135,26 @@ jobs:
           settings.write_text(settings_text)
           wrapper.write_text(wrapper_text)
           PYTHON
+      - if: matrix.target == 'apk'
+        name: Set Android application label
+        working-directory: example
+        shell: bash
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          import re
+
+          manifest = Path('android/app/src/main/AndroidManifest.xml')
+          manifest_text, replacements = re.subn(
+              r'(<application\b[^>]*\bandroid:label=")[^"]*(")',
+              r'\g<1>Visual Math\2',
+              manifest.read_text(),
+              count=1,
+          )
+          if replacements != 1:
+              raise SystemExit('Expected one android:label attribute on the Android application.')
+          manifest.write_text(manifest_text)
+          PYTHON
       - name: Resolve example dependencies
         working-directory: example
         run: flutter pub get

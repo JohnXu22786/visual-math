@@ -75,7 +75,7 @@ class _VisualMathExampleAppState extends State<VisualMathExampleApp> {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: _isEnglish ? 'Visual Math' : '数学绘图',
+    title: 'Visual Math',
     themeMode: _themeMode,
     theme: ThemeData(
       colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
