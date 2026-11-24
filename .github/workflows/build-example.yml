@@ -255,6 +255,8 @@ jobs:
           KEYSTORE_PASSWORD: ${{ matrix.target == 'apk' && secrets.KEYSTORE_PASSWORD || '' }}
           KEY_ALIAS: ${{ matrix.target == 'apk' && secrets.KEY_ALIAS || '' }}
           KEY_PASSWORD: ${{ matrix.target == 'apk' && secrets.KEY_PASSWORD || '' }}
+          FLUTTER_XCODE_ARCHS: ${{ matrix.arch }}
+          DIAGNOSTICS_PYTHON: ${{ matrix.target == 'windows' && 'python' || 'python3' }}
         run: |
           set +e
           diagnostic_args=()
@@ -408,9 +410,6 @@ jobs:
             done < "$annotation_file"
           fi
           exit "$build_status"
-        env:
-          FLUTTER_XCODE_ARCHS: ${{ matrix.arch }}
-          DIAGNOSTICS_PYTHON: ${{ matrix.target == 'windows' && 'python' || 'python3' }}
       - name: Upload sanitized build diagnostics
         if: failure() && steps.build_example.outcome == 'failure'
         uses: actions/upload-artifact@v4
