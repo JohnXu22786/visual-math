@@ -55,6 +55,14 @@ jobs:
         run: npm test
 
   build-example:
+    if: ${{ github.event_name == 'schedule' || github.ref == 'refs/heads/main' }}
     uses: ./.github/workflows/build-example.yml
     permissions:
       contents: read
+    with:
+      require_android_signing: true
+    secrets:
+      KEYSTORE: ${{ secrets.KEYSTORE }}
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
